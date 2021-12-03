@@ -66,9 +66,10 @@ typedef struct KnownType {
     char * key;
     int value;
     IntroCategory category;
+    IntroStruct * i_struct;
 } KnownType;
 
-static KnownType type_list [] = {
+static const KnownType type_list [] = {
     {"uint8_t", 1, INTRO_UNSIGNED}, {"uint16_t", 2, INTRO_UNSIGNED}, {"uint32_t", 4, INTRO_UNSIGNED}, {"uint64_t", 8, INTRO_UNSIGNED},
     {"int8_t", 1, INTRO_SIGNED}, {"int16_t", 2, INTRO_SIGNED}, {"int32_t", 4, INTRO_SIGNED}, {"int64_t", 8, INTRO_SIGNED},
     {"size_t", sizeof(size_t), INTRO_UNSIGNED}, {"ptrdiff_t", sizeof(ptrdiff_t), INTRO_SIGNED},
@@ -215,6 +216,7 @@ main(int argc, char ** argv) {
                     if (kt != NULL) {
                         type.size = type.pointer_level > 0 ? sizeof(void *) : kt->value;
                         type.category = kt->category;
+                        if (kt->i_struct) type.i_struct = kt->i_struct;
                     } else {
                         printf("WARN: Unknown type \"%s\".\n", type.name);
                     }
@@ -245,6 +247,20 @@ main(int argc, char ** argv) {
                 memcpy(result, &struct_, sizeof(IntroStruct));
                 memcpy(result->members, members, sizeof(IntroMember) * arrlen(members));
                 arrfree(members);
+
+                char * struct_type_name = NULL;
+                strput(struct_type_name, "struct ");
+                strput(struct_type_name, result->name);
+                strputnull(struct_type_name);
+
+                KnownType struct_type;
+                struct_type.key = struct_type_name;
+                struct_type.value = 0;
+                struct_type.category = INTRO_STRUCT;
+                struct_type.i_struct = result;
+                shputs(known_types, struct_type);
+
+                arrfree(struct_type_name);
 
                 arrput(structs, result);
             } else if (tk_equal(&key, "typedef")) {
@@ -353,38 +369,8 @@ main(int argc, char ** argv) {
     strput(str, "} intro_data;\n\n");
 
     strput(str, "void\n" "intro_init() {\n");
-    strput(str, "\t// CREATE TYPES\n\n");
-    strput(str, "\tIntroType * t = intro_data.types;\n\n");
-    for (int type_index = 0; type_index < hmlen(type_set); type_index++) {
-        char t_buf [64];
-        sprintf(t_buf, "\tt[%i].", type_index);
 
-        IntroType * t = type_set[type_index].value;
-
-        strput(str, t_buf);
-        strput(str, "name = \"");
-        strput(str, t->name);
-        strput(str, "\";\n");
-
-        strput(str, t_buf);
-        strput(str, "size = ");
-        sprintf(num_buf, "%u", t->size);
-        strput(str, num_buf);
-        strput(str, ";\n");
-
-        strput(str, t_buf);
-        strput(str, "category = ");
-        strput(str, IntroCategory_strings[t->category]);
-        strput(str, ";\n");
-
-        strput(str, t_buf);
-        strput(str, "pointer_level = ");
-        sprintf(num_buf, "%u", t->pointer_level);
-        strput(str, num_buf);
-        strput(str, ";\n\n");
-    }
-
-    strput(str, "\n\t// CREATE STRUCT INTROSPECTION DATA\n");
+    strput(str, "\t// CREATE STRUCT INTROSPECTION DATA\n");
     strput(str, "\n\tIntroMember * m = NULL;\n");
     for (int struct_index=0; struct_index < arrlen(structs); struct_index++) {
         IntroStruct * s = structs[struct_index];
@@ -443,6 +429,52 @@ main(int argc, char ** argv) {
             strput(str, ");\n");
         }
     }
+
+    strput(str, "\n\t// CREATE TYPES\n\n");
+    strput(str, "\tIntroType * t = intro_data.types;\n\n");
+    for (int type_index = 0; type_index < hmlen(type_set); type_index++) {
+        char t_buf [64];
+        sprintf(t_buf, "\tt[%i].", type_index);
+
+        IntroType * t = type_set[type_index].value;
+
+        strput(str, t_buf);
+        strput(str, "name = \"");
+        strput(str, t->name);
+        strput(str, "\";\n");
+
+        strput(str, t_buf);
+        strput(str, "size = ");
+        if (t->size) {
+            sprintf(num_buf, "%u", t->size);
+            strput(str, num_buf);
+        } else {
+            strput(str, "sizeof(");
+            strput(str, t->name);
+            strput(str, ")");
+        }
+        strput(str, ";\n");
+
+        strput(str, t_buf);
+        strput(str, "category = ");
+        strput(str, IntroCategory_strings[t->category]);
+        strput(str, ";\n");
+
+        strput(str, t_buf);
+        strput(str, "pointer_level = ");
+        sprintf(num_buf, "%u", t->pointer_level);
+        strput(str, num_buf);
+        strput(str, ";\n");
+
+        if (t->category == INTRO_STRUCT) {
+            strput(str, t_buf);
+            strput(str, "i_struct = intro_data.");
+            strput(str, t->i_struct->name);
+            strput(str, ";\n");
+        }
+
+        strput(str, "\n");
+    }
     strput(str, "}\n\n");
 
     strput(str, "void\n");
@@ -479,6 +511,9 @@ main(int argc, char ** argv) {
 
 /*
 Struct Types (Important!)
+    NOTE: Structs should just be types
+        Unionize types or something
+        Also, KnownType should also just be IntroType
     anonymous structs
 
 Unions (special structs)
