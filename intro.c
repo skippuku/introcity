@@ -66,7 +66,10 @@ typedef struct KnownType {
     char * key;
     int value;
     IntroCategory category;
-    IntroStruct * i_struct;
+    union {
+        IntroStruct * i_struct;
+        IntroEnum * i_enum;
+    };
 } KnownType;
 
 static const KnownType type_list [] = {
@@ -129,6 +132,7 @@ tk_equal(Token * tk, const char * str) {
 }
 
 IntroStruct ** structs = NULL;
+IntroEnum   ** enums = NULL;
 
 int
 parse_struct(char * buffer, char ** o_s) {
@@ -243,6 +247,120 @@ parse_struct(char * buffer, char ** o_s) {
 }
 
 int
+parse_enum(char * buffer, char ** o_s) {
+    IntroEnum enum_ = {0};
+
+    Token tk = next_token(o_s);
+    if (tk.type == TK_IDENTIFIER) {
+        char * temp = copy_and_terminate(tk.start, tk.length);
+        shputs(name_set, (struct name_set_s){temp});
+        enum_.name = shgets(name_set, temp).key;
+        free(temp);
+        tk = next_token(o_s);
+    }
+
+    if (!(tk.type == TK_BRACE && tk.is_open)) {
+        parse_error(&tk, "Expected open brace here.");
+        return 1;
+    }
+
+    enum_.is_flags = true;
+    enum_.is_sequential = true;
+    IntroEnumValue * members = NULL;
+    int next_int = 0;
+    int mask = 0;
+    while (1) {
+        IntroEnumValue v = {0};
+        Token name = next_token(o_s);
+        if (name.type == TK_BRACE && !name.is_open) {
+            break;
+        }
+        if (name.type != TK_IDENTIFIER) {
+            parse_error(&tk, "Expected identifier.");
+            return 1;
+        }
+
+        char * new_name = copy_and_terminate(name.start, name.length);
+        if (shgeti(name_set, new_name) >= 0) {
+            parse_error(&name, "Cannot define enumeration with reserved name.");
+            return 1;
+        }
+        shputs(name_set, (struct name_set_s){new_name});
+        v.name = shgets(name_set, new_name).key;
+
+        tk = next_token(o_s);
+        bool set = false;
+        bool is_last = false;
+        if (tk.type == TK_COMMA) {
+            v.value = next_int++;
+        } else if (tk.type == TK_EQUAL) {
+            long num = strtol(*o_s, o_s, 0);
+            if (num == 0 && errno != 0) {
+                parse_error(&tk, "Unable to parse enumeration value.");
+                return 1;
+            }
+            v.value = (int)num;
+            if (v.value != next_int) {
+                enum_.is_sequential = false;
+            }
+            next_int = v.value + 1;
+            set = true;
+        } else if (tk.type == TK_BRACE && !tk.is_open) {
+            v.value = next_int;
+            is_last = true;
+        } else {
+            parse_error(&tk, "Unexpected symbol.");
+            return 1;
+        }
+
+        if (mask & v.value) enum_.is_flags = false;
+        mask |= v.value;
+
+        arrput(members, v);
+
+        if (is_last) break;
+
+        if (set) {
+            tk = next_token(o_s);
+            if (tk.type == TK_COMMA) {
+            } else if (tk.type == TK_BRACE && !tk.is_open) {
+                break;
+            } else {
+                parse_error(&tk, "Unexpected symbol.");
+                return 1;
+            }
+        }
+    };
+
+    enum_.count_members = arrlen(members);
+
+    IntroEnum * result = malloc(sizeof(IntroEnum) + sizeof(*members) * arrlen(members));
+    memcpy(result, &enum_, sizeof(IntroEnum));
+    memcpy(result->members, members, sizeof(*members) * arrlen(members));
+    arrfree(members);
+
+    if (enum_.name != NULL) {
+        char * enum_type_name = NULL;
+        strput(enum_type_name, "enum ");
+        strput(enum_type_name, enum_.name);
+        strputnull(enum_type_name);
+
+        KnownType enum_type;
+        enum_type.key = enum_type_name;
+        enum_type.value = 0;
+        enum_type.category = INTRO_ENUM;
+        enum_type.i_enum = result;
+        shputs(known_types, enum_type);
+
+        arrfree(enum_type_name);
+    }
+
+    arrput(enums, result);
+
+    return 0;
+}
+
+int
 parse_typedef(char * buffer, char ** o_s) {
     Token * line_tokens = NULL;
     Token line_tk;
@@ -352,6 +470,9 @@ main(int argc, char ** argv) {
             if (tk_equal(&key, "struct")) {
                 int error = parse_struct(buffer, &s);
                 if (error) return error;
+            } else if (tk_equal(&key, "enum")) {
+                int error = parse_enum(buffer, &s);
+                if (error) return error;
             } else if (tk_equal(&key, "typedef")) {
                 int error = parse_typedef(buffer, &s);
                 if (error) return error;
@@ -397,6 +518,12 @@ main(int argc, char ** argv) {
     sprintf(num_buf, "%i", (int)hmlen(type_set));
     strput(str, num_buf);
     strput(str, "];\n");
+    for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
+        if (enums[enum_index]->name == NULL) continue;
+        strput(str, "\tIntroEnum * ");
+        strput(str, enums[enum_index]->name);
+        strput(str, ";\n");
+    }
     for (int struct_index = 0; struct_index < arrlen(structs); struct_index++) {
         if (structs[struct_index]->name == NULL) continue;
         strput(str, "\tIntroStruct * ");
@@ -407,7 +534,72 @@ main(int argc, char ** argv) {
 
     strput(str, "void\n" "intro_init() {\n");
 
-    strput(str, "\t// CREATE STRUCT INTROSPECTION DATA\n");
+    strput(str, "\t// CREATE ENUM INTROSPECTION DATA\n");
+    strput(str, "\n\tIntroEnumValue * v = NULL;\n");
+    for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
+        IntroEnum * e = enums[enum_index];
+
+        strput(str, "\n\t// ");
+        strput(str, e->name);
+        strput(str, "\n");
+
+        strput(str, "\n\tintro_data.");
+        strput(str, e->name);
+        strput(str, " = malloc(sizeof(IntroEnum) + ");
+        sprintf(num_buf, "%i", e->count_members);
+        strput(str, num_buf);
+        strput(str, " * sizeof(IntroEnumValue));\n");
+
+        strput(str, "\tintro_data.");
+        strput(str, e->name);
+        strput(str, "->name = \"");
+        strput(str, e->name);
+        strput(str, "\";\n");
+
+        strput(str, "\tintro_data.");
+        strput(str, e->name);
+        strput(str, "->is_flags = ");
+        strput(str, e->is_flags ? "true" : "false");
+        strput(str, ";\n");
+
+        strput(str, "\tintro_data.");
+        strput(str, e->name);
+        strput(str, "->is_sequential = ");
+        strput(str, e->is_sequential ? "true" : "false");
+        strput(str, ";\n");
+
+        strput(str, "\tintro_data.");
+        strput(str, e->name);
+        strput(str, "->count_members = ");
+        sprintf(num_buf, "%u", e->count_members);
+        strput(str, num_buf);
+        strput(str, ";\n");
+
+        strput(str, "\tv = intro_data.");
+        strput(str, e->name);
+        strput(str, "->members;\n");
+
+        for (int i=0; i < e->count_members; i++) {
+            char v_buf [64];
+            sprintf(v_buf, "\tv[%i].", i);
+            IntroEnumValue * v = &e->members[i];
+            
+            strput(str, "\n");
+
+            strput(str, v_buf);
+            strput(str, "name = \"");
+            strput(str, v->name);
+            strput(str, "\";\n");
+
+            strput(str, v_buf);
+            strput(str, "value = ");
+            sprintf(num_buf, "%i", v->value);
+            strput(str, num_buf);
+            strput(str, ";\n");
+        }
+    }
+
+    strput(str, "\n\t// CREATE STRUCT INTROSPECTION DATA\n");
     strput(str, "\n\tIntroMember * m = NULL;\n");
     for (int struct_index=0; struct_index < arrlen(structs); struct_index++) {
         IntroStruct * s = structs[struct_index];
@@ -508,6 +700,11 @@ main(int argc, char ** argv) {
             strput(str, "i_struct = intro_data.");
             strput(str, t->i_struct->name);
             strput(str, ";\n");
+        } else if (t->category == INTRO_ENUM) {
+            strput(str, t_buf);
+            strput(str, "i_enum = intro_data.");
+            strput(str, t->i_enum->name);
+            strput(str, ";\n");
         }
 
         strput(str, "\n");
@@ -519,6 +716,11 @@ main(int argc, char ** argv) {
     for (int struct_index = 0; struct_index < arrlen(structs); struct_index++) {
         strput(str, "\tfree(intro_data.");
         strput(str, structs[struct_index]->name);
+        strput(str, ");\n");
+    }
+    for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
+        strput(str, "\tfree(intro_data.");
+        strput(str, enums[enum_index]->name);
         strput(str, ");\n");
     }
     strput(str, "}\n");

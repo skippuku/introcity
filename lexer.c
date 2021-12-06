@@ -13,6 +13,7 @@ typedef struct Token {
         TK_COLON,
         TK_SEMICOLON,
         TK_STAR,
+        TK_COMMA,
         TK_PERIOD,
         TK_HASH,
         TK_END,
@@ -95,6 +96,7 @@ next_token(char ** o_s) {
     case ':': tk.type = TK_COLON; break;
     case ';': tk.type = TK_SEMICOLON; break;
     case '*': tk.type = TK_STAR; break;
+    case ',': tk.type = TK_COMMA; break;
     case '.': tk.type = TK_PERIOD; break;
     case '#': tk.type = TK_HASH; break;
 

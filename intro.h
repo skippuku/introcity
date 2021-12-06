@@ -2,6 +2,7 @@
 #define INTRO_H
 #include <stdint.h>
 typedef struct IntroStruct IntroStruct;
+typedef struct IntroEnum IntroEnum;
 
 // IMPORTANT(cy):
 // Make sure this matches with the array in intro.c
@@ -13,7 +14,7 @@ typedef enum IntroCategory {
     INTRO_UNSIGNED,
 
     INTRO_STRUCT,
-    INTRO_ENUM, // NOT IMPLEMENTED
+    INTRO_ENUM,
     INTRO_ARRAY, // NOT IMPLEMENTED
 
     INTRO_TYPE_COUNT
@@ -24,7 +25,10 @@ typedef struct IntroType {
     uint32_t size;
     IntroCategory category;
     uint16_t pointer_level;
-    IntroStruct * i_struct;
+    union {
+        IntroStruct * i_struct;
+        IntroEnum * i_enum;
+    };
 } IntroType;
 
 typedef struct IntroMember {
@@ -38,5 +42,18 @@ struct IntroStruct {
     bool is_union; // NOT IMPLEMENTED
     uint32_t count_members;
     IntroMember members [];
+};
+
+typedef struct IntroEnumValue {
+    int value;
+    char * name;
+} IntroEnumValue;
+
+struct IntroEnum {
+    char * name;
+    bool is_flags;
+    bool is_sequential;
+    uint32_t count_members;
+    IntroEnumValue members [];
 };
 #endif
