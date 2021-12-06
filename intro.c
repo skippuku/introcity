@@ -142,13 +142,14 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
         char * temp = copy_and_terminate(tk.start, tk.length);
-        shputs(name_set, (struct name_set_s){temp});
+        if (shgeti(name_set, temp) < 0) shputs(name_set, (struct name_set_s){temp});
         struct_.name = shgets(name_set, temp).key;
         free(temp);
         tk = next_token(o_s);
     }
 
     if (!(tk.type == TK_BRACE && tk.is_open)) {
+        if (tk.type == TK_IDENTIFIER) return 2;
         parse_error(&tk, "Expected open brace here.");
         return 1;
     }
@@ -186,7 +187,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         }
 
         strputnull(type_name);
-        shputs(name_set, (struct name_set_s){type_name});
+        if (shgeti(name_set, type_name) < 0) shputs(name_set, (struct name_set_s){type_name});
         type.name = shgets(name_set, type_name).key;
         arrfree(type_name);
 
@@ -219,7 +220,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
 
         Token * member_name_tk = &arrlast(line_tokens);
         char * temp = copy_and_terminate(member_name_tk->start, member_name_tk->length);
-        shputs(name_set, (struct name_set_s){temp});
+        if (shgeti(name_set, temp) < 0) shputs(name_set, (struct name_set_s){temp});
         member.name = shgets(name_set, temp).key;
         free(temp);
 
@@ -267,13 +268,14 @@ parse_enum(char * buffer, char ** o_s) {
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
         char * temp = copy_and_terminate(tk.start, tk.length);
-        shputs(name_set, (struct name_set_s){temp});
+        if (shgeti(name_set, temp) < 0) shputs(name_set, (struct name_set_s){temp});
         enum_.name = shgets(name_set, temp).key;
         free(temp);
         tk = next_token(o_s);
     }
 
     if (!(tk.type == TK_BRACE && tk.is_open)) {
+        if (tk.type == TK_IDENTIFIER) return 2;
         parse_error(&tk, "Expected open brace here.");
         return 1;
     }
@@ -299,7 +301,7 @@ parse_enum(char * buffer, char ** o_s) {
             parse_error(&name, "Cannot define enumeration with reserved name.");
             return 1;
         }
-        shputs(name_set, (struct name_set_s){new_name});
+        if (shgeti(name_set, new_name) < 0) shputs(name_set, (struct name_set_s){new_name});
         v.name = shgets(name_set, new_name).key;
 
         tk = next_token(o_s);
@@ -385,6 +387,10 @@ parse_typedef(char * buffer, char ** o_s) {
         if (tk_equal(&line_tk, "struct") || tk_equal(&line_tk, "union")) {
             char * after_struct_keyword = *o_s;
             int error = parse_struct(buffer, o_s, tk_equal(&line_tk, "union"));
+            if (error == 2) {
+                *o_s = after_struct_keyword;
+                continue;
+            }
             if (error) return error;
             if (arrlast(structs)->name == NULL) {
                 is_anonymous_struct = true;
@@ -394,6 +400,10 @@ parse_typedef(char * buffer, char ** o_s) {
         } else if (tk_equal(&line_tk, "enum")) {
             char * after_enum_keyword = *o_s;
             int error = parse_enum(buffer, o_s);
+            if (error == 2) {
+                *o_s = after_enum_keyword;
+                continue;
+            }
             if (error) return error;
             if (arrlast(enums)->name == NULL) {
                 is_anonymous_enum = true;
@@ -459,7 +469,8 @@ parse_typedef(char * buffer, char ** o_s) {
             shputs(known_types, nt);
         } else {
             Token hack = line_tokens[0];
-            hack.length = last->start + last->length - hack.start;
+            Token * last_type_word = &line_tokens[arrlen(line_tokens) - 2];
+            hack.length = last_type_word->start + last_type_word->length - hack.start;
             parse_error(&hack, "Unknown type in typedef.");
             for (int i=0; i < arrlen(line_tokens); i++) {
                 printf("%.*s\n", line_tokens[i].length, line_tokens[i].start);
@@ -674,6 +685,8 @@ main(int argc, char ** argv) {
         strput(str, s->name);
         strput(str, "->members;\n");
 
+        bool prepend_struct = shgeti(known_types, s->name) < 0;
+
         for (int i=0; i < s->count_members; i++) {
             char m_buf [64];
             sprintf(m_buf, "\tm[%i].", i);
@@ -694,6 +707,7 @@ main(int argc, char ** argv) {
 
             strput(str, m_buf);
             strput(str, "offset = offsetof(");
+            if (prepend_struct) strput(str, "struct ");
             strput(str, s->name);
             strput(str, ", ");
             strput(str, m->name);
