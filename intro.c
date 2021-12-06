@@ -69,6 +69,7 @@ typedef struct KnownType {
     union {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
+        char ** forward_list;
     };
 } KnownType;
 
@@ -251,6 +252,18 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         struct_type.value = 0;
         struct_type.category = INTRO_STRUCT;
         struct_type.i_struct = result;
+        
+        KnownType * prev = shgetp_null(known_types, struct_type_name);
+        if (prev != NULL && prev->category == INTRO_UNKNOWN) {
+            for (int i=0; i < arrlen(prev->forward_list); i++) {
+                KnownType ft;
+                ft.key = prev->forward_list[i];
+                ft.category = INTRO_STRUCT;
+                ft.i_struct = result;
+                shputs(known_types, ft);
+            }
+            arrfree(prev->forward_list);
+        }
         shputs(known_types, struct_type);
 
         arrfree(struct_type_name);
@@ -366,6 +379,18 @@ parse_enum(char * buffer, char ** o_s) {
         enum_type.value = 0;
         enum_type.category = INTRO_ENUM;
         enum_type.i_enum = result;
+
+        KnownType * prev = shgetp_null(known_types, enum_type_name);
+        if (prev != NULL && prev->category == INTRO_UNKNOWN) {
+            for (int i=0; i < arrlen(prev->forward_list); i++) {
+                KnownType ft;
+                ft.key = prev->forward_list[i];
+                ft.category = INTRO_ENUM;
+                ft.i_enum = result;
+                shputs(known_types, ft);
+            }
+            arrfree(prev->forward_list);
+        }
         shputs(known_types, enum_type);
 
         arrfree(enum_type_name);
@@ -465,17 +490,26 @@ parse_typedef(char * buffer, char ** o_s) {
         KnownType * kt = shgetp_null(known_types, type_name);
         if (kt != NULL) {
             KnownType nt = *kt;
-            nt.key = new_type_name;
-            shputs(known_types, nt);
-        } else {
-            Token hack = line_tokens[0];
-            Token * last_type_word = &line_tokens[arrlen(line_tokens) - 2];
-            hack.length = last_type_word->start + last_type_word->length - hack.start;
-            parse_error(&hack, "Unknown type in typedef.");
-            for (int i=0; i < arrlen(line_tokens); i++) {
-                printf("%.*s\n", line_tokens[i].length, line_tokens[i].start);
+            if (nt.category == INTRO_UNKNOWN) {
+                if (shgeti(name_set, new_type_name) < 0) shputs(name_set, (struct name_set_s){new_type_name});
+                arrput(nt.forward_list, shgets(name_set, new_type_name).key);
+            } else {
+                nt.key = new_type_name;
+                shputs(known_types, nt);
             }
-            return 1;
+        } else {
+            KnownType ut = {0};
+            ut.key = type_name;
+            ut.category = INTRO_UNKNOWN;
+            ut.forward_list = NULL;
+            if (shgeti(name_set, new_type_name) < 0) shputs(name_set, (struct name_set_s){new_type_name});
+            arrput(ut.forward_list, shgets(name_set, new_type_name).key);
+            shputs(known_types, ut);
+
+            KnownType nt = {0};
+            nt.key = new_type_name;
+            nt.category = INTRO_UNKNOWN;
+            shputs(known_types, nt);
         }
         arrfree(type_name);
     }
@@ -553,6 +587,23 @@ main(int argc, char ** argv) {
                     if (*q != '\\') break;
                     s++;
                 }
+            }
+        }
+    }
+
+    for (int i=0; i < hmlen(type_set); i++) {
+        IntroType * t = type_set[i].value;
+        if (t->category == INTRO_UNKNOWN) {
+            KnownType * kt = shgetp_null(known_types, t->name);
+            if (kt == NULL) {
+                printf("Error: failed to find type \"%s\".", t->name);
+                return 1;
+            }
+            t->category = kt->category;
+            if (t->category == INTRO_STRUCT) {
+                t->i_struct = kt->i_struct;
+            } else if (t->category == INTRO_ENUM) {
+                t->i_enum = kt->i_enum;
             }
         }
     }
@@ -808,7 +859,8 @@ main(int argc, char ** argv) {
 FIX: parse_error line number is incorrect because of preprocessor
     + show which file the error is in
 
-Handle forward declarations
+Cut down on code size:
+    parse_declaration
 
 Anonymous structs
 
@@ -825,12 +877,16 @@ Ignore functions
 Serialization
 
 User data (with macros)
-    enum flags
-    versions
-    custom type data
+    versions INTRO_V(value)
+    id for serialization INTRO_ID(id)
+    custom type data INTRO_DATA(value)
+    string length INTRO_STRLEN(member)
+    union switch INTRO_SWITCH(member, value)
+    default value INTRO_DEFAULT(value)
 
-Program arguments
+Transformative program arguments
     create typedefs for structs and enums
+    create initializers
 */
 
 #if 0
