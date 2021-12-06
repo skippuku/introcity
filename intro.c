@@ -778,6 +778,7 @@ main(int argc, char ** argv) {
 
 /*
 FIX: parse_error line number is incorrect because of preprocessor
+    + show which file the error is in
 
 Handle forward declarations
 
@@ -807,45 +808,6 @@ Program arguments
 */
 
 #if 0
-typedef struct StringPool {
-    char ** buckets;
-    int bucket_cap;
-    int last_bucket_len;
-} StringPool;
-
-StringPool
-create_string_pool(int bucket_cap) {
-    StringPool pool;
-    pool.buckets = NULL;
-    pool.bucket_cap = bucket_cap;
-    pool.last_bucket_len = 0;
-
-    return pool;
-}
-
-void
-add_to_string_pool(StringPool * pool, char * str) {
-    size_t len = strlen(str);
-    if (pool->last_bucket_len + len + 1 > pool->bucket_cap) {
-        arrput(pool->buckets, (char *)malloc(pool->bucket_cap));
-        pool->last_bucket_len = 0;
-    }
-    char * buffer = arrlast(pool->buckets);
-    memcpy(buffer + pool->last_bucket_len + 1, str, len);
-    pool->last_bucket_len += len + 1;
-}
-
-void
-destroy_string_pool(StringPool * pool) {
-    for (int i=0; i < arrlen(pool->buckets); i++) {
-        free(pool->buckets[i]);
-    }
-    arrfree(pool->buckets);
-    memset(pool, 0, sizeof(*pool));
-}
-#endif
-
-#if 0
 bool
 intro_is_scalar(IntroType * type) {
     return type->pointer_level == 0 && (type->category == INTRO_FLOATING || type->category == INTRO_UNSIGNED || type->category == INTRO_SIGNED);
@@ -868,66 +830,5 @@ intro_compatible(IntroType * a, IntroType * b) {
             return false;
         }
     }
-}
-
-void
-noodles() {
-    Bingus bingus = {0};
-
-    IntroContext * intro = intro_create();
-    assert (intro_parse_file(intro, "bingus.h") == 0);
-
-    IntroStruct * bingus_intro = intro_get_struct(intro, "Bingus");
-    assert (bingus_intro != NULL);
-
-    intro_print_struct(&bingus, bingus_intro, 0);
-
-    while (running) {
-        igBegin("Edit bingus", NULL, 0);
-            for (int i=0; i < bingus_intro->count_members; i++) {
-                IntroMember * member = &bingus_intro->members[i];
-                ImGuiDataType imgui_type = intro_to_imgui_type(member->type);
-                if (imgui_type == -1) continue;
-
-                igDragScalar(member->name, imgui_type, (void *)&bingus + member->offset, 0.1, NULL, NULL, NULL, 0);
-            }
-        igEnd();
-    }
-
-    intro_destroy(intro);
-}
-
-ImGuiDataType
-intro_to_imgui_type(IntroType * type) {
-    ImGuiDataType imgui_type;
-    switch(type->type) {
-    case INTRO_FLOATING: {
-        switch(type->size) {
-        case 4: imgui_type = ImGuiDataType_Float; break;
-        case 8: imgui_type = ImGuiDataType_Double; break;
-        }
-    } break;
-    case INTRO_SIGNED: {
-        switch(type->size) {
-        case 1: imgui_type = ImGuiDataType_S8; break;
-        case 2: imgui_type = ImGuiDataType_S16; break;
-        case 4: imgui_type = ImGuiDataType_S32; break;
-        case 8: imgui_type = ImGuiDataType_S64; break;
-        }
-    } break;
-    case INTRO_UNSIGNED: {
-        switch(type->size) {
-        case 1: imgui_type = ImGuiDataType_U8; break;
-        case 2: imgui_type = ImGuiDataType_U16; break;
-        case 4: imgui_type = ImGuiDataType_U32; break;
-        case 8: imgui_type = ImGuiDataType_U64; break;
-        }
-    } break;
-    default: {
-        imgui_type = -1;
-    } break;
-    }
-
-    return imgui_type;
 }
 #endif
