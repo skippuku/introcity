@@ -39,7 +39,7 @@ typedef struct IntroMember {
 
 struct IntroStruct {
     char * name;
-    bool is_union; // NOT IMPLEMENTED
+    bool is_union;
     uint32_t count_members;
     IntroMember members [];
 };

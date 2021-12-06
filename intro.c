@@ -135,8 +135,9 @@ IntroStruct ** structs = NULL;
 IntroEnum   ** enums = NULL;
 
 int
-parse_struct(char * buffer, char ** o_s) {
+parse_struct(char * buffer, char ** o_s, bool is_union) {
     IntroStruct struct_ = {0};
+    struct_.is_union = is_union;
 
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
@@ -236,7 +237,11 @@ parse_struct(char * buffer, char ** o_s) {
 
     if (struct_.name != NULL) {
         char * struct_type_name = NULL;
-        strput(struct_type_name, "struct ");
+        if (is_union) {
+            strput(struct_type_name, "union ");
+        } else {
+            strput(struct_type_name, "struct ");
+        }
         strput(struct_type_name, result->name);
         strputnull(struct_type_name);
 
@@ -377,9 +382,9 @@ parse_typedef(char * buffer, char ** o_s) {
     bool is_anonymous_enum = false;
     while ((line_tk = next_token(o_s)).type == TK_IDENTIFIER || line_tk.type == TK_STAR) {
         arrput(line_tokens, line_tk);
-        if (tk_equal(&line_tk, "struct")) {
+        if (tk_equal(&line_tk, "struct") || tk_equal(&line_tk, "union")) {
             char * after_struct_keyword = *o_s;
-            int error = parse_struct(buffer, o_s);
+            int error = parse_struct(buffer, o_s, tk_equal(&line_tk, "union"));
             if (error) return error;
             if (arrlast(structs)->name == NULL) {
                 is_anonymous_struct = true;
@@ -496,7 +501,10 @@ main(int argc, char ** argv) {
     while ((key = next_token(&s)).type != TK_END) {
         if (key.type == TK_IDENTIFIER) {
             if (tk_equal(&key, "struct")) {
-                int error = parse_struct(buffer, &s);
+                int error = parse_struct(buffer, &s, false);
+                if (error) return error;
+            } else if (tk_equal(&key, "union")) {
+                int error = parse_struct(buffer, &s, true);
                 if (error) return error;
             } else if (tk_equal(&key, "enum")) {
                 int error = parse_enum(buffer, &s);
@@ -651,6 +659,12 @@ main(int argc, char ** argv) {
 
         strput(str, "\tintro_data.");
         strput(str, s->name);
+        strput(str, "->is_union = ");
+        strput(str, s->is_union ? "true" : "false");
+        strput(str, ";\n");
+
+        strput(str, "\tintro_data.");
+        strput(str, s->name);
         strput(str, "->count_members = ");
         sprintf(num_buf, "%u", s->count_members);
         strput(str, num_buf);
@@ -783,8 +797,6 @@ FIX: parse_error line number is incorrect because of preprocessor
 Handle forward declarations
 
 Anonymous structs
-
-Unions (special structs)
 
 Array types
     how should multidimentional arrays be handled?
