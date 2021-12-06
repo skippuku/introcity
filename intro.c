@@ -195,7 +195,16 @@ parse_struct(char * buffer, char ** o_s) {
             type.category = kt->category;
             if (kt->i_struct) type.i_struct = kt->i_struct;
         } else {
-            printf("WARN: Unknown type \"%s\".\n", type.name);
+            Token hack = line_tokens[0];
+            Token * last = &line_tokens[arrlen(line_tokens) - 2];
+            hack.length = last->start + last->length - hack.start;
+            char * error_str = NULL;
+            strput(error_str, "Unknown type \"");
+            strput(error_str, type.name);
+            strput(error_str, "\".");
+            strputnull(error_str);
+            parse_error(&hack, error_str);
+            return 1;
         }
 
         if (hmgeti(type_set, type) >= 0) {
@@ -365,6 +374,7 @@ parse_typedef(char * buffer, char ** o_s) {
     Token * line_tokens = NULL;
     Token line_tk;
     bool is_anonymous_struct = false;
+    bool is_anonymous_enum = false;
     while ((line_tk = next_token(o_s)).type == TK_IDENTIFIER || line_tk.type == TK_STAR) {
         arrput(line_tokens, line_tk);
         if (tk_equal(&line_tk, "struct")) {
@@ -375,6 +385,15 @@ parse_typedef(char * buffer, char ** o_s) {
                 is_anonymous_struct = true;
             } else {
                 arrput(line_tokens, next_token(&after_struct_keyword));
+            }
+        } else if (tk_equal(&line_tk, "enum")) {
+            char * after_enum_keyword = *o_s;
+            int error = parse_enum(buffer, o_s);
+            if (error) return error;
+            if (arrlast(enums)->name == NULL) {
+                is_anonymous_enum = true;
+            } else {
+                arrput(line_tokens, next_token(&after_enum_keyword));
             }
         }
     }
@@ -392,7 +411,25 @@ parse_typedef(char * buffer, char ** o_s) {
         parse_error(last, "Cannot define a type with this name. The name is already reserved.");
     }
 
-    if (!is_anonymous_struct) {
+    if (is_anonymous_struct) {
+        IntroStruct * i_struct = arrlast(structs);
+        KnownType k = {0};
+        k.key = new_type_name;
+        k.category = INTRO_STRUCT;
+        k.i_struct = i_struct;
+        shputs(known_types, k);
+
+        i_struct->name = shgets(known_types, new_type_name).key;
+    } else if (is_anonymous_enum) {
+        IntroEnum * i_enum = arrlast(enums);
+        KnownType k = {0};
+        k.key = new_type_name;
+        k.category = INTRO_ENUM;
+        k.i_enum = i_enum;
+        shputs(known_types, k);
+
+        i_enum->name = shgets(known_types, new_type_name).key;
+    } else {
         char * type_name = NULL;
         for (int i=0; i < arrlen(line_tokens) - 1; i++) {
             Token * tk = &line_tokens[i];
@@ -425,15 +462,6 @@ parse_typedef(char * buffer, char ** o_s) {
             return 1;
         }
         arrfree(type_name);
-    } else {
-        IntroStruct * i_struct = arrlast(structs);
-        KnownType k = {0};
-        k.key = new_type_name;
-        k.category = INTRO_STRUCT;
-        k.i_struct = i_struct;
-        shputs(known_types, k);
-
-        i_struct->name = shgets(known_types, new_type_name).key;
     }
 
     free(new_type_name);
@@ -749,13 +777,13 @@ main(int argc, char ** argv) {
 // TODO LAND
 
 /*
+FIX: parse_error line number is incorrect because of preprocessor
+
 Handle forward declarations
 
 Anonymous structs
 
 Unions (special structs)
-
-Enums
 
 Array types
     how should multidimentional arrays be handled?

@@ -1,5 +1,5 @@
 
-CC = gcc
+CC = gcc -std=gnu99
 
 default: db_test.exe
 
