@@ -87,6 +87,16 @@ static const KnownType type_list [] = {
 KnownType * known_types = NULL;
 
 char *
+cache_name(char * name) {
+    long index = shgeti(name_set, name);
+    if (index >= 0) {
+        return name_set[index].key;
+    } else {
+        return shputs(name_set, (struct name_set_s){name});
+    }
+}
+
+char *
 copy_and_terminate(char * str, int length) {
     char * result = malloc(length + 1);
     memcpy(result, str, length);
@@ -135,6 +145,15 @@ tk_equal(Token * tk, const char * str) {
 IntroStruct ** structs = NULL;
 IntroEnum   ** enums = NULL;
 
+typedef struct Delcaration {
+    IntroType type;
+    Token type_tk;
+    bool is_anonymous;
+    bool success;
+} Declaration;
+
+Declaration parse_type(char * buffer, char ** o_s);
+
 int
 parse_struct(char * buffer, char ** o_s, bool is_union) {
     IntroStruct struct_ = {0};
@@ -143,8 +162,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
         char * temp = copy_and_terminate(tk.start, tk.length);
-        if (shgeti(name_set, temp) < 0) shputs(name_set, (struct name_set_s){temp});
-        struct_.name = shgets(name_set, temp).key;
+        struct_.name = cache_name(temp);
         free(temp);
         tk = next_token(o_s);
     }
@@ -159,75 +177,48 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     while (1) {
         IntroMember member = {0};
 
-        Token * line_tokens = NULL;
-        Token line_tk;
-        while ((line_tk = next_token(o_s)).type == TK_IDENTIFIER || line_tk.type == TK_STAR || line_tk.type == TK_BRACKET) {
-            arrput(line_tokens, line_tk);
-        }
-        if (line_tk.type == TK_BRACE && !line_tk.is_open) {
-            break;
-        }
-
-        if (arrlast(line_tokens).type != TK_IDENTIFIER) {
-            Token * t = &arrlast(line_tokens);
-            parse_error(t, "Cannot parse symbol in member declaration.");
-            return 1;
-        }
-        char * type_name = NULL;
-        IntroType type = {0};
-        for (int i=0; i < arrlen(line_tokens) - 1; i++) {
-            Token * tk = &line_tokens[i];
-            if (tk->type == TK_STAR) {
-                type.pointer_level++;
-            } else if (tk->type == TK_IDENTIFIER
-                       && !tk_equal(tk, "const")
-                       && !tk_equal(tk, "static")) {
-                if (arrlen(type_name) != 0) strput(type_name, " ");
-                strputn(type_name, tk->start, tk->length);
+        Declaration decl = parse_type(buffer, o_s);
+        if (!decl.success) {
+            if (decl.type_tk.type == TK_BRACE && !decl.type_tk.is_open) {
+                break;
+            } else {
+                parse_error(&decl.type_tk, "Cannot parse symbol in type.");
+                return 1;
             }
         }
 
-        strputnull(type_name);
-        if (shgeti(name_set, type_name) < 0) shputs(name_set, (struct name_set_s){type_name});
-        type.name = shgets(name_set, type_name).key;
-        arrfree(type_name);
-
-        KnownType * kt = shgetp_null(known_types, type.name);
-        if (kt != NULL) {
-            type.size = type.pointer_level > 0 ? sizeof(void *) : kt->value;
-            type.category = kt->category;
-            if (kt->i_struct) type.i_struct = kt->i_struct;
-        } else {
-            Token hack = line_tokens[0];
-            Token * last = &line_tokens[arrlen(line_tokens) - 2];
-            hack.length = last->start + last->length - hack.start;
+        if (decl.type.category == INTRO_UNKNOWN && decl.type.pointer_level == 0) {
+            printf("pointer_level: %u\n", decl.type.pointer_level);
             char * error_str = NULL;
             strput(error_str, "Unknown type \"");
-            strput(error_str, type.name);
+            strput(error_str, decl.type.name);
             strput(error_str, "\".");
             strputnull(error_str);
-            parse_error(&hack, error_str);
+            parse_error(&decl.type_tk, error_str);
             return 1;
         }
 
-        if (hmgeti(type_set, type) >= 0) {
-            member.type = hmget(type_set, type);
+        if (hmgeti(type_set, decl.type) >= 0) {
+            member.type = hmget(type_set, decl.type);
         } else {
             IntroType * stored = malloc(sizeof(IntroType));
-            memcpy(stored, &type, sizeof(IntroType));
-            hmput(type_set, type, stored);
+            memcpy(stored, &decl.type, sizeof(IntroType));
+            hmput(type_set, decl.type, stored);
             member.type = stored;
         }
 
-        Token * member_name_tk = &arrlast(line_tokens);
-        char * temp = copy_and_terminate(member_name_tk->start, member_name_tk->length);
-        if (shgeti(name_set, temp) < 0) shputs(name_set, (struct name_set_s){temp});
-        member.name = shgets(name_set, temp).key;
+        Token member_name_tk = next_token(o_s);
+        char * temp = copy_and_terminate(member_name_tk.start, member_name_tk.length);
+        member.name = cache_name(temp);
         free(temp);
 
-        arrput(members, member);
+        Token tk = next_token(o_s);
+        if (tk.type != TK_SEMICOLON) {
+            parse_error(&tk, "Cannot parse symbol in member declaration. Expected ';'.");
+            return 1;
+        }
 
-        arrfree(line_tokens);
+        arrput(members, member);
     }
 
     struct_.count_members = arrlen(members);
@@ -281,8 +272,7 @@ parse_enum(char * buffer, char ** o_s) {
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
         char * temp = copy_and_terminate(tk.start, tk.length);
-        if (shgeti(name_set, temp) < 0) shputs(name_set, (struct name_set_s){temp});
-        enum_.name = shgets(name_set, temp).key;
+        enum_.name = cache_name(temp);
         free(temp);
         tk = next_token(o_s);
     }
@@ -314,8 +304,7 @@ parse_enum(char * buffer, char ** o_s) {
             parse_error(&name, "Cannot define enumeration with reserved name.");
             return 1;
         }
-        if (shgeti(name_set, new_name) < 0) shputs(name_set, (struct name_set_s){new_name});
-        v.name = shgets(name_set, new_name).key;
+        v.name = cache_name(new_name);
 
         tk = next_token(o_s);
         bool set = false;
@@ -401,98 +390,156 @@ parse_enum(char * buffer, char ** o_s) {
     return 0;
 }
 
+bool
+is_ignored(Token * tk) {
+    return tk_equal(tk, "const") || tk_equal(tk, "static");
+}
+
+Declaration
+parse_type(char * buffer, char ** o_s) {
+    Declaration result = {0};
+
+    IntroType type = {0};
+    char * type_name = NULL;
+
+    Token first;
+    do {
+        first = next_token(o_s);
+    } while (first.type == TK_IDENTIFIER && is_ignored(&first));
+    if (first.type != TK_IDENTIFIER) {
+        result.type_tk = first;
+        return result;
+    }
+
+    result.type_tk.start = first.start;
+    result.type_tk.type = TK_IDENTIFIER;
+
+    strputn(type_name, first.start, first.length);
+
+    bool is_struct = tk_equal(&first, "struct");
+    bool is_union  = tk_equal(&first, "union");
+    bool is_enum   = tk_equal(&first, "enum");
+    if (is_struct || is_union || is_enum) {
+        char * after_keyword = *o_s;
+        int error;
+        if (is_struct) {
+            error = parse_struct(buffer, o_s, false);
+        } else if (is_union) {
+            error = parse_struct(buffer, o_s, true);
+        } else {
+            error = parse_enum(buffer, o_s);
+        }
+        if (error == 2) {
+            *o_s = after_keyword;
+            Token tk = next_token(o_s);
+            strput(type_name, " ");
+            strputn(type_name, tk.start, tk.length);
+        } else if (error != 0) {
+            return result;
+        } else {
+            char * name;
+            if (is_struct || is_union) {
+                name = arrlast(structs)->name;
+                type.category = INTRO_STRUCT;
+                type.i_struct = arrlast(structs);
+            } else {
+                name = arrlast(enums)->name;
+                type.category = INTRO_ENUM;
+                type.i_enum   = arrlast(enums);
+            }
+            if (name == NULL) {
+                result.is_anonymous = true;
+            } else {
+                strput(type_name, " ");
+                strput(type_name, name);
+            }
+        }
+    } else {
+        Token tk, ltk = next_token(o_s);
+        if (ltk.type == TK_IDENTIFIER) {
+            while ((tk = next_token(o_s)).type == TK_IDENTIFIER) {
+                strput(type_name, " ");
+                ltk = tk;
+            }
+        }
+        *o_s = ltk.start;
+    }
+    result.type_tk.length = *o_s - result.type_tk.start - 1;
+
+    Token tk;
+    while ((tk = next_token(o_s)).type == TK_STAR) {
+        type.pointer_level++;
+    }
+    *o_s = tk.start; // put pointer back
+
+    strputnull(type_name);
+    type.name = cache_name(type_name);
+    arrfree(type_name);
+
+    if (type.category == INTRO_UNKNOWN) {
+        KnownType * kt = shgetp_null(known_types, type.name);
+        if (kt != NULL) {
+            type.size = type.pointer_level > 0 ? sizeof(void *) : kt->value;
+            type.category = kt->category;
+            if (kt->i_struct) type.i_struct = kt->i_struct; // also covers i_enum
+        }
+    }
+
+    result.type = type;
+    result.success = true;
+    return result;
+}
+
 int
 parse_typedef(char * buffer, char ** o_s) {
-    Token * line_tokens = NULL;
-    Token line_tk;
-    bool is_anonymous_struct = false;
-    bool is_anonymous_enum = false;
-    while ((line_tk = next_token(o_s)).type == TK_IDENTIFIER || line_tk.type == TK_STAR) {
-        arrput(line_tokens, line_tk);
-        if (tk_equal(&line_tk, "struct") || tk_equal(&line_tk, "union")) {
-            char * after_struct_keyword = *o_s;
-            int error = parse_struct(buffer, o_s, tk_equal(&line_tk, "union"));
-            if (error == 2) {
-                *o_s = after_struct_keyword;
-                continue;
-            }
-            if (error) return error;
-            if (arrlast(structs)->name == NULL) {
-                is_anonymous_struct = true;
-            } else {
-                arrput(line_tokens, next_token(&after_struct_keyword));
-            }
-        } else if (tk_equal(&line_tk, "enum")) {
-            char * after_enum_keyword = *o_s;
-            int error = parse_enum(buffer, o_s);
-            if (error == 2) {
-                *o_s = after_enum_keyword;
-                continue;
-            }
-            if (error) return error;
-            if (arrlast(enums)->name == NULL) {
-                is_anonymous_enum = true;
-            } else {
-                arrput(line_tokens, next_token(&after_enum_keyword));
-            }
+    Declaration decl = parse_type(buffer, o_s);
+    if (!decl.success) {
+        if (decl.type_tk.length > 0) {
+            parse_error(&decl.type_tk, "Cannot parse symbol in type.");
         }
-    }
-    if (line_tk.type != TK_SEMICOLON) {
-        parse_error(&line_tk, "Cannot parse symbol in typedef. Expected ';'");
         return 1;
     }
-    if (arrlast(line_tokens).type != TK_IDENTIFIER) {
-        parse_error(&arrlast(line_tokens), "Cannot parse symbol in typedef. Expected identifier.");
-        return 1;
-    }
-    Token * last = &arrlast(line_tokens);
-    char * new_type_name = copy_and_terminate(last->start, last->length);
+
+    Token name = next_token(o_s);
+    char * new_type_name = copy_and_terminate(name.start, name.length);
     if (shgeti(known_types, new_type_name) >= 0) {
-        parse_error(last, "Cannot define a type with this name. The name is already reserved.");
+        parse_error(&name, "Cannot define a type with this name. The name is already reserved.");
+        return 1;
     }
 
-    if (is_anonymous_struct) {
-        IntroStruct * i_struct = arrlast(structs);
-        KnownType k = {0};
-        k.key = new_type_name;
-        k.category = INTRO_STRUCT;
-        k.i_struct = i_struct;
-        shputs(known_types, k);
+    Token semicolon;
+    if ((semicolon = next_token(o_s)).type != TK_SEMICOLON) {
+        parse_error(&semicolon, "Cannot parse symbol in typedef. Expected ';'");
+        return 1;
+    }
 
-        i_struct->name = shgets(known_types, new_type_name).key;
-    } else if (is_anonymous_enum) {
-        IntroEnum * i_enum = arrlast(enums);
-        KnownType k = {0};
-        k.key = new_type_name;
-        k.category = INTRO_ENUM;
-        k.i_enum = i_enum;
-        shputs(known_types, k);
+    if (decl.is_anonymous) {
+        if (decl.type.category == INTRO_STRUCT) {
+            IntroStruct * i_struct = arrlast(structs);
+            KnownType k = {0};
+            k.key = new_type_name;
+            k.category = INTRO_STRUCT;
+            k.i_struct = i_struct;
+            shputs(known_types, k);
 
-        i_enum->name = shgets(known_types, new_type_name).key;
-    } else {
-        char * type_name = NULL;
-        for (int i=0; i < arrlen(line_tokens) - 1; i++) {
-            Token * tk = &line_tokens[i];
-            if (tk->type == TK_STAR) {
-                parse_error(tk, "Pointers are not currently supported in typedefs.");
-            } else if (tk->type == TK_IDENTIFIER
-                       && !tk_equal(tk, "const")
-                       && !tk_equal(tk, "static")) {
-                if (arrlen(type_name) != 0) strput(type_name, " ");
-                strputn(type_name, tk->start, tk->length);
-            } else {
-                parse_error(tk, "Cannot parse symbol in typedef.");
-                return 1;
-            }
+            i_struct->name = shgets(known_types, new_type_name).key;
+        } else if (decl.type.category == INTRO_ENUM) {
+            IntroEnum * i_enum = arrlast(enums);
+            KnownType k = {0};
+            k.key = new_type_name;
+            k.category = INTRO_ENUM;
+            k.i_enum = i_enum;
+            shputs(known_types, k);
+
+            i_enum->name = shgets(known_types, new_type_name).key;
         }
-        strputnull(type_name);
-
+    } else {
+        char * type_name = decl.type.name;
         KnownType * kt = shgetp_null(known_types, type_name);
         if (kt != NULL) {
             KnownType nt = *kt;
             if (nt.category == INTRO_UNKNOWN) {
-                if (shgeti(name_set, new_type_name) < 0) shputs(name_set, (struct name_set_s){new_type_name});
-                arrput(nt.forward_list, shgets(name_set, new_type_name).key);
+                arrput(nt.forward_list, cache_name(new_type_name));
             } else {
                 nt.key = new_type_name;
                 shputs(known_types, nt);
@@ -502,8 +549,7 @@ parse_typedef(char * buffer, char ** o_s) {
             ut.key = type_name;
             ut.category = INTRO_UNKNOWN;
             ut.forward_list = NULL;
-            if (shgeti(name_set, new_type_name) < 0) shputs(name_set, (struct name_set_s){new_type_name});
-            arrput(ut.forward_list, shgets(name_set, new_type_name).key);
+            arrput(ut.forward_list, cache_name(new_type_name));
             shputs(known_types, ut);
 
             KnownType nt = {0};
@@ -511,7 +557,6 @@ parse_typedef(char * buffer, char ** o_s) {
             nt.category = INTRO_UNKNOWN;
             shputs(known_types, nt);
         }
-        arrfree(type_name);
     }
 
     free(new_type_name);
@@ -856,18 +901,16 @@ main(int argc, char ** argv) {
 // TODO LAND
 
 /*
-FIX: parse_error line number is incorrect because of preprocessor
-    + show which file the error is in
-
-Cut down on code size:
-    parse_declaration
-
 Anonymous structs
+
+Function pointers
 
 Array types
     how should multidimentional arrays be handled?
 
 Preprocessor
+    FIX: parse_error line number is incorrect because of preprocessor
+        + show which file the error is in
     Should we use an existing one?
         CON: No invisible macros
 
