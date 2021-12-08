@@ -145,10 +145,17 @@ tk_equal(Token * tk, const char * str) {
 IntroStruct ** structs = NULL;
 IntroEnum   ** enums = NULL;
 
+struct nested_info_s {
+    void * key;       // pointer of type that is nested
+    int struct_index; // index of struct it is nested into
+    int member_index; // index of member
+} * nested_info = NULL;
+
 typedef struct Delcaration {
     IntroType type;
     Token type_tk;
     bool is_anonymous;
+    bool is_nested;
     bool success;
 } Declaration;
 
@@ -187,6 +194,28 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
             }
         }
 
+        Token tk = next_token(o_s);
+        if (tk.type == TK_SEMICOLON) {
+            if (decl.type.category != INTRO_STRUCT) {
+                parse_error(&tk, "Struct member has no name.");
+                return 1;
+            }
+        } else {
+            if (tk.type != TK_IDENTIFIER) {
+                parse_error(&tk, "Unexpected symbol in member declaration.");
+                return 1;
+            }
+            char * temp = copy_and_terminate(tk.start, tk.length);
+            member.name = cache_name(temp);
+            free(temp);
+
+            tk = next_token(o_s);
+            if (tk.type != TK_SEMICOLON) {
+                parse_error(&tk, "Cannot parse symbol in member declaration. Expected ';'.");
+                return 1;
+            }
+        }
+
         if (decl.type.category == INTRO_UNKNOWN && decl.type.pointer_level == 0) {
             printf("pointer_level: %u\n", decl.type.pointer_level);
             char * error_str = NULL;
@@ -207,15 +236,12 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
             member.type = stored;
         }
 
-        Token member_name_tk = next_token(o_s);
-        char * temp = copy_and_terminate(member_name_tk.start, member_name_tk.length);
-        member.name = cache_name(temp);
-        free(temp);
-
-        Token tk = next_token(o_s);
-        if (tk.type != TK_SEMICOLON) {
-            parse_error(&tk, "Cannot parse symbol in member declaration. Expected ';'.");
-            return 1;
+        if (decl.is_nested) {
+            struct nested_info_s info;
+            info.key = decl.type.i_struct;
+            info.struct_index = arrlen(structs);
+            info.member_index = arrlen(members);
+            hmputs(nested_info, info);
         }
 
         arrput(members, member);
@@ -438,6 +464,7 @@ parse_type(char * buffer, char ** o_s) {
             return result;
         } else {
             char * name;
+            result.is_nested = true;
             if (is_struct || is_union) {
                 name = arrlast(structs)->name;
                 type.category = INTRO_STRUCT;
@@ -501,6 +528,10 @@ parse_typedef(char * buffer, char ** o_s) {
     }
 
     Token name = next_token(o_s);
+    if (name.type != TK_IDENTIFIER) {
+        parse_error(&name, "Unexpected symbol in type definition.");
+        return 1;
+    }
     char * new_type_name = copy_and_terminate(name.start, name.length);
     if (shgeti(known_types, new_type_name) >= 0) {
         parse_error(&name, "Cannot define a type with this name. The name is already reserved.");
@@ -656,6 +687,22 @@ main(int argc, char ** argv) {
     char num_buf [64];
     char * str = NULL;
 
+    int anon_index = 0;
+    for (int i=0; i < arrlen(structs); i++) {
+        IntroStruct * s = structs[i];
+        if (!s->name) {
+            int len = sprintf(num_buf, "Anon_%i", anon_index++);
+            s->name = copy_and_terminate(num_buf, len);
+        }
+    }
+    for (int i=0; i < arrlen(enums); i++) {
+        IntroEnum * e = enums[i];
+        if (!e->name) {
+            int len = sprintf(num_buf, "Anon_%i", anon_index++);
+            e->name = copy_and_terminate(num_buf, len);
+        }
+    }
+
     strput(str, "\nstruct {\n");
     strput(str, "\tIntroType types [");
     sprintf(num_buf, "%i", (int)hmlen(type_set));
@@ -783,6 +830,16 @@ main(int argc, char ** argv) {
 
         bool prepend_struct = shgeti(known_types, s->name) < 0;
 
+        IntroStruct * parent = NULL;
+        int parent_index;
+        struct nested_info_s * nest = hmgetp_null(nested_info, s);
+        bool prepend_struct_parent = false;
+        if (nest) {
+            parent = structs[nest->struct_index];
+            parent_index = nest->member_index;
+            prepend_struct_parent = shgeti(known_types, parent->name) < 0;
+        }
+
         for (int i=0; i < s->count_members; i++) {
             char m_buf [64];
             sprintf(m_buf, "\tm[%i].", i);
@@ -791,9 +848,15 @@ main(int argc, char ** argv) {
             strput(str, "\n");
 
             strput(str, m_buf);
-            strput(str, "name = \"");
-            strput(str, m->name);
-            strput(str, "\";\n");
+            strput(str, "name = ");
+            if (m->name) {
+                arrput(str, '"');
+                strput(str, m->name);
+                arrput(str, '"');
+            } else {
+                strput(str, "NULL");
+            }
+            strput(str, ";\n");
 
             strput(str, m_buf);
             strput(str, "type = &intro_data.types[");
@@ -802,12 +865,30 @@ main(int argc, char ** argv) {
             strput(str, "];\n");
 
             strput(str, m_buf);
-            strput(str, "offset = offsetof(");
-            if (prepend_struct) strput(str, "struct ");
-            strput(str, s->name);
-            strput(str, ", ");
-            strput(str, m->name);
-            strput(str, ");\n");
+            if (!parent) {
+                strput(str, "offset = offsetof(");
+                if (prepend_struct) strput(str, "struct ");
+                strput(str, s->name);
+                strput(str, ", ");
+                strput(str, m->name);
+                strput(str, ");\n");
+            } else {
+                char * parent_member_name = parent->members[parent_index].name;
+                strput(str, "offset = ");
+                strput(str, "offsetof(");
+                if (prepend_struct_parent) strput(str, "struct ");
+                strput(str, parent->name);
+                strput(str, ", ");
+                strput(str, parent_member_name);
+                strput(str, ".");
+                strput(str, m->name);
+                strput(str, ") - offsetof(");
+                if (prepend_struct_parent) strput(str, "struct ");
+                strput(str, parent->name);
+                strput(str, ", ");
+                strput(str, parent_member_name);
+                strput(str, ");\n");
+            }
         }
     }
 
@@ -830,8 +911,24 @@ main(int argc, char ** argv) {
             sprintf(num_buf, "%u", t->size);
             strput(str, num_buf);
         } else {
+            IntroStruct * parent = NULL;
+            char * parent_member_name = NULL;
+            if (t->category == INTRO_STRUCT || t->category == INTRO_ENUM) {
+                struct nested_info_s * nest = hmgetp_null(nested_info, t->i_struct);
+                if (nest) {
+                    parent = structs[nest->struct_index];
+                    parent_member_name = parent->members[nest->member_index].name;
+                }
+            }
             strput(str, "sizeof(");
-            strput(str, t->name);
+            if (!parent) {
+                strput(str, t->name);
+            } else {
+                strput(str, "((");
+                strput(str, parent->name);
+                strput(str, "*)0)->");
+                strput(str, parent_member_name);
+            }
             strput(str, ")");
         }
         strput(str, ";\n");
@@ -885,7 +982,7 @@ main(int argc, char ** argv) {
     fprintf(save_file, str);
     fclose(save_file);
 
-#ifdef DEBUG
+#ifdef DEBUG // INCOMPLETE
     arrfree(str);
     shfree(name_set);
     hmfree(type_set);
@@ -901,12 +998,14 @@ main(int argc, char ** argv) {
 // TODO LAND
 
 /*
-Anonymous structs
+Unnamed struct members
 
 Function pointers
 
 Array types
     how should multidimentional arrays be handled?
+
+Bit fields?
 
 Preprocessor
     FIX: parse_error line number is incorrect because of preprocessor
