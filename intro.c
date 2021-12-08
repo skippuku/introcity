@@ -196,7 +196,16 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
 
         Token tk = next_token(o_s);
         if (tk.type == TK_SEMICOLON) {
-            if (decl.type.category != INTRO_STRUCT) {
+            if (decl.type.category == INTRO_STRUCT && decl.type.pointer_level == 0) {
+                IntroStruct * s = decl.type.i_struct;
+                for (int i=0; i < s->count_members; i++) {
+                    arrput(members, s->members[i]);
+                }
+                if (decl.is_nested) {
+                    (void)arrpop(structs);
+                }
+                continue;
+            } else {
                 parse_error(&tk, "Struct member has no name.");
                 return 1;
             }
