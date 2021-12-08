@@ -107,7 +107,7 @@ copy_and_terminate(char * str, int length) {
 int
 get_line(char * begin, char * pos, char ** o_start_of_line) {
     char * s = begin;
-    char * last_line;
+    char * last_line = begin;
     int line_num = 1;
     while (s < pos) {
         if (*s++ == '\n') {
@@ -840,7 +840,7 @@ main(int argc, char ** argv) {
         bool prepend_struct = shgeti(known_types, s->name) < 0;
 
         IntroStruct * parent = NULL;
-        int parent_index;
+        int parent_index = 0;
         struct nested_info_s * nest = hmgetp_null(nested_info, s);
         bool prepend_struct_parent = false;
         if (nest) {
@@ -1007,9 +1007,9 @@ main(int argc, char ** argv) {
 // TODO LAND
 
 /*
-Unnamed struct members
-
 Function pointers
+
+Multiple fields with one type
 
 Array types
     how should multidimentional arrays be handled?
