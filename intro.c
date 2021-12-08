@@ -604,6 +604,35 @@ parse_typedef(char * buffer, char ** o_s) {
     return 0;
 }
 
+char *
+get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_papi_name) {
+    struct nested_info_s * nest = hmgetp_null(nested_info, parent);
+    if (nest) {
+        IntroStruct * grand_parent = structs[nest->struct_index];
+        int grand_parent_index = nest->member_index;
+
+        char * result = get_parent_member_name(grand_parent, grand_parent_index, o_grand_papi_name);
+        arrput(result, '.');
+        strput(result, parent->members[parent_index].name);
+        return result;
+    } else {
+        char * result = NULL;
+        strput(result, parent->members[parent_index].name);
+        char * grand_papi_name = NULL;
+        if (shget(known_types, parent->name) < 0) {
+            if (parent->is_union) {
+                strput(grand_papi_name, "union ");
+            } else {
+                strput(grand_papi_name, "struct ");
+            }
+        }
+        strput(grand_papi_name, parent->name);
+        strputnull(grand_papi_name);
+        *o_grand_papi_name = grand_papi_name;
+        return result;
+    }
+}
+
 int
 main(int argc, char ** argv) {
     if (argc != 2) {
@@ -842,11 +871,9 @@ main(int argc, char ** argv) {
         IntroStruct * parent = NULL;
         int parent_index = 0;
         struct nested_info_s * nest = hmgetp_null(nested_info, s);
-        bool prepend_struct_parent = false;
         if (nest) {
             parent = structs[nest->struct_index];
             parent_index = nest->member_index;
-            prepend_struct_parent = shgeti(known_types, parent->name) < 0;
         }
 
         for (int i=0; i < s->count_members; i++) {
@@ -882,21 +909,25 @@ main(int argc, char ** argv) {
                 strput(str, m->name);
                 strput(str, ");\n");
             } else {
-                char * parent_member_name = parent->members[parent_index].name;
+                char * grand_papi_name = NULL;
+                char * parent_member_name = get_parent_member_name(parent, parent_index, &grand_papi_name);
+                strputnull(parent_member_name);
+
                 strput(str, "offset = ");
                 strput(str, "offsetof(");
-                if (prepend_struct_parent) strput(str, "struct ");
-                strput(str, parent->name);
+                strput(str, grand_papi_name);
                 strput(str, ", ");
                 strput(str, parent_member_name);
                 strput(str, ".");
                 strput(str, m->name);
                 strput(str, ") - offsetof(");
-                if (prepend_struct_parent) strput(str, "struct ");
-                strput(str, parent->name);
+                strput(str, grand_papi_name);
                 strput(str, ", ");
                 strput(str, parent_member_name);
                 strput(str, ");\n");
+
+                arrfree(grand_papi_name);
+                arrfree(parent_member_name);
             }
         }
     }
@@ -921,22 +952,29 @@ main(int argc, char ** argv) {
             strput(str, num_buf);
         } else {
             IntroStruct * parent = NULL;
-            char * parent_member_name = NULL;
+            int parent_index = 0;
             if (t->category == INTRO_STRUCT || t->category == INTRO_ENUM) {
                 struct nested_info_s * nest = hmgetp_null(nested_info, t->i_struct);
                 if (nest) {
                     parent = structs[nest->struct_index];
-                    parent_member_name = parent->members[nest->member_index].name;
+                    parent_index = nest->member_index;
                 }
             }
             strput(str, "sizeof(");
             if (!parent) {
                 strput(str, t->name);
             } else {
+                char * grand_papi_name = NULL;
+                char * parent_member_name = get_parent_member_name(parent, parent_index, &grand_papi_name);
+                strputnull(parent_member_name);
+
                 strput(str, "((");
-                strput(str, parent->name);
+                strput(str, grand_papi_name);
                 strput(str, "*)0)->");
                 strput(str, parent_member_name);
+
+                arrfree(grand_papi_name);
+                arrfree(parent_member_name);
             }
             strput(str, ")");
         }
