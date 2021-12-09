@@ -1,4 +1,10 @@
-#include "basic.h"
+#include "intro.h"
+#include <stdarg.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
+
 #include "lexer.c"
 
 #define STB_DS_IMPLEMENTATION
@@ -7,8 +13,7 @@
 #define STB_INCLUDE_IMPLEMENTATION
 #include "stb_include.h"
 
-#include "intro.h"
-
+#define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #define strput(a,v) memcpy(arraddnptr(a, strlen(v)), v, strlen(v))
 #define strputn(a,v,n) memcpy(arraddnptr(a, n), v, n)
 #define strputnull(a) arrput(a,0)
@@ -149,6 +154,8 @@ struct nested_info_s {
     void * key;       // pointer of type that is nested
     int struct_index; // index of struct it is nested into
     int member_index; // index of member
+    char * parent_member_name;
+    char * grand_papi_name;
 } * nested_info = NULL;
 
 typedef struct Delcaration {
@@ -249,7 +256,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 member.type = type;
 
                 if (decl.is_nested) {
-                    struct nested_info_s info;
+                    struct nested_info_s info = {0};
                     info.key = decl.type.i_struct;
                     info.struct_index = arrlen(structs);
                     info.member_index = arrlen(members);
@@ -653,6 +660,27 @@ get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_p
     }
 }
 
+__attribute__ ((format (printf, 2, 3)))
+void
+strputf(char ** p_str, const char * format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    while (1) {
+        char * loc = *p_str + arrlen(*p_str);
+        size_t n = arrcap(*p_str) - arrlen(*p_str);
+        size_t pn = vsnprintf(loc, n, format, args);
+        if (pn <= n) {
+            arrsetlen(*p_str, arrlen(*p_str) + pn);
+            break;
+        } else {
+            arrsetcap(*p_str, arrcap(*p_str) << 1);
+        }
+    }
+
+    va_end(args);
+}
+
 int
 main(int argc, char ** argv) {
     if (argc != 2) {
@@ -752,6 +780,13 @@ main(int argc, char ** argv) {
             int len = sprintf(num_buf, "Anon_%i", anon_index++);
             s->name = copy_and_terminate(num_buf, len);
         }
+        struct nested_info_s * nest = hmgetp_null(nested_info, s);
+        if (nest) {
+            IntroStruct * parent = structs[nest->struct_index];
+            int parent_index = nest->member_index;
+            nest->parent_member_name = get_parent_member_name(parent, parent_index, &nest->grand_papi_name);
+            strputnull(nest->parent_member_name);
+        }
     }
     for (int i=0; i < arrlen(enums); i++) {
         IntroEnum * e = enums[i];
@@ -759,24 +794,23 @@ main(int argc, char ** argv) {
             int len = sprintf(num_buf, "Anon_%i", anon_index++);
             e->name = copy_and_terminate(num_buf, len);
         }
+        // copied from above (TODO)
+        struct nested_info_s * nest = hmgetp_null(nested_info, e);
+        if (nest) {
+            IntroStruct * parent = structs[nest->struct_index];
+            int parent_index = nest->member_index;
+            nest->parent_member_name = get_parent_member_name(parent, parent_index, &nest->grand_papi_name);
+            strputnull(nest->parent_member_name);
+        }
     }
 
     strput(str, "\nstruct {\n");
-    strput(str, "\tIntroType types [");
-    sprintf(num_buf, "%i", (int)hmlen(type_set));
-    strput(str, num_buf);
-    strput(str, "];\n");
+    strputf(&str, "\tIntroType types [%i];\n", (int)hmlen(type_set));
     for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
-        if (enums[enum_index]->name == NULL) continue;
-        strput(str, "\tIntroEnum * ");
-        strput(str, enums[enum_index]->name);
-        strput(str, ";\n");
+        strputf(&str, "\tIntroEnum * %s;\n", enums[enum_index]->name);
     }
     for (int struct_index = 0; struct_index < arrlen(structs); struct_index++) {
-        if (structs[struct_index]->name == NULL) continue;
-        strput(str, "\tIntroStruct * ");
-        strput(str, structs[struct_index]->name);
-        strput(str, ";\n");
+        strputf(&str, "\tIntroStruct * %s;\n", structs[struct_index]->name);
     }
     strput(str, "} intro_data;\n\n");
 
@@ -787,113 +821,62 @@ main(int argc, char ** argv) {
     for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
         IntroEnum * e = enums[enum_index];
 
-        strput(str, "\n\t// ");
-        strput(str, e->name);
-        strput(str, "\n");
+        strputf(&str, "\n\t// %s\n\n", e->name);
 
-        strput(str, "\n\tintro_data.");
-        strput(str, e->name);
-        strput(str, " = malloc(sizeof(IntroEnum) + ");
-        sprintf(num_buf, "%i", e->count_members);
-        strput(str, num_buf);
-        strput(str, " * sizeof(IntroEnumValue));\n");
+        strputf(&str, "\tintro_data.%s = malloc(sizeof(IntroEnum) + %i * sizeof(IntroEnumValue));\n",
+                e->name, e->count_members);
 
-        strput(str, "\tintro_data.");
-        strput(str, e->name);
-        strput(str, "->name = \"");
-        strput(str, e->name);
-        strput(str, "\";\n");
+        strputf(&str, "\tintro_data.%s->name = \"%s\";\n",
+                e->name, e->name);
 
-        strput(str, "\tintro_data.");
-        strput(str, e->name);
-        strput(str, "->is_flags = ");
-        strput(str, e->is_flags ? "true" : "false");
-        strput(str, ";\n");
+        strputf(&str, "\tintro_data.%s->is_flags = %u;\n",
+                e->name, e->is_flags);
 
-        strput(str, "\tintro_data.");
-        strput(str, e->name);
-        strput(str, "->is_sequential = ");
-        strput(str, e->is_sequential ? "true" : "false");
-        strput(str, ";\n");
+        strputf(&str, "\tintro_data.%s->is_sequential = %u;\n",
+                e->name, e->is_sequential);
 
-        strput(str, "\tintro_data.");
-        strput(str, e->name);
-        strput(str, "->count_members = ");
-        sprintf(num_buf, "%u", e->count_members);
-        strput(str, num_buf);
-        strput(str, ";\n");
+        strputf(&str, "\tintro_data.%s->count_members = %u;\n",
+                e->name, e->count_members);
 
-        strput(str, "\tv = intro_data.");
-        strput(str, e->name);
-        strput(str, "->members;\n");
+        strputf(&str, "\tv = intro_data.%s->members;\n", e->name);
 
         for (int i=0; i < e->count_members; i++) {
-            char v_buf [64];
-            sprintf(v_buf, "\tv[%i].", i);
             IntroEnumValue * v = &e->members[i];
-            
-            strput(str, "\n");
-
-            strput(str, v_buf);
-            strput(str, "name = \"");
-            strput(str, v->name);
-            strput(str, "\";\n");
-
-            strput(str, v_buf);
-            strput(str, "value = ");
-            sprintf(num_buf, "%i", v->value);
-            strput(str, num_buf);
-            strput(str, ";\n");
+            strputf(&str, "\n\tv[%i].name = \"%s\";\n", i, v->name);
+            strputf(&str, "\tv[%i].value = %i;\n", i, v->value);
         }
     }
 
     strput(str, "\n\t// CREATE STRUCT INTROSPECTION DATA\n");
     strput(str, "\n\tIntroMember * m = NULL;\n");
+    char * struct_name = NULL;
     for (int struct_index=0; struct_index < arrlen(structs); struct_index++) {
         IntroStruct * s = structs[struct_index];
 
-        strput(str, "\n\t// ");
-        strput(str, s->name);
-        strput(str, "\n");
+        strputf(&str, "\n\t// %s\n\n", s->name);
 
-        strput(str, "\n\tintro_data.");
-        strput(str, s->name);
-        strput(str, " = malloc(sizeof(IntroStruct) + ");
-        sprintf(num_buf, "%i", s->count_members);
-        strput(str, num_buf);
-        strput(str, " * sizeof(IntroMember));\n");
+        strputf(&str, "\tintro_data.%s = malloc(sizeof(IntroStruct) + %i * sizeof(IntroMember));\n",
+                s->name, s->count_members);
 
-        strput(str, "\tintro_data.");
-        strput(str, s->name);
-        strput(str, "->name = \"");
-        strput(str, s->name);
-        strput(str, "\";\n");
+        strputf(&str, "\tintro_data.%s->name = \"%s\";\n",
+                s->name, s->name);
 
-        strput(str, "\tintro_data.");
-        strput(str, s->name);
-        strput(str, "->is_union = ");
-        strput(str, s->is_union ? "true" : "false");
-        strput(str, ";\n");
+        strputf(&str, "\tintro_data.%s->is_union = %u;\n",
+                s->name, s->is_union);
 
-        strput(str, "\tintro_data.");
-        strput(str, s->name);
-        strput(str, "->count_members = ");
-        sprintf(num_buf, "%u", s->count_members);
-        strput(str, num_buf);
-        strput(str, ";\n");
+        strputf(&str, "\tintro_data.%s->count_members = %u;\n",
+                s->name, s->count_members);
 
-        strput(str, "\tm = intro_data.");
-        strput(str, s->name);
-        strput(str, "->members;\n");
+        strputf(&str, "\tm = intro_data.%s->members;\n", s->name);
 
-        bool prepend_struct = shgeti(known_types, s->name) < 0;
-
-        IntroStruct * parent = NULL;
-        int parent_index = 0;
         struct nested_info_s * nest = hmgetp_null(nested_info, s);
-        if (nest) {
-            parent = structs[nest->struct_index];
-            parent_index = nest->member_index;
+        if (!nest) {
+            arrsetlen(struct_name, 0);
+            if (shgeti(known_types, s->name) < 0) {
+                strput(struct_name, s->is_union ? "union " : "struct ");
+            }
+            strput(struct_name, s->name);
+            strputnull(struct_name);
         }
 
         for (int i=0; i < s->count_members; i++) {
@@ -901,56 +884,28 @@ main(int argc, char ** argv) {
             sprintf(m_buf, "\tm[%i].", i);
             IntroMember * m = &s->members[i];
 
-            strput(str, "\n");
-
-            strput(str, m_buf);
-            strput(str, "name = ");
+            strputf(&str, "\n%sname = ", m_buf);
             if (m->name) {
-                arrput(str, '"');
-                strput(str, m->name);
-                arrput(str, '"');
+                strputf(&str, "\"%s\"", m->name);
             } else {
                 strput(str, "NULL");
             }
             strput(str, ";\n");
 
-            strput(str, m_buf);
-            strput(str, "type = &intro_data.types[");
-            sprintf(num_buf, "%i", (int)hmgeti(type_set, *m->type));
-            strput(str, num_buf);
-            strput(str, "];\n");
+            strputf(&str, "%stype = &intro_data.types[%i];\n",
+                    m_buf, (int)hmgeti(type_set, *m->type));
 
-            strput(str, m_buf);
-            if (!parent) {
-                strput(str, "offset = offsetof(");
-                if (prepend_struct) strput(str, "struct ");
-                strput(str, s->name);
-                strput(str, ", ");
-                strput(str, m->name);
-                strput(str, ");\n");
+            if (!nest) {
+                strputf(&str, "%soffset = offsetof(%s, %s);\n",
+                        m_buf, struct_name, m->name);
             } else {
-                char * grand_papi_name = NULL;
-                char * parent_member_name = get_parent_member_name(parent, parent_index, &grand_papi_name);
-                strputnull(parent_member_name);
-
-                strput(str, "offset = ");
-                strput(str, "offsetof(");
-                strput(str, grand_papi_name);
-                strput(str, ", ");
-                strput(str, parent_member_name);
-                strput(str, ".");
-                strput(str, m->name);
-                strput(str, ") - offsetof(");
-                strput(str, grand_papi_name);
-                strput(str, ", ");
-                strput(str, parent_member_name);
-                strput(str, ");\n");
-
-                arrfree(grand_papi_name);
-                arrfree(parent_member_name);
+                strputf(&str, "%soffset = offsetof(%s, %s.%s) - offsetof(%s, %s);\n",
+                        m_buf, nest->grand_papi_name, nest->parent_member_name, m->name,
+                        nest->grand_papi_name, nest->parent_member_name);
             }
         }
     }
+    arrfree(struct_name);
 
     strput(str, "\n\t// CREATE TYPES\n\n");
     strput(str, "\tIntroType * t = intro_data.types;\n\n");
@@ -960,84 +915,50 @@ main(int argc, char ** argv) {
 
         IntroType * t = type_set[type_index].value;
 
-        strput(str, t_buf);
-        strput(str, "name = \"");
-        strput(str, t->name);
-        strput(str, "\";\n");
+        strputf(&str, "%sname = \"%s\";\n", t_buf, t->name);
 
         strput(str, t_buf);
         strput(str, "size = ");
         if (t->size) {
-            sprintf(num_buf, "%u", t->size);
-            strput(str, num_buf);
+            strputf(&str, "%u", t->size);
         } else {
-            IntroStruct * parent = NULL;
-            int parent_index = 0;
+            struct nested_info_s * nest = NULL;
             if (t->category == INTRO_STRUCT || t->category == INTRO_ENUM) {
-                struct nested_info_s * nest = hmgetp_null(nested_info, t->i_struct);
-                if (nest) {
-                    parent = structs[nest->struct_index];
-                    parent_index = nest->member_index;
-                }
+                nest = hmgetp_null(nested_info, t->i_struct);
             }
             strput(str, "sizeof(");
-            if (!parent) {
+            if (!nest) {
                 strput(str, t->name);
             } else {
-                char * grand_papi_name = NULL;
-                char * parent_member_name = get_parent_member_name(parent, parent_index, &grand_papi_name);
-                strputnull(parent_member_name);
-
-                strput(str, "((");
-                strput(str, grand_papi_name);
-                strput(str, "*)0)->");
-                strput(str, parent_member_name);
-
-                arrfree(grand_papi_name);
-                arrfree(parent_member_name);
+                strputf(&str, "((%s*)0)->%s", nest->grand_papi_name, nest->parent_member_name);
             }
             strput(str, ")");
         }
         strput(str, ";\n");
 
-        strput(str, t_buf);
-        strput(str, "category = ");
-        strput(str, IntroCategory_strings[t->category]);
-        strput(str, ";\n");
+        strputf(&str, "%scategory = %s;\n", t_buf, IntroCategory_strings[t->category]);
 
-        strput(str, t_buf);
-        strput(str, "pointer_level = ");
-        sprintf(num_buf, "%u", t->pointer_level);
-        strput(str, num_buf);
-        strput(str, ";\n");
+        strputf(&str, "%spointer_level = %u;\n", t_buf, t->pointer_level);
 
         if (t->category == INTRO_STRUCT) {
-            strput(str, t_buf);
-            strput(str, "i_struct = intro_data.");
-            strput(str, t->i_struct->name);
-            strput(str, ";\n");
+            strputf(&str, "%si_struct = intro_data.%s;\n",
+                    t_buf, t->i_struct->name);
         } else if (t->category == INTRO_ENUM) {
-            strput(str, t_buf);
-            strput(str, "i_enum = intro_data.");
-            strput(str, t->i_enum->name);
-            strput(str, ";\n");
+            strputf(&str, "%si_enum = intro_data.%s;\n",
+                    t_buf, t->i_enum->name);
         }
 
-        strput(str, "\n");
+        arrput(str, '\n');
     }
     strput(str, "}\n\n");
 
     strput(str, "void\n");
     strput(str, "intro_uninit() {\n");
     for (int struct_index = 0; struct_index < arrlen(structs); struct_index++) {
-        strput(str, "\tfree(intro_data.");
-        strput(str, structs[struct_index]->name);
-        strput(str, ");\n");
+        strputf(&str, "\tfree(intro_data.%s);\n", structs[struct_index]->name);
     }
     for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
-        strput(str, "\tfree(intro_data.");
-        strput(str, enums[enum_index]->name);
-        strput(str, ");\n");
+        strputf(&str, "\tfree(intro_data.%s);\n", enums[enum_index]->name);
     }
     strput(str, "}\n");
 

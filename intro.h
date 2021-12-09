@@ -1,6 +1,7 @@
 #ifndef INTRO_H
 #define INTRO_H
 #include <stdint.h>
+#include <stdbool.h>
 typedef struct IntroStruct IntroStruct;
 typedef struct IntroEnum IntroEnum;
 
