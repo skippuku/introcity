@@ -159,6 +159,7 @@ typedef struct Delcaration {
     bool success;
 } Declaration;
 
+int parse_pointer_level(char ** o_s);
 Declaration parse_type(char * buffer, char ** o_s);
 
 int
@@ -182,8 +183,6 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
 
     IntroMember * members = NULL;
     while (1) {
-        IntroMember member = {0};
-
         Declaration decl = parse_type(buffer, o_s);
         if (!decl.success) {
             if (decl.type_tk.type == TK_BRACE && !decl.type_tk.is_open) {
@@ -192,6 +191,17 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 parse_error(&decl.type_tk, "Cannot parse symbol in type.");
                 return 1;
             }
+        }
+
+        if (decl.type.category == INTRO_UNKNOWN && decl.type.pointer_level == 0) {
+            printf("pointer_level: %u\n", decl.type.pointer_level);
+            char * error_str = NULL;
+            strput(error_str, "Unknown type \"");
+            strput(error_str, decl.type.name);
+            strput(error_str, "\".");
+            strputnull(error_str);
+            parse_error(&decl.type_tk, error_str);
+            return 1;
         }
 
         Token tk = next_token(o_s);
@@ -210,50 +220,53 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 return 1;
             }
         } else {
-            if (tk.type != TK_IDENTIFIER) {
-                parse_error(&tk, "Unexpected symbol in member declaration.");
-                return 1;
+            *o_s = tk.start;
+            while (1) {
+                IntroMember member = {0};
+
+                IntroType * type = NULL;
+                decl.type.pointer_level = parse_pointer_level(o_s);
+                if (hmgeti(type_set, decl.type) >= 0) {
+                    type = hmget(type_set, decl.type);
+                } else {
+                    IntroType * stored = malloc(sizeof(IntroType));
+                    memcpy(stored, &decl.type, sizeof(IntroType));
+                    hmput(type_set, decl.type, stored);
+                    type = stored;
+                }
+
+                tk = next_token(o_s);
+
+                if (tk.type != TK_IDENTIFIER) {
+                    parse_error(&tk, "Unexpected symbol in member declaration.");
+                    printf("Type name: %s\n", type->name);
+                    return 1;
+                }
+                char * temp = copy_and_terminate(tk.start, tk.length);
+                member.name = cache_name(temp);
+                free(temp);
+
+                member.type = type;
+
+                if (decl.is_nested) {
+                    struct nested_info_s info;
+                    info.key = decl.type.i_struct;
+                    info.struct_index = arrlen(structs);
+                    info.member_index = arrlen(members);
+                    hmputs(nested_info, info);
+                }
+                arrput(members, member);
+
+                tk = next_token(o_s);
+                if (tk.type == TK_SEMICOLON) {
+                    break;
+                } else if (tk.type == TK_COMMA) {
+                } else {
+                    parse_error(&tk, "Cannot parse symbol in member declaration. Expected ';' or ','.");
+                    return 1;
+                }
             }
-            char * temp = copy_and_terminate(tk.start, tk.length);
-            member.name = cache_name(temp);
-            free(temp);
-
-            tk = next_token(o_s);
-            if (tk.type != TK_SEMICOLON) {
-                parse_error(&tk, "Cannot parse symbol in member declaration. Expected ';'.");
-                return 1;
-            }
         }
-
-        if (decl.type.category == INTRO_UNKNOWN && decl.type.pointer_level == 0) {
-            printf("pointer_level: %u\n", decl.type.pointer_level);
-            char * error_str = NULL;
-            strput(error_str, "Unknown type \"");
-            strput(error_str, decl.type.name);
-            strput(error_str, "\".");
-            strputnull(error_str);
-            parse_error(&decl.type_tk, error_str);
-            return 1;
-        }
-
-        if (hmgeti(type_set, decl.type) >= 0) {
-            member.type = hmget(type_set, decl.type);
-        } else {
-            IntroType * stored = malloc(sizeof(IntroType));
-            memcpy(stored, &decl.type, sizeof(IntroType));
-            hmput(type_set, decl.type, stored);
-            member.type = stored;
-        }
-
-        if (decl.is_nested) {
-            struct nested_info_s info;
-            info.key = decl.type.i_struct;
-            info.struct_index = arrlen(structs);
-            info.member_index = arrlen(members);
-            hmputs(nested_info, info);
-        }
-
-        arrput(members, member);
     }
 
     struct_.count_members = arrlen(members);
@@ -430,6 +443,17 @@ is_ignored(Token * tk) {
     return tk_equal(tk, "const") || tk_equal(tk, "static");
 }
 
+int
+parse_pointer_level(char ** o_s) {
+    int result = 0;
+    Token tk;
+    while ((tk = next_token(o_s)).type == TK_STAR) {
+        result += 1;
+    }
+    *o_s = tk.start;
+    return result;
+}
+
 Declaration
 parse_type(char * buffer, char ** o_s) {
     Declaration result = {0};
@@ -495,18 +519,13 @@ parse_type(char * buffer, char ** o_s) {
         if (ltk.type == TK_IDENTIFIER) {
             while ((tk = next_token(o_s)).type == TK_IDENTIFIER) {
                 strput(type_name, " ");
+                strputn(type_name, ltk.start, ltk.length);
                 ltk = tk;
             }
         }
         *o_s = ltk.start;
     }
     result.type_tk.length = *o_s - result.type_tk.start - 1;
-
-    Token tk;
-    while ((tk = next_token(o_s)).type == TK_STAR) {
-        type.pointer_level++;
-    }
-    *o_s = tk.start; // put pointer back
 
     strputnull(type_name);
     type.name = cache_name(type_name);
@@ -535,6 +554,7 @@ parse_typedef(char * buffer, char ** o_s) {
         }
         return 1;
     }
+    decl.type.pointer_level = parse_pointer_level(o_s);
 
     Token name = next_token(o_s);
     if (name.type != TK_IDENTIFIER) {
@@ -619,7 +639,7 @@ get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_p
         char * result = NULL;
         strput(result, parent->members[parent_index].name);
         char * grand_papi_name = NULL;
-        if (shget(known_types, parent->name) < 0) {
+        if (shgeti(known_types, parent->name) < 0) {
             if (parent->is_union) {
                 strput(grand_papi_name, "union ");
             } else {
@@ -1046,8 +1066,6 @@ main(int argc, char ** argv) {
 
 /*
 Function pointers
-
-Multiple fields with one type
 
 Array types
     how should multidimentional arrays be handled?
