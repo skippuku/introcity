@@ -1,0 +1,137 @@
+static size_t
+fsize(FILE * file) {
+    long location = ftell(file);
+    fseek(file, 0, SEEK_END);
+    size_t result = ftell(file);
+    fseek(file, location, SEEK_SET);
+    return result;
+}
+
+static char *
+read_and_allocate_file(const char * filename, size_t * o_size) {
+    FILE * file = fopen(filename, "rb");
+    assert(file != NULL);
+    size_t file_size = fsize(file);
+    char * buffer = malloc(file_size + 1);
+    if (fread(buffer, file_size, 1, file) != 1) {
+        fclose(file);
+        free(buffer);
+        return NULL;
+    }
+    fclose(file);
+    buffer[file_size] = '\0';
+    if (o_size) *o_size = file_size;
+    return buffer;
+}
+
+static bool
+tk_equal(Token * tk, const char * str) {
+    size_t len = strlen(str);
+    return (tk->length == len && memcmp(tk->start, str, len) == 0);
+}
+
+static char *
+copy_and_terminate(char * str, int length) {
+    char * result = malloc(length + 1);
+    memcpy(result, str, length);
+    result[length] = '\0';
+    return result;
+}
+
+struct defines_s {
+    char * key;
+} * defines = NULL;
+
+typedef struct {
+    size_t offset;
+    char * filename;
+    int line;
+} FileLoc;
+FileLoc * file_location_lookup = NULL;
+
+bool * if_depth = NULL;
+static char * result_buffer = NULL;
+
+void
+preprocess_filename(char * filename) {
+    size_t file_size;
+    char * buffer = read_and_allocate_file(filename, &file_size);
+    if (!buffer) {
+        printf("Error: failed to read file \"%s\".\n", filename);
+        exit(1);
+    }
+
+    char * buffer_end = buffer + file_size;
+    char * last_line = buffer;
+    char * last_paste = buffer;
+    char * s = buffer;
+    int line_num = 1;
+    int last_paste_line_num = 1;
+    bool line_is_directive = true;
+
+    while (s && s < buffer_end) {
+        if (*s == '\n') {
+            line_is_directive = true;
+            last_line = s + 1;
+            line_num++;
+            s++;
+        } else if (isspace(*s)) {
+            s++;
+        } else if (*s == '#' && line_is_directive) {
+            s++;
+            Token tk = next_token(&s);
+            if (tk_equal(&tk, "include")) {
+                tk = next_token(&s);
+                if (tk.type == TK_STRING) {
+                    FileLoc loc;
+                    loc.offset = arrlen(result_buffer);
+                    loc.filename = filename;
+                    loc.line = last_paste_line_num;
+
+                    if (last_line - last_paste > 0) {
+                        strputn(result_buffer, last_paste, last_line - last_paste);
+                        s = memchr(s, '\n', buffer_end - s);
+                        last_paste = s;
+                        last_line = s;
+                        last_paste_line_num = line_num;
+
+                        arrput(file_location_lookup, loc);
+                    }
+
+                    char * inc_filename = copy_and_terminate(tk.start, tk.length); // leak
+                    preprocess_filename(inc_filename);
+                } else { // TODO: implement <> includes
+                    s = memchr(s, '\n', buffer_end - s);
+                }
+            }
+        } else {
+            line_is_directive = false;
+            s = memchr(s, '\n', buffer_end - s);
+        }
+    }
+    FileLoc loc;
+    loc.offset = arrlen(result_buffer);
+    loc.filename = filename;
+    loc.line = last_paste_line_num;
+
+    strputn(result_buffer, last_paste, buffer_end - last_paste);
+
+    arrput(file_location_lookup, loc);
+}
+
+char *
+run_preprocessor(char * filename) {
+    sh_new_arena(defines);
+    struct defines_s intro_define;
+    intro_define.key = "__INTROCITY__";
+    hmputs(defines, intro_define);
+
+    arrput(if_depth, true);
+
+    preprocess_filename(filename);
+    strputnull(result_buffer);
+
+    arrfree(if_depth);
+
+    return result_buffer;
+}

@@ -5,46 +5,16 @@
 #include <string.h>
 #include <assert.h>
 
-#include "lexer.c"
-
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
-
-#define STB_INCLUDE_IMPLEMENTATION
-#include "stb_include.h"
 
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #define strput(a,v) memcpy(arraddnptr(a, strlen(v)), v, strlen(v))
 #define strputn(a,v,n) memcpy(arraddnptr(a, n), v, n)
 #define strputnull(a) arrput(a,0)
 
-#define BOLD_RED "\e[1;31m"
-#define WHITE "\e[0;37m"
-
-size_t
-fsize(FILE * file) {
-    long location = ftell(file);
-    fseek(file, 0, SEEK_END);
-    size_t result = ftell(file);
-    fseek(file, location, SEEK_SET);
-    return result;
-}
-
-char *
-read_and_allocate_file(const char * filename) {
-    FILE * file = fopen(filename, "rb");
-    assert(file != NULL);
-    size_t file_size = fsize(file);
-    char * buffer = malloc(file_size + 1);
-    if (fread(buffer, file_size, 1, file) != 1) {
-        fclose(file);
-        free(buffer);
-        return NULL;
-    }
-    fclose(file);
-    buffer[file_size] = '\0';
-    return buffer;
-}
+#include "lexer.c"
+#include "pre.c"
 
 struct name_set_s {
     char * key;
@@ -91,62 +61,6 @@ static const KnownType type_list [] = {
 
 KnownType * known_types = NULL;
 
-char *
-cache_name(char * name) {
-    long index = shgeti(name_set, name);
-    if (index >= 0) {
-        return name_set[index].key;
-    } else {
-        return shputs(name_set, (struct name_set_s){name});
-    }
-}
-
-char *
-copy_and_terminate(char * str, int length) {
-    char * result = malloc(length + 1);
-    memcpy(result, str, length);
-    result[length] = '\0';
-    return result;
-}
-
-int
-get_line(char * begin, char * pos, char ** o_start_of_line) {
-    char * s = begin;
-    char * last_line = begin;
-    int line_num = 1;
-    while (s < pos) {
-        if (*s++ == '\n') {
-            last_line = s;
-            line_num++;
-        }
-    }
-    if (o_start_of_line) *o_start_of_line = last_line;
-    return line_num;
-}
-
-void
-parse_error_internal(char * buffer, Token * tk, char * message) {
-    char * start_of_line;
-    int line_num = get_line(buffer, tk->start, &start_of_line);
-    char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
-    printf("Error (line %i): %s\n\n", line_num, message ? message : "Failed to parse.");
-    printf("%.*s", (int)(tk->start - start_of_line), start_of_line);
-    printf(BOLD_RED);
-    printf("%.*s", tk->length, tk->start);
-    printf(WHITE);
-    printf("%.*s", (int)(end_of_line - (tk->start + tk->length)), tk->start + tk->length);
-    for (int i=0; i < (tk->start - start_of_line); i++) putc(' ', stdout);
-    for (int i=0; i < (tk->length); i++) putc('~', stdout);
-    printf("\n");
-}
-#define parse_error(tk,message) parse_error_internal(buffer, tk, message)
-
-static bool
-tk_equal(Token * tk, const char * str) {
-    size_t len = strlen(str);
-    return (tk->length == len && memcmp(tk->start, str, len) == 0);
-}
-
 IntroStruct ** structs = NULL;
 IntroEnum   ** enums = NULL;
 
@@ -165,6 +79,65 @@ typedef struct Delcaration {
     bool is_nested;
     bool success;
 } Declaration;
+
+static char *
+cache_name(char * name) {
+    long index = shgeti(name_set, name);
+    if (index >= 0) {
+        return name_set[index].key;
+    } else {
+        return shputs(name_set, (struct name_set_s){name});
+    }
+}
+
+static int
+get_line(char * begin, char * pos, char ** o_start_of_line, char ** o_filename) {
+    FileLoc * loc = NULL;
+    for (int i = arrlen(file_location_lookup) - 1; i >= 0; i--) {
+        if (pos - begin >= file_location_lookup[i].offset) {
+            loc = &file_location_lookup[i];
+            break;
+        }
+    }
+    if (loc == NULL) return -1;
+    char * s = begin + loc->offset;
+    char * last_line = s;
+    int line_num = loc->line;
+    while (s < pos) {
+        if (*s++ == '\n') {
+            last_line = s;
+            line_num++;
+        }
+    }
+    if (o_start_of_line) *o_start_of_line = last_line;
+    if (o_filename) *o_filename = loc->filename;
+    return line_num;
+}
+
+#define BOLD_RED "\e[1;31m"
+#define WHITE "\e[0;37m"
+
+static void
+parse_error_internal(char * buffer, Token * tk, char * message) {
+    char * start_of_line;
+    char * filename;
+    int line_num = get_line(buffer, tk->start, &start_of_line, &filename);
+    if (line_num < 0) {
+        printf("Error (?:?): %s\n\n", message ? message : "Failed to parse.");
+        return;
+    }
+    char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
+    printf("Error (%s:%i): %s\n\n", filename, line_num, message ? message : "Failed to parse.");
+    printf("%.*s", (int)(tk->start - start_of_line), start_of_line);
+    printf(BOLD_RED);
+    printf("%.*s", tk->length, tk->start);
+    printf(WHITE);
+    printf("%.*s", (int)(end_of_line - (tk->start + tk->length)), tk->start + tk->length);
+    for (int i=0; i < (tk->start - start_of_line); i++) putc(' ', stdout);
+    for (int i=0; i < (tk->length); i++) putc('~', stdout);
+    printf("\n");
+}
+#define parse_error(tk,message) parse_error_internal(buffer, tk, message)
 
 int parse_pointer_level(char ** o_s);
 Declaration parse_type(char * buffer, char ** o_s);
@@ -195,7 +168,9 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
             if (decl.type_tk.type == TK_BRACE && !decl.type_tk.is_open) {
                 break;
             } else {
-                parse_error(&decl.type_tk, "Cannot parse symbol in type.");
+                if (decl.type_tk.length > 0) {
+                    parse_error(&decl.type_tk, "Cannot parse symbol in type.");
+                }
                 return 1;
             }
         }
@@ -350,7 +325,7 @@ parse_enum(char * buffer, char ** o_s) {
             break;
         }
         if (name.type != TK_IDENTIFIER) {
-            parse_error(&tk, "Expected identifier.");
+            parse_error(&name, "Expected identifier.");
             return 1;
         }
 
@@ -689,13 +664,12 @@ main(int argc, char ** argv) {
     }
 
     char * header_filename = argv[1];
-    char stb_include_error [256];
-    char * buffer = stb_include_file(header_filename, "", ".", stb_include_error);
-    if (buffer == NULL) {
-        printf("Include Error:\n%s\n", stb_include_error);
-        return 1;
-    }
+    char * buffer = run_preprocessor(header_filename);
     char * s = buffer;
+
+#if 0 // nocheckin
+    printf("PREPROCESSOR RESULT\n----------\n%s\n----------\n\n", result_buffer);
+#endif
 
     sh_new_arena(known_types);
     sh_new_arena(name_set);
@@ -707,19 +681,17 @@ main(int argc, char ** argv) {
     Token key;
     while ((key = next_token(&s)).type != TK_END) {
         if (key.type == TK_IDENTIFIER) {
+            int error = 0;
             if (tk_equal(&key, "struct")) {
-                int error = parse_struct(buffer, &s, false);
-                if (error) return error;
+                error = parse_struct(buffer, &s, false);
             } else if (tk_equal(&key, "union")) {
-                int error = parse_struct(buffer, &s, true);
-                if (error) return error;
+                error = parse_struct(buffer, &s, true);
             } else if (tk_equal(&key, "enum")) {
-                int error = parse_enum(buffer, &s);
-                if (error) return error;
+                error = parse_enum(buffer, &s);
             } else if (tk_equal(&key, "typedef")) {
-                int error = parse_typedef(buffer, &s);
-                if (error) return error;
+                error = parse_typedef(buffer, &s);
             }
+            if (error) return error;
         } else if (key.type == TK_HASH) {
             Token directive = next_token(&s);
             // NOTE: does not handle #elif or #else after an #if 1
@@ -994,10 +966,6 @@ Array types
 Bit fields?
 
 Preprocessor
-    FIX: parse_error line number is incorrect because of preprocessor
-        + show which file the error is in
-    Should we use an existing one?
-        CON: No invisible macros
 
 Ignore functions
     should this be done in the preprocessor?
@@ -1008,9 +976,9 @@ User data (with macros)
     versions INTRO_V(value)
     id for serialization INTRO_ID(id)
     custom type data INTRO_DATA(value)
-    string length INTRO_STRLEN(member)
     union switch INTRO_SWITCH(member, value)
     default value INTRO_DEFAULT(value)
+    array/string length -- INTRO_ARRLEN(member)
 
 Transformative program arguments
     create typedefs for structs and enums
