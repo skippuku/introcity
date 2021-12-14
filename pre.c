@@ -66,6 +66,7 @@ preprocess_filename(char * filename) {
     char * last_line = buffer;
     char * last_paste = buffer;
     char * s = buffer;
+
     int line_num = 1;
     int last_paste_line_num = 1;
     bool line_is_directive = true;
@@ -81,12 +82,12 @@ preprocess_filename(char * filename) {
         } else if (*s == '#' && line_is_directive) {
             s++;
             Token tk = next_token(&s);
+            char * inc_filename = NULL;
             bool paste_last_chunk = arrlast(if_depth);
             if (tk_equal(&tk, "include")) {
                 tk = next_token(&s);
                 if (arrlast(if_depth) && tk.type == TK_STRING) {
-                    char * inc_filename = copy_and_terminate(tk.start, tk.length); // leak
-                    preprocess_filename(inc_filename);
+                    inc_filename = copy_and_terminate(tk.start, tk.length); // leak
                 } else { // TODO: implement <> includes
                 }
             } else if (tk_equal(&tk, "if")) {
@@ -182,6 +183,8 @@ preprocess_filename(char * filename) {
 
                 arrput(file_location_lookup, loc);
             }
+
+            if (inc_filename) preprocess_filename(inc_filename);
 
             while (1) {
                 while (*s != '\n' && *s != '\0') s++;

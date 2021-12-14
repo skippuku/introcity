@@ -207,7 +207,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 }
                 continue;
             } else {
-                parse_error(&tk, "Struct member has no name.");
+                parse_error(&tk, "Struct member has no name or type is unknown.");
                 return 1;
             }
         } else {
@@ -921,8 +921,6 @@ Array types
     how should multidimentional arrays be handled?
 
 Bit fields?
-
-Preprocessor
 
 Ignore functions
     should this be done in the preprocessor?
