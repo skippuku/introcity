@@ -207,7 +207,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 IntroMember member = {0};
 
                 IntroType * type = NULL;
-                decl.type.pointer_level = parse_pointer_level(o_s);
+                decl.type.pointer_level = parse_pointer_level(o_s); // TODO: typedefs can be pointers
                 if (hmgeti(type_set, decl.type) >= 0) {
                     type = hmget(type_set, decl.type);
                 } else {
@@ -668,7 +668,7 @@ main(int argc, char ** argv) {
     char * s = buffer;
 
 #if 0 // nocheckin
-    printf("PREPROCESSOR RESULT\n----------\n%s\n----------\n\n", result_buffer);
+    printf("PREPROCESSOR RESULT\n----------\n%s----------\n\n", result_buffer);
 #endif
 
     sh_new_arena(known_types);
