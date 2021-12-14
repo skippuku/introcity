@@ -656,18 +656,9 @@ get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_p
 
 int
 main(int argc, char ** argv) {
-    if (argc != 2) {
-        printf("incorrect number of arguments, aborting\n");
-        return 1;
-    }
-
-    char * header_filename = argv[1];
-    char * buffer = run_preprocessor(header_filename);
+    char * output_filename;
+    char * buffer = run_preprocessor(argc, argv, &output_filename);
     char * s = buffer;
-
-#if 0 // nocheckin
-    printf("PREPROCESSOR RESULT\n----------\n%s----------\n\n", result_buffer);
-#endif
 
     sh_new_arena(known_types);
     sh_new_arena(name_set);
@@ -690,36 +681,6 @@ main(int argc, char ** argv) {
                 error = parse_typedef(buffer, &s);
             }
             if (error) return error;
-        } else if (key.type == TK_HASH) {
-            Token directive = next_token(&s);
-            // NOTE: does not handle #elif or #else after an #if 1
-            // TODO(cy): handle this with the preprocessor instead
-            // replace the stb one with our own
-            if (tk_equal(&directive, "if")) { // handle #if 0
-                Token value = next_token(&s);
-                if (value.length == 1 && *value.start == '0') {
-                    while (1) {
-                        char * h = strchr(s, '#');
-                        if (h == NULL) break;
-                        s = h + 1;
-                        directive = next_token(&s);
-                        if (directive.type == TK_END
-                            || tk_equal(&directive, "endif")
-                            || tk_equal(&directive, "else")) {
-                            break;
-                        }
-                    }
-                }
-            } else { // ignore directive
-                while (1) {
-                    while (*s != '\n' && *s != '\0') s++;
-                    if (*s == '\0') break;
-                    char * q = s;
-                    while (isspace(*--q));
-                    if (*q != '\\') break;
-                    s++;
-                }
-            }
         }
     }
 
@@ -934,9 +895,7 @@ main(int argc, char ** argv) {
 
     strputnull(str);
 
-    char save_filename_buffer [128];
-    sprintf(save_filename_buffer, "%s.intro", header_filename);
-    FILE * save_file = fopen(save_filename_buffer, "w");
+    FILE * save_file = fopen(output_filename, "w");
     fprintf(save_file, str);
     fclose(save_file);
 

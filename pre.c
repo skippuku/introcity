@@ -101,12 +101,27 @@ preprocess_filename(char * filename) {
                 } else {
                     arrput(if_depth, false);
                 }
+            } else if (tk_equal(&tk, "define")) {
+                tk = next_token(&s);
+                if (tk.type != TK_IDENTIFIER) {
+                    // TODO
+                }
+                struct defines_s new_def;
+                char * name = copy_and_terminate(tk.start, tk.length);
+                new_def.key = name;
+                shputs(defines, new_def);
+                free(name);
+            } else if (tk_equal(&tk, "undef")) {
+                tk = next_token(&s);
+                char * name = copy_and_terminate(tk.start, tk.length);
+                (void)shdel(defines, name);
+                free(name);
             } else if (tk_equal(&tk, "ifdef")) {
                 arrput(if_depth_prlens, arrlen(if_depth));
                 if (arrlast(if_depth)) {
                     tk = next_token(&s);
                     char * name = copy_and_terminate(tk.start, tk.length);
-                    arrput(if_depth, hmgeti(defines, name) >= 0 ? true : false);
+                    arrput(if_depth, shgeti(defines, name) >= 0 ? true : false);
                     free(name);
                 } else {
                     arrput(if_depth, false);
@@ -116,7 +131,7 @@ preprocess_filename(char * filename) {
                 if (arrlast(if_depth)) {
                     tk = next_token(&s);
                     char * name = copy_and_terminate(tk.start, tk.length);
-                    arrput(if_depth, hmgeti(defines, name) >= 0 ? false : true);
+                    arrput(if_depth, shgeti(defines, name) >= 0 ? false : true);
                     free(name);
                 } else {
                     arrput(if_depth, false);
@@ -147,6 +162,12 @@ preprocess_filename(char * filename) {
                 } else {
                     arrput(if_depth, false);
                 }
+            } else if (tk_equal(&tk, "error")) {
+                if (arrlast(if_depth)) {
+                    tk = next_token(&s);
+                    fprintf(stderr, "Preprocessor error: \"%.*s\"\n", tk.length, tk.start);
+                    exit(1);
+                }
             }
 
             if (last_line - last_paste > 0) {
@@ -161,7 +182,14 @@ preprocess_filename(char * filename) {
 
                 arrput(file_location_lookup, loc);
             }
-            s = memchr(s, '\n', buffer_end - s);
+
+            while (1) {
+                while (*s != '\n' && *s != '\0') s++;
+                if (*s == '\0') break;
+                char * q = s;
+                while (isspace(*--q));
+                if (*q != '\\') break;
+            }
             last_paste = s + 1;
             last_line = s + 1;
             last_paste_line_num = line_num + 1;
@@ -183,11 +211,58 @@ preprocess_filename(char * filename) {
 }
 
 char *
-run_preprocessor(char * filename) {
+run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
     sh_new_arena(defines);
     struct defines_s intro_define;
     intro_define.key = "__INTROCITY__";
-    hmputs(defines, intro_define);
+    shputs(defines, intro_define);
+
+    *o_output_filename = NULL;
+
+    bool preprocess_only = false;
+    char * filename = NULL;
+    for (int i=1; i < argc; i++) {
+        char * arg = argv[i];
+        if (arg[0] == '-') {
+            switch(arg[1]) {
+            case 'D': {
+                struct defines_s new_def;
+                new_def.key = strlen(arg) == 2 ? argv[++i] : arg+2;
+                shputs(defines, new_def);
+            } break;
+
+            case 'E': {
+                preprocess_only = true;
+            } break;
+
+            case 'o': {
+                *o_output_filename = argv[++i];
+            } break;
+
+            default: {
+                fprintf(stderr, "Error: Unknown argument: %s\n", arg);
+                exit(1);
+            } break;
+            }
+        } else {
+            if (filename) {
+                fprintf(stderr, "Error: This program cannot currently parse more than 1 file.\n");
+                exit(1);
+            } else {
+                filename = arg;
+            }
+        }
+    }
+
+    if (!filename) {
+        fprintf(stderr, "No filename given.\n");
+        exit(1);
+    }
+    if (*o_output_filename == NULL) {
+        strput(*o_output_filename, filename);
+        strput(*o_output_filename, ".intro");
+        strputnull(*o_output_filename);
+    }
 
     arrput(if_depth, true);
 
@@ -196,6 +271,11 @@ run_preprocessor(char * filename) {
 
     arrfree(if_depth);
     arrfree(if_depth_prlens);
+
+    if (preprocess_only) {
+        fputs(result_buffer, stdout);
+        exit(0);
+    }
 
     return result_buffer;
 }
