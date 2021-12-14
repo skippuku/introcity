@@ -53,6 +53,16 @@ bool * if_depth = NULL;
 int * if_depth_prlens = NULL;
 static char * result_buffer = NULL;
 
+int
+parse_expression(char ** o_s) {
+    Token tk = next_token(o_s);
+    if (tk.length == 1 && *tk.start == '0') {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
 void
 preprocess_filename(char * filename) {
     size_t file_size;
@@ -70,10 +80,12 @@ preprocess_filename(char * filename) {
     int line_num = 1;
     int last_paste_line_num = 1;
     bool line_is_directive = true;
+    bool in_comment = false;
 
+    // TODO: handle c-style comments
     while (s && s < buffer_end) {
         if (*s == '\n') {
-            line_is_directive = true;
+            if (!in_comment) line_is_directive = true;
             last_line = s + 1;
             line_num++;
             s++;
@@ -85,38 +97,41 @@ preprocess_filename(char * filename) {
             char * inc_filename = NULL;
             bool paste_last_chunk = arrlast(if_depth);
             if (tk_equal(&tk, "include")) {
-                tk = next_token(&s);
-                if (arrlast(if_depth) && tk.type == TK_STRING) {
-                    inc_filename = copy_and_terminate(tk.start, tk.length); // leak
-                } else { // TODO: implement <> includes
+                if (arrlast(if_depth)) {
+                    tk = next_token(&s);
+                    if (tk.type == TK_STRING) {
+                        inc_filename = copy_and_terminate(tk.start, tk.length); // leak
+                    } else { // TODO: implement <> includes
+                    }
                 }
             } else if (tk_equal(&tk, "if")) {
                 arrput(if_depth_prlens, arrlen(if_depth));
                 if (arrlast(if_depth)) {
-                    tk = next_token(&s);
-                    if (!(tk.length == 1 && *tk.start == '0')) {
-                        arrput(if_depth, true);
-                    } else {
-                        arrput(if_depth, false);
-                    }
+                    arrput(if_depth, parse_expression(&s));
                 } else {
                     arrput(if_depth, false);
                 }
             } else if (tk_equal(&tk, "define")) {
-                tk = next_token(&s);
-                if (tk.type != TK_IDENTIFIER) {
-                    // TODO
+                if (arrlast(if_depth)) {
+                    tk = next_token(&s);
+                    if (tk.type != TK_IDENTIFIER) {
+                        fprintf(stderr, "Preprocessor error: Unknown symbol after define.\n");
+                        exit(1);
+                    }
+                    struct defines_s new_def;
+                    char * name = copy_and_terminate(tk.start, tk.length);
+                    // NOTE: compilers warn on redefinitions, but we don't care
+                    new_def.key = name;
+                    shputs(defines, new_def);
+                    free(name);
                 }
-                struct defines_s new_def;
-                char * name = copy_and_terminate(tk.start, tk.length);
-                new_def.key = name;
-                shputs(defines, new_def);
-                free(name);
             } else if (tk_equal(&tk, "undef")) {
-                tk = next_token(&s);
-                char * name = copy_and_terminate(tk.start, tk.length);
-                (void)shdel(defines, name);
-                free(name);
+                if (arrlast(if_depth)) {
+                    tk = next_token(&s);
+                    char * name = copy_and_terminate(tk.start, tk.length);
+                    (void)shdel(defines, name);
+                    free(name);
+                }
             } else if (tk_equal(&tk, "ifdef")) {
                 arrput(if_depth_prlens, arrlen(if_depth));
                 if (arrlast(if_depth)) {
@@ -142,24 +157,19 @@ preprocess_filename(char * filename) {
                     int prlen = arrpop(if_depth_prlens);
                     arrsetlen(if_depth, prlen);
                 } else {
-                    printf("Error.\n");
+                    fprintf(stderr, "Preprocessor error: stray #endif\n");
                     exit(1);
                 }
             } else if (tk_equal(&tk, "else")) {
-                bool else_state = !arrpop(if_depth);
+                bool take_else = !arrpop(if_depth);
                 if (arrlast(if_depth)) {
-                    arrput(if_depth, else_state);
+                    arrput(if_depth, take_else);
                 }
             } else if (tk_equal(&tk, "elif")) {
-                bool else_state = !arrpop(if_depth);
+                bool take_else = !arrpop(if_depth);
                 if (arrlast(if_depth)) {
-                    arrput(if_depth, else_state);
-                    tk = next_token(&s);
-                    if (else_state && !(tk.length == 1 && *tk.start == '0')) {
-                        arrput(if_depth, true);
-                    } else {
-                        arrput(if_depth, false);
-                    }
+                    arrput(if_depth, take_else);
+                    arrput(if_depth, (take_else && parse_expression(&s)));
                 } else {
                     arrput(if_depth, false);
                 }
@@ -171,15 +181,13 @@ preprocess_filename(char * filename) {
                 }
             }
 
-            if (last_line - last_paste > 0) {
+            if (paste_last_chunk && last_line - last_paste > 0) {
                 FileLoc loc;
                 loc.offset = arrlen(result_buffer);
                 loc.filename = filename;
                 loc.line = last_paste_line_num;
 
-                if (paste_last_chunk) {
-                    strputn(result_buffer, last_paste, last_line - last_paste);
-                }
+                strputn(result_buffer, last_paste, last_line - last_paste);
 
                 arrput(file_location_lookup, loc);
             }
