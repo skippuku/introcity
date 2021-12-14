@@ -164,7 +164,7 @@ preprocess_filename(char * filename) {
             s = memchr(s, '\n', buffer_end - s);
             last_paste = s + 1;
             last_line = s + 1;
-            last_paste_line_num = line_num;
+            last_paste_line_num = line_num + 1;
         } else {
             line_is_directive = false;
             s = memchr(s, '\n', buffer_end - s);

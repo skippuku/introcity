@@ -123,21 +123,41 @@ parse_error_internal(char * buffer, Token * tk, char * message) {
     char * filename;
     int line_num = get_line(buffer, tk->start, &start_of_line, &filename);
     if (line_num < 0) {
-        printf("Error (?:?): %s\n\n", message ? message : "Failed to parse.");
+        fprintf(stderr, "Error (?:?): %s\n\n", message ? message : "Failed to parse.");
         return;
     }
     char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
-    printf("Error (%s:%i): %s\n\n", filename, line_num, message ? message : "Failed to parse.");
-    printf("%.*s", (int)(tk->start - start_of_line), start_of_line);
-    printf(BOLD_RED);
-    printf("%.*s", tk->length, tk->start);
-    printf(WHITE);
-    printf("%.*s", (int)(end_of_line - (tk->start + tk->length)), tk->start + tk->length);
-    for (int i=0; i < (tk->start - start_of_line); i++) putc(' ', stdout);
-    for (int i=0; i < (tk->length); i++) putc('~', stdout);
-    printf("\n");
+    fprintf(stderr, "Error (%s:%i): %s\n\n", filename, line_num, message ? message : "Failed to parse.");
+    fprintf(stderr, "%.*s", (int)(tk->start - start_of_line), start_of_line);
+    fprintf(stderr, BOLD_RED "%.*s" WHITE, tk->length, tk->start);
+    fprintf(stderr, "%.*s", (int)(end_of_line - (tk->start + tk->length)), tk->start + tk->length);
+    for (int i=0; i < (tk->start - start_of_line); i++) putc(' ', stderr);
+    for (int i=0; i < (tk->length); i++) putc('~', stderr);
+    putc('\n', stderr);
 }
 #define parse_error(tk,message) parse_error_internal(buffer, tk, message)
+
+__attribute__ ((format (printf, 2, 3)))
+void
+strputf(char ** p_str, const char * format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    while (1) {
+        char * loc = *p_str + arrlen(*p_str);
+        size_t n = arrcap(*p_str) - arrlen(*p_str);
+        size_t pn = vsnprintf(loc, n, format, args);
+        if (pn <= n) {
+            arrsetlen(*p_str, arrlen(*p_str) + pn);
+            break;
+        } else {
+            size_t p_cap = arrcap(*p_str);
+            arrsetcap(*p_str, p_cap ? (p_cap << 1) : 64);
+        }
+    }
+
+    va_end(args);
+}
 
 int parse_pointer_level(char ** o_s);
 Declaration parse_type(char * buffer, char ** o_s);
@@ -175,17 +195,6 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
             }
         }
 
-        if (decl.type.category == INTRO_UNKNOWN && decl.type.pointer_level == 0) {
-            printf("pointer_level: %u\n", decl.type.pointer_level);
-            char * error_str = NULL;
-            strput(error_str, "Unknown type \"");
-            strput(error_str, decl.type.name);
-            strput(error_str, "\".");
-            strputnull(error_str);
-            parse_error(&decl.type_tk, error_str);
-            return 1;
-        }
-
         Token tk = next_token(o_s);
         if (tk.type == TK_SEMICOLON) {
             if (decl.type.category == INTRO_STRUCT && decl.type.pointer_level == 0) {
@@ -208,6 +217,15 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
 
                 IntroType * type = NULL;
                 decl.type.pointer_level = parse_pointer_level(o_s); // TODO: typedefs can be pointers
+
+                if (decl.type.category == INTRO_UNKNOWN && decl.type.pointer_level == 0) {
+                    char * error_str = NULL;
+                    strputf(&error_str, "Unknown type: \"%s\"\n", decl.type.name);
+                    strputnull(error_str);
+                    parse_error(&decl.type_tk, error_str);
+                    return 1;
+                }
+
                 if (hmgeti(type_set, decl.type) >= 0) {
                     type = hmget(type_set, decl.type);
                 } else {
@@ -497,17 +515,18 @@ parse_type(char * buffer, char ** o_s) {
             }
         }
     } else {
-        Token tk, ltk = next_token(o_s);
+        Token tk, ltk = next_token(o_s), lltk = first;
         if (ltk.type == TK_IDENTIFIER) {
             while ((tk = next_token(o_s)).type == TK_IDENTIFIER) {
                 strput(type_name, " ");
                 strputn(type_name, ltk.start, ltk.length);
+                lltk = ltk;
                 ltk = tk;
             }
         }
+        result.type_tk.length = lltk.start - first.start + lltk.length;
         *o_s = ltk.start;
     }
-    result.type_tk.length = *o_s - result.type_tk.start - 1;
 
     strputnull(type_name);
     type.name = cache_name(type_name);
@@ -633,27 +652,6 @@ get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_p
         *o_grand_papi_name = grand_papi_name;
         return result;
     }
-}
-
-__attribute__ ((format (printf, 2, 3)))
-void
-strputf(char ** p_str, const char * format, ...) {
-    va_list args;
-    va_start(args, format);
-
-    while (1) {
-        char * loc = *p_str + arrlen(*p_str);
-        size_t n = arrcap(*p_str) - arrlen(*p_str);
-        size_t pn = vsnprintf(loc, n, format, args);
-        if (pn <= n) {
-            arrsetlen(*p_str, arrlen(*p_str) + pn);
-            break;
-        } else {
-            arrsetcap(*p_str, arrcap(*p_str) << 1);
-        }
-    }
-
-    va_end(args);
 }
 
 int
