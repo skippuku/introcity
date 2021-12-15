@@ -5,7 +5,7 @@
 typedef struct IntroStruct IntroStruct;
 typedef struct IntroEnum IntroEnum;
 
-// IMPORTANT(cy):
+// IMPORTANT:
 // Make sure this matches with the array in intro.c
 typedef enum IntroCategory {
     INTRO_UNKNOWN = 0,
@@ -18,7 +18,7 @@ typedef enum IntroCategory {
     INTRO_ENUM,
     INTRO_ARRAY, // NOT IMPLEMENTED
 
-    INTRO_TYPE_COUNT
+    INTRO_CATEGORY_COUNT
 } IntroCategory;
 
 typedef struct IntroType {

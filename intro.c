@@ -25,7 +25,7 @@ struct type_set_s {
     IntroType * value;
 } * type_set = NULL;
 
-static const char * IntroCategory_strings [INTRO_TYPE_COUNT] = {
+static const char * IntroCategory_strings [INTRO_CATEGORY_COUNT] = {
     "INTRO_UNKNOWN",
 
     "INTRO_FLOATING",
@@ -45,7 +45,7 @@ typedef struct KnownType {
     union {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
-        struct KnownType * forward_list;
+        int * forward_list;
     };
 } KnownType;
 
@@ -289,10 +289,9 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         KnownType * prev = shgetp_null(known_types, struct_type_name);
         if (prev != NULL && prev->category == INTRO_UNKNOWN) {
             for (int i=0; i < arrlen(prev->forward_list); i++) {
-                KnownType ft = prev->forward_list[i];
-                ft.category = INTRO_STRUCT;
-                ft.i_struct = result;
-                shputs(known_types, ft);
+                KnownType * ft = &known_types[prev->forward_list[i]];
+                ft->category = INTRO_STRUCT;
+                ft->i_struct = result;
             }
             arrfree(prev->forward_list);
         }
@@ -413,10 +412,9 @@ parse_enum(char * buffer, char ** o_s) {
         KnownType * prev = shgetp_null(known_types, enum_type_name);
         if (prev != NULL && prev->category == INTRO_UNKNOWN) {
             for (int i=0; i < arrlen(prev->forward_list); i++) {
-                KnownType ft = prev->forward_list[i];
-                ft.category = INTRO_ENUM;
-                ft.i_enum = result;
-                shputs(known_types, ft);
+                KnownType * ft = &known_types[prev->forward_list[i]];
+                ft->category = INTRO_ENUM;
+                ft->i_enum = result;
             }
             arrfree(prev->forward_list);
         }
@@ -525,6 +523,9 @@ parse_type(char * buffer, char ** o_s) {
     arrfree(type_name);
 
     if (type.category == INTRO_UNKNOWN) {
+        if (strcmp(type.name, "Traits_P") == 0) {
+            ;
+        }
         KnownType * kt = shgetp_null(known_types, type.name);
         if (kt != NULL) {
             type.size = type.pointer_level > 0 ? sizeof(void *) : kt->value;
@@ -548,14 +549,16 @@ parse_typedef(char * buffer, char ** o_s) {
         }
         return 1;
     }
-    decl.type.pointer_level = parse_pointer_level(o_s);
+    decl.type.pointer_level += parse_pointer_level(o_s);
 
     Token name = next_token(o_s);
     if (name.type != TK_IDENTIFIER) {
         parse_error(&name, "Unexpected symbol in type definition.");
         return 1;
     }
-    char * new_type_name = copy_and_terminate(name.start, name.length);
+    char * temp_name = copy_and_terminate(name.start, name.length);
+    char * new_type_name = cache_name(temp_name);
+    free(temp_name);
     if (shgeti(known_types, new_type_name) >= 0) {
         parse_error(&name, "Cannot define a type with this name. The name is already reserved.");
         return 1;
@@ -568,44 +571,34 @@ parse_typedef(char * buffer, char ** o_s) {
     }
 
     if (decl.is_anonymous) {
+        KnownType nt = {0};
+        nt.key = new_type_name;
+        nt.category = decl.type.category;
+        nt.pointer_level = decl.type.pointer_level;
         if (decl.type.category == INTRO_STRUCT) {
-            IntroStruct * i_struct = arrlast(structs);
-            KnownType k = {0};
-            k.key = new_type_name;
-            k.category = INTRO_STRUCT;
-            k.pointer_level = decl.type.pointer_level;
-            k.i_struct = i_struct;
-            shputs(known_types, k);
-
-            i_struct->name = shgets(known_types, new_type_name).key;
+            nt.i_struct = arrlast(structs);
+            nt.i_struct->name = nt.key;
         } else if (decl.type.category == INTRO_ENUM) {
-            IntroEnum * i_enum = arrlast(enums);
-            KnownType k = {0};
-            k.key = new_type_name;
-            k.category = INTRO_ENUM;
-            k.pointer_level = decl.type.pointer_level;
-            k.i_enum = i_enum;
-            shputs(known_types, k);
-
-            i_enum->name = shgets(known_types, new_type_name).key;
+            nt.i_enum = arrlast(enums);
+            nt.i_enum->name = nt.key;
+        } else {
+            assert(false /* what did you do */);
         }
+        shputs(known_types, nt);
     } else {
         char * type_name = decl.type.name;
         KnownType * kt = shgetp_null(known_types, type_name);
-        if (kt != NULL && kt->category != INTRO_UNKNOWN) {
+        if (kt != NULL) {
             KnownType nt = *kt;
-            nt.key = cache_name(new_type_name);
+            nt.key = new_type_name;
             nt.pointer_level = decl.type.pointer_level;
-            if (nt.category == INTRO_UNKNOWN) {
-                arrput(nt.forward_list, nt);
-            } else {
-                nt.key = new_type_name;
-                nt.pointer_level = decl.type.pointer_level;
-                shputs(known_types, nt);
+            shputs(known_types, nt);
+            if (kt->category == INTRO_UNKNOWN) {
+                arrput(kt->forward_list, shgeti(known_types, new_type_name));
             }
         } else {
             KnownType nt = {0};
-            nt.key = cache_name(new_type_name);
+            nt.key = new_type_name;
             nt.category = INTRO_UNKNOWN;
             nt.pointer_level = decl.type.pointer_level;
             shputs(known_types, nt);
@@ -614,12 +607,10 @@ parse_typedef(char * buffer, char ** o_s) {
             ut.key = type_name;
             ut.category = INTRO_UNKNOWN;
             ut.forward_list = NULL;
-            arrput(ut.forward_list, nt);
+            arrput(ut.forward_list, shgeti(known_types, new_type_name));
             shputs(known_types, ut);
         }
     }
-
-    free(new_type_name);
 
     return 0;
 }
@@ -942,29 +933,3 @@ Transformative program arguments
     create typedefs for structs and enums
     create initializers
 */
-
-#if 0
-bool
-intro_is_scalar(IntroType * type) {
-    return type->pointer_level == 0 && (type->category == INTRO_FLOATING || type->category == INTRO_UNSIGNED || type->category == INTRO_SIGNED);
-}
-
-bool
-intro_compatible(IntroType * a, IntroType * b) {
-    if (intro_is_scalar(a)) {
-        if (intro_is_scalar(b)) {
-            return (a->pointer_level == b->pointer_level
-                 && a->category == b->category
-                 && a->size == b->size);
-        } else {
-            return false;
-        }
-    } else {
-        if (!intro_is_scalar(b)) {
-            // TODO(cy): finish this
-        } else {
-            return false;
-        }
-    }
-}
-#endif
