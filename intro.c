@@ -41,10 +41,11 @@ typedef struct KnownType {
     char * key;
     int value;
     IntroCategory category;
+    uint16_t pointer_level;
     union {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
-        char ** forward_list;
+        struct KnownType * forward_list;
     };
 } KnownType;
 
@@ -176,7 +177,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     }
 
     if (!(tk.type == TK_BRACE && tk.is_open)) {
-        if (tk.type == TK_IDENTIFIER) return 2;
+        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
         parse_error(&tk, "Expected open brace here.");
         return 1;
     }
@@ -215,42 +216,35 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
             while (1) {
                 IntroMember member = {0};
 
-                IntroType * type = NULL;
-                decl.type.pointer_level = parse_pointer_level(o_s); // TODO: typedefs can be pointers
+                IntroType type = decl.type;
+                type.pointer_level += parse_pointer_level(o_s);
 
-                if (decl.type.category == INTRO_UNKNOWN && decl.type.pointer_level == 0) {
-                    char * error_str = NULL;
-                    strputf(&error_str, "Unknown type: \"%s\"\n", decl.type.name);
-                    strputnull(error_str);
-                    parse_error(&decl.type_tk, error_str);
+                if (type.category == INTRO_UNKNOWN && type.pointer_level == 0) {
+                    parse_error(&decl.type_tk, "Unknown type.");
                     return 1;
                 }
 
-                if (hmgeti(type_set, decl.type) >= 0) {
-                    type = hmget(type_set, decl.type);
-                } else {
-                    IntroType * stored = malloc(sizeof(IntroType));
-                    memcpy(stored, &decl.type, sizeof(IntroType));
-                    hmput(type_set, decl.type, stored);
-                    type = stored;
-                }
-
                 tk = next_token(o_s);
-
                 if (tk.type != TK_IDENTIFIER) {
                     parse_error(&tk, "Unexpected symbol in member declaration.");
-                    printf("Type name: %s\n", type->name);
                     return 1;
                 }
                 char * temp = copy_and_terminate(tk.start, tk.length);
                 member.name = cache_name(temp);
                 free(temp);
 
-                member.type = type;
+                if (hmgeti(type_set, type) >= 0) {
+                    member.type = hmget(type_set, type);
+                } else {
+                    IntroType * stored = malloc(sizeof(IntroType));
+                    memcpy(stored, &type, sizeof(IntroType));
+                    hmput(type_set, type, stored);
+                    member.type = stored;
+                }
 
                 if (decl.is_nested) {
                     struct nested_info_s info = {0};
-                    info.key = decl.type.i_struct;
+                    info.key = type.i_struct;
                     info.struct_index = arrlen(structs);
                     info.member_index = arrlen(members);
                     hmputs(nested_info, info);
@@ -295,8 +289,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         KnownType * prev = shgetp_null(known_types, struct_type_name);
         if (prev != NULL && prev->category == INTRO_UNKNOWN) {
             for (int i=0; i < arrlen(prev->forward_list); i++) {
-                KnownType ft;
-                ft.key = prev->forward_list[i];
+                KnownType ft = prev->forward_list[i];
                 ft.category = INTRO_STRUCT;
                 ft.i_struct = result;
                 shputs(known_types, ft);
@@ -326,7 +319,7 @@ parse_enum(char * buffer, char ** o_s) {
     }
 
     if (!(tk.type == TK_BRACE && tk.is_open)) {
-        if (tk.type == TK_IDENTIFIER) return 2;
+        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
         parse_error(&tk, "Expected open brace here.");
         return 1;
     }
@@ -420,8 +413,7 @@ parse_enum(char * buffer, char ** o_s) {
         KnownType * prev = shgetp_null(known_types, enum_type_name);
         if (prev != NULL && prev->category == INTRO_UNKNOWN) {
             for (int i=0; i < arrlen(prev->forward_list); i++) {
-                KnownType ft;
-                ft.key = prev->forward_list[i];
+                KnownType ft = prev->forward_list[i];
                 ft.category = INTRO_ENUM;
                 ft.i_enum = result;
                 shputs(known_types, ft);
@@ -537,6 +529,7 @@ parse_type(char * buffer, char ** o_s) {
         if (kt != NULL) {
             type.size = type.pointer_level > 0 ? sizeof(void *) : kt->value;
             type.category = kt->category;
+            type.pointer_level = kt->pointer_level;
             if (kt->i_struct) type.i_struct = kt->i_struct; // also covers i_enum
         }
     }
@@ -580,6 +573,7 @@ parse_typedef(char * buffer, char ** o_s) {
             KnownType k = {0};
             k.key = new_type_name;
             k.category = INTRO_STRUCT;
+            k.pointer_level = decl.type.pointer_level;
             k.i_struct = i_struct;
             shputs(known_types, k);
 
@@ -589,6 +583,7 @@ parse_typedef(char * buffer, char ** o_s) {
             KnownType k = {0};
             k.key = new_type_name;
             k.category = INTRO_ENUM;
+            k.pointer_level = decl.type.pointer_level;
             k.i_enum = i_enum;
             shputs(known_types, k);
 
@@ -597,26 +592,30 @@ parse_typedef(char * buffer, char ** o_s) {
     } else {
         char * type_name = decl.type.name;
         KnownType * kt = shgetp_null(known_types, type_name);
-        if (kt != NULL) {
+        if (kt != NULL && kt->category != INTRO_UNKNOWN) {
             KnownType nt = *kt;
+            nt.key = cache_name(new_type_name);
+            nt.pointer_level = decl.type.pointer_level;
             if (nt.category == INTRO_UNKNOWN) {
-                arrput(nt.forward_list, cache_name(new_type_name));
+                arrput(nt.forward_list, nt);
             } else {
                 nt.key = new_type_name;
+                nt.pointer_level = decl.type.pointer_level;
                 shputs(known_types, nt);
             }
         } else {
+            KnownType nt = {0};
+            nt.key = cache_name(new_type_name);
+            nt.category = INTRO_UNKNOWN;
+            nt.pointer_level = decl.type.pointer_level;
+            shputs(known_types, nt);
+
             KnownType ut = {0};
             ut.key = type_name;
             ut.category = INTRO_UNKNOWN;
             ut.forward_list = NULL;
-            arrput(ut.forward_list, cache_name(new_type_name));
+            arrput(ut.forward_list, nt);
             shputs(known_types, ut);
-
-            KnownType nt = {0};
-            nt.key = new_type_name;
-            nt.category = INTRO_UNKNOWN;
-            shputs(known_types, nt);
         }
     }
 
@@ -915,6 +914,10 @@ main(int argc, char ** argv) {
 // TODO LAND
 
 /*
+Refactoring
+    The type system is kinda sloppy
+    There is a lot of duplicate code
+
 Function pointers
 
 Array types
