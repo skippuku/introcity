@@ -678,16 +678,18 @@ main(int argc, char ** argv) {
         IntroType * t = type_set[i].value;
         if (t->category == INTRO_UNKNOWN) {
             KnownType * kt = shgetp_null(known_types, t->name);
-            if (kt == NULL) {
-                printf("Error: failed to find type \"%s\".", t->name);
+            if (kt == NULL || kt->category == INTRO_UNKNOWN) {
+                fprintf(stderr, "Error: Type is never defined: %s.\n", t->name);
                 return 1;
             }
+            (void)hmdel(type_set, *t);
             t->category = kt->category;
             if (t->category == INTRO_STRUCT) {
                 t->i_struct = kt->i_struct;
             } else if (t->category == INTRO_ENUM) {
                 t->i_enum = kt->i_enum;
             }
+            hmput(type_set, *t, t);
         }
     }
 
