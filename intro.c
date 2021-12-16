@@ -12,6 +12,8 @@
 #define strput(a,v) memcpy(arraddnptr(a, strlen(v)), v, strlen(v))
 #define strputn(a,v,n) memcpy(arraddnptr(a, n), v, n)
 #define strputnull(a) arrput(a,0)
+// index of last put or get
+#define shtemp(t) stbds_temp((t)-1)
 
 #include "lexer.c"
 #include "pre.c"
@@ -594,7 +596,7 @@ parse_typedef(char * buffer, char ** o_s) {
             nt.pointer_level = decl.type.pointer_level;
             shputs(known_types, nt);
             if (kt->category == INTRO_UNKNOWN) {
-                arrput(kt->forward_list, shgeti(known_types, new_type_name));
+                arrput(kt->forward_list, shtemp(known_types));
             }
         } else {
             KnownType nt = {0};
@@ -607,7 +609,7 @@ parse_typedef(char * buffer, char ** o_s) {
             ut.key = type_name;
             ut.category = INTRO_UNKNOWN;
             ut.forward_list = NULL;
-            arrput(ut.forward_list, shgeti(known_types, new_type_name));
+            arrput(ut.forward_list, shtemp(known_types));
             shputs(known_types, ut);
         }
     }
