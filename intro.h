@@ -16,20 +16,25 @@ typedef enum IntroCategory {
 
     INTRO_STRUCT,
     INTRO_ENUM,
-    INTRO_ARRAY, // NOT IMPLEMENTED
 
     INTRO_CATEGORY_COUNT
 } IntroCategory;
 
+typedef struct IntroIndirect {
+    uint32_t size;
+    bool is_array;
+} IntroIndirect;
+
 typedef struct IntroType {
     char * name;
     uint32_t size;
-    IntroCategory category;
-    uint16_t pointer_level;
+    uint16_t category;
+    uint16_t indirection_level;
     union {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
     };
+    IntroIndirect * indirection;
 } IntroType;
 
 typedef struct IntroMember {
@@ -40,8 +45,8 @@ typedef struct IntroMember {
 
 struct IntroStruct {
     char * name;
-    bool is_union;
     uint32_t count_members;
+    bool is_union;
     IntroMember members [];
 };
 
@@ -52,9 +57,9 @@ typedef struct IntroEnumValue {
 
 struct IntroEnum {
     char * name;
+    uint32_t count_members;
     bool is_flags;
     bool is_sequential;
-    uint32_t count_members;
     IntroEnumValue members [];
 };
 #endif

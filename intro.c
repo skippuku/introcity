@@ -46,14 +46,13 @@ static const char * IntroCategory_strings [INTRO_CATEGORY_COUNT] = {
 
     "INTRO_STRUCT",
     "INTRO_ENUM",
-    "INTRO_ARRAY",
 };
 
 typedef struct KnownType {
     char * key;
     int value;
     IntroCategory category;
-    uint16_t pointer_level;
+    uint16_t indirection_level;
     union {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
@@ -173,7 +172,7 @@ strputf(char ** p_str, const char * format, ...) {
     va_end(args);
 }
 
-int parse_pointer_level(char ** o_s);
+int parse_indirection_level(char ** o_s);
 Declaration parse_type(char * buffer, char ** o_s);
 
 int
@@ -211,7 +210,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
 
         Token tk = next_token(o_s);
         if (tk.type == TK_SEMICOLON) {
-            if (decl.type.category == INTRO_STRUCT && decl.type.pointer_level == 0) {
+            if (decl.type.category == INTRO_STRUCT && decl.type.indirection_level == 0) {
                 IntroStruct * s = decl.type.i_struct;
                 for (int i=0; i < s->count_members; i++) {
                     arrput(members, s->members[i]);
@@ -230,9 +229,9 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 IntroMember member = {0};
 
                 IntroType type = decl.type;
-                type.pointer_level += parse_pointer_level(o_s);
+                type.indirection_level += parse_indirection_level(o_s);
 
-                if (type.category == INTRO_UNKNOWN && type.pointer_level == 0) {
+                if (type.category == INTRO_UNKNOWN && type.indirection_level == 0) {
                     parse_error(&decl.type_tk, "Unknown type.");
                     return 1;
                 }
@@ -447,7 +446,7 @@ is_ignored(Token * tk) {
 }
 
 int
-parse_pointer_level(char ** o_s) {
+parse_indirection_level(char ** o_s) {
     int result = 0;
     Token tk;
     while ((tk = next_token(o_s)).type == TK_STAR) {
@@ -541,9 +540,9 @@ parse_type(char * buffer, char ** o_s) {
         }
         KnownType * kt = shgetp_null(known_types, type.name);
         if (kt != NULL) {
-            type.size = type.pointer_level > 0 ? sizeof(void *) : kt->value;
+            type.size = type.indirection_level > 0 ? sizeof(void *) : kt->value;
             type.category = kt->category;
-            type.pointer_level = kt->pointer_level;
+            type.indirection_level = kt->indirection_level;
             if (kt->i_struct) type.i_struct = kt->i_struct; // also covers i_enum
         }
     }
@@ -562,7 +561,7 @@ parse_typedef(char * buffer, char ** o_s) {
         }
         return 1;
     }
-    decl.type.pointer_level += parse_pointer_level(o_s);
+    decl.type.indirection_level += parse_indirection_level(o_s);
 
     Token name = next_token(o_s);
     if (name.type != TK_IDENTIFIER) {
@@ -587,7 +586,7 @@ parse_typedef(char * buffer, char ** o_s) {
         KnownType nt = {0};
         nt.key = new_type_name;
         nt.category = decl.type.category;
-        nt.pointer_level = decl.type.pointer_level;
+        nt.indirection_level = decl.type.indirection_level;
         if (decl.type.category == INTRO_STRUCT) {
             nt.i_struct = arrlast(structs);
             nt.i_struct->name = nt.key;
@@ -604,7 +603,7 @@ parse_typedef(char * buffer, char ** o_s) {
         if (kt != NULL) {
             KnownType nt = *kt;
             nt.key = new_type_name;
-            nt.pointer_level = decl.type.pointer_level;
+            nt.indirection_level = decl.type.indirection_level;
             shputs(known_types, nt);
             if (kt->category == INTRO_UNKNOWN) {
                 arrput(kt->forward_list, shtemp(known_types));
@@ -613,7 +612,7 @@ parse_typedef(char * buffer, char ** o_s) {
             KnownType nt = {0};
             nt.key = new_type_name;
             nt.category = INTRO_UNKNOWN;
-            nt.pointer_level = decl.type.pointer_level;
+            nt.indirection_level = decl.type.indirection_level;
             shputs(known_types, nt);
 
             KnownType ut = {0};
@@ -874,7 +873,7 @@ main(int argc, char ** argv) {
 
         strputf(&str, "%scategory = %s;\n", t_buf, IntroCategory_strings[t->category]);
 
-        strputf(&str, "%spointer_level = %u;\n", t_buf, t->pointer_level);
+        strputf(&str, "%sindirection_level = %u;\n", t_buf, t->indirection_level);
 
         if (t->category == INTRO_STRUCT) {
             strputf(&str, "%si_struct = intro_data.%s;\n",
