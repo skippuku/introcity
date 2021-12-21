@@ -8,6 +8,16 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
+#define STB_SPRINTF_IMPLEMENTATION
+#define STB_SPRINTF_NOFLOAT
+#include "stb_sprintf.h"
+
+#define DEPRECATED _Static_assert(0, "use of deprecated function")
+#define sprintf(...) DEPRECATED
+#define snprintf(...) DEPRECATED
+#define vsprintf(...) DEPRECATED
+#define vsnprintf(...) DEPRECATED
+
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #define strput(a,v) memcpy(arraddnptr(a, strlen(v)), v, strlen(v))
 #define strputn(a,v,n) memcpy(arraddnptr(a, n), v, n)
@@ -149,9 +159,10 @@ strputf(char ** p_str, const char * format, ...) {
     while (1) {
         char * loc = *p_str + arrlen(*p_str);
         size_t n = arrcap(*p_str) - arrlen(*p_str);
-        size_t pn = vsnprintf(loc, n, format, args);
+        size_t pn = stbsp_vsnprintf(loc, n, format, args);
         if (pn <= n) {
-            arrsetlen(*p_str, arrlen(*p_str) + pn);
+            int offset = *(loc+pn-1) == '\0' ? -1 : 0;
+            arrsetlen(*p_str, arrlen(*p_str) + pn + offset);
             break;
         } else {
             size_t p_cap = arrcap(*p_str);
@@ -702,7 +713,7 @@ main(int argc, char ** argv) {
     for (int i=0; i < arrlen(structs); i++) {
         IntroStruct * s = structs[i];
         if (!s->name) {
-            int len = sprintf(num_buf, "Anon_%i", anon_index++);
+            int len = stbsp_sprintf(num_buf, "Anon_%i", anon_index++);
             s->name = copy_and_terminate(num_buf, len);
         }
         struct nested_info_s * nest = hmgetp_null(nested_info, s);
@@ -716,7 +727,7 @@ main(int argc, char ** argv) {
     for (int i=0; i < arrlen(enums); i++) {
         IntroEnum * e = enums[i];
         if (!e->name) {
-            int len = sprintf(num_buf, "Anon_%i", anon_index++);
+            int len = stbsp_sprintf(num_buf, "Anon_%i", anon_index++);
             e->name = copy_and_terminate(num_buf, len);
         }
         // copied from above (TODO)
@@ -729,7 +740,7 @@ main(int argc, char ** argv) {
         }
     }
 
-    strput(str, "\nstruct {\n");
+    strputf(&str, "\nstruct {\n");
     strputf(&str, "\tIntroType types [%i];\n", (int)hmlen(type_set));
     for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
         strputf(&str, "\tIntroEnum * %s;\n", enums[enum_index]->name);
@@ -806,7 +817,7 @@ main(int argc, char ** argv) {
 
         for (int i=0; i < s->count_members; i++) {
             char m_buf [64];
-            sprintf(m_buf, "\tm[%i].", i);
+            stbsp_sprintf(m_buf, "\tm[%i].", i);
             IntroMember * m = &s->members[i];
 
             strputf(&str, "\n%sname = ", m_buf);
@@ -836,7 +847,7 @@ main(int argc, char ** argv) {
     strput(str, "\tIntroType * t = intro_data.types;\n\n");
     for (int type_index = 0; type_index < hmlen(type_set); type_index++) {
         char t_buf [64];
-        sprintf(t_buf, "\tt[%i].", type_index);
+        stbsp_sprintf(t_buf, "\tt[%i].", type_index);
 
         IntroType * t = type_set[type_index].value;
 
