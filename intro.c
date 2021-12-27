@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
 
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
@@ -159,10 +160,13 @@ parse_error_internal(char * buffer, Token * tk, char * message) {
 __attribute__ ((format (printf, 2, 3)))
 void
 strputf(char ** p_str, const char * format, ...) {
-    va_list args;
-    va_start(args, format);
+    va_list args_original;
+    va_start(args_original, format);
 
     while (1) {
+        va_list args;
+        va_copy(args, args_original);
+
         char * loc = *p_str + arrlen(*p_str);
         size_t n = arrcap(*p_str) - arrlen(*p_str);
         size_t pn = stbsp_vsnprintf(loc, n, format, args);
@@ -174,9 +178,11 @@ strputf(char ** p_str, const char * format, ...) {
             size_t p_cap = arrcap(*p_str);
             arrsetcap(*p_str, p_cap ? (p_cap << 1) : 64);
         }
+
+        va_end(args);
     }
 
-    va_end(args);
+    va_end(args_original);
 }
 
 int parse_indirection_level(char ** o_s); // TODO(remove)
@@ -591,7 +597,7 @@ parse_declaration(char * buffer, char ** o_s) {
             }
             tk = next_token(o_s);
         }
-        
+
         if (tk.type == TK_IDENTIFIER) {
             char * temp = copy_and_terminate(tk.start, tk.length);
             result.name = cache_name(temp);

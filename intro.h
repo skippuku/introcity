@@ -2,6 +2,7 @@
 #define INTRO_H
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 static const uint32_t INTRO_ZERO_LENGTH = UINT32_MAX;
 static const uint32_t INTRO_POINTER = 0;
