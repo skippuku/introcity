@@ -5,7 +5,7 @@ typedef struct Token {
         TK_UNKNOWN,
         TK_IDENTIFIER,
         TK_STRING,
-        TK_PARANTHESIS,
+        TK_PARENTHESIS,
         TK_BRACKET,
         TK_BRACE,
         TK_EQUAL,
@@ -16,7 +16,7 @@ typedef struct Token {
         TK_PERIOD,
         TK_HASH,
         TK_END,
-        TK_COUNT,
+        TK_COUNT
     } type;
     char * start;
     int length;
@@ -88,7 +88,7 @@ next_token(char ** o_s) {
     case '(':
         tk.is_open = true; // FALLTHROUGH
     case ')':
-        tk.type = TK_PARANTHESIS;
+        tk.type = TK_PARENTHESIS;
         break;
 
     case '=': tk.type = TK_EQUAL; break;

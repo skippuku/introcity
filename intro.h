@@ -2,6 +2,10 @@
 #define INTRO_H
 #include <stdint.h>
 #include <stdbool.h>
+
+static const uint32_t INTRO_ZERO_LENGTH = UINT32_MAX;
+static const uint32_t INTRO_POINTER = 0;
+
 typedef struct IntroStruct IntroStruct;
 typedef struct IntroEnum IntroEnum;
 
@@ -20,11 +24,6 @@ typedef enum IntroCategory {
     INTRO_CATEGORY_COUNT
 } IntroCategory;
 
-typedef struct IntroIndirect {
-    uint32_t size;
-    bool is_array;
-} IntroIndirect;
-
 typedef struct IntroType {
     char * name;
     uint32_t size;
@@ -34,7 +33,7 @@ typedef struct IntroType {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
     };
-    IntroIndirect * indirection;
+    uint32_t * indirection;
 } IntroType;
 
 typedef struct IntroMember {

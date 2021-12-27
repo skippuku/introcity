@@ -92,6 +92,13 @@ typedef struct Delcaration {
     bool success;
 } Declaration;
 
+typedef struct Declaration2 {
+    char * name;
+    uint32_t * indirection;
+    uint16_t indirection_level;
+    bool success;
+} Declaration2;
+
 static char *
 cache_name(char * name) {
     long index = shgeti(name_set, name);
@@ -172,7 +179,8 @@ strputf(char ** p_str, const char * format, ...) {
     va_end(args);
 }
 
-int parse_indirection_level(char ** o_s);
+int parse_indirection_level(char ** o_s); // TODO(remove)
+Declaration2 parse_declaration(char * buffer, char ** o_s);
 Declaration parse_type(char * buffer, char ** o_s);
 
 int
@@ -445,6 +453,7 @@ is_ignored(Token * tk) {
     return tk_equal(tk, "const") || tk_equal(tk, "static");
 }
 
+// TODO(remove)
 int
 parse_indirection_level(char ** o_s) {
     int result = 0;
@@ -535,9 +544,6 @@ parse_type(char * buffer, char ** o_s) {
     arrfree(type_name);
 
     if (type.category == INTRO_UNKNOWN) {
-        if (strcmp(type.name, "Traits_P") == 0) {
-            ;
-        }
         KnownType * kt = shgetp_null(known_types, type.name);
         if (kt != NULL) {
             type.size = type.indirection_level > 0 ? sizeof(void *) : kt->value;
@@ -548,6 +554,98 @@ parse_type(char * buffer, char ** o_s) {
     }
 
     result.type = type;
+    result.success = true;
+    return result;
+}
+
+// NOTE: when variable length "array"s (just pointers with a length paramenter using annotations) 
+// are implemented it might be better to be consistent and make arrays their own type.
+// i am still figuring out how to structure the data in a way that makes sense...
+Declaration2
+parse_declaration(char * buffer, char ** o_s) {
+    Declaration2 result = {0};
+
+    uint32_t * indirection = NULL;
+    uint32_t * temp = NULL;
+    char * paren;
+
+    Token tk;
+    char * end = *o_s;
+    do {
+        paren = NULL;
+
+        int pointer_level = 0;
+        while ((tk = next_token(o_s)).type == TK_STAR) {
+            pointer_level += 1;
+        }
+
+        if (tk.type == TK_PARENTHESIS && tk.is_open) {
+            int depth = 1;
+            paren = tk.start + 1;
+            while (depth > 0) {
+                tk = next_token(o_s);
+                if (tk.type == TK_PARENTHESIS) {
+                    if (tk.is_open) depth += 1;
+                    else depth -= 1;
+                }
+            }
+            tk = next_token(o_s);
+        }
+        
+        if (tk.type == TK_IDENTIFIER) {
+            char * temp = copy_and_terminate(tk.start, tk.length);
+            result.name = cache_name(temp);
+            free(temp);
+            tk = next_token(o_s);
+        }
+
+        arrsetlen(temp, 0);
+        while (tk.type == TK_BRACKET && tk.is_open) {
+            tk = next_token(o_s);
+            if (tk.type == TK_IDENTIFIER) {
+                long num = strtol(tk.start, NULL, 0);
+                if (num <= 0) {
+                    parse_error(&tk, "Invalid array size.");
+                    return result;
+                }
+                arrput(temp, (uint32_t)num);
+            } else if (tk.type == TK_BRACKET && !tk.is_open) {
+                arrput(temp, INTRO_ZERO_LENGTH);
+                continue;
+            } else {
+                parse_error(&tk, "Invalid symbol. Expected array size or closing bracket ']'.");
+                return result;
+            }
+            tk = next_token(o_s);
+            if (!(tk.type == TK_BRACKET && !tk.is_open)) {
+                parse_error(&tk, "Invalid symbol. Expected closing bracket ']'.");
+                return result;
+            }
+            tk = next_token(o_s);
+        }
+
+        if (tk.start > end) end = tk.start;
+
+        for (int i=0; i < pointer_level; i++) {
+            arrput(indirection, INTRO_POINTER);
+        }
+        for (int i = arrlen(temp) - 1; i >= 0; i--) {
+            arrput(indirection, temp[i]);
+        }
+    } while ((*o_s = paren) != NULL);
+
+    // reverse array
+    for (int i=0; i < arrlen(indirection) / 2; i++) {
+        int latter_index = arrlen(indirection) - i - 1;
+        uint32_t t = indirection[i];
+        indirection[i] = indirection[latter_index];
+        indirection[latter_index] = t;
+    }
+
+    arrfree(temp);
+    *o_s = tk.start;
+    result.indirection = indirection;
+    result.indirection_level = arrlen(indirection);
     result.success = true;
     return result;
 }
@@ -903,16 +1001,26 @@ main(int argc, char ** argv) {
     fprintf(save_file, str);
     fclose(save_file);
 
-#ifdef DEBUG // INCOMPLETE
-    arrfree(str);
-    shfree(name_set);
-    hmfree(type_set);
-    free(buffer);
-    for (int i=0; i < arrlen(structs); i++) {
-        free(structs[i]);
+#if 0 
+    // TODO(remove)
+    sh_new_arena(name_set);
+
+    // test TODO(remove)
+    char * something = "** (* (*parr[2])[3][5])[10];";
+    char ** pp = &something;
+    Declaration2 decl = parse_declaration(something, pp);
+    assert(decl.success);
+    printf("name: %s\n", decl.name);
+    for (int i=0; i < decl.indirection_level; i++) {
+        if (decl.indirection[i] == INTRO_POINTER) {
+            printf("pointer to ");
+        } else if (decl.indirection[i] == INTRO_ZERO_LENGTH) {
+            printf("array of ");
+        } else {
+            printf("array %u of ", decl.indirection[i]);
+        }
     }
-    arrfree(structs);
-    shfree(known_types);
+    printf("int \n");
 #endif
 }
 
