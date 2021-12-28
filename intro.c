@@ -27,6 +27,34 @@
 #define shtemp(t) stbds_temp((t)-1)
 #define hmtemp(t) stbds_temp((t)-1)
 
+__attribute__ ((format (printf, 2, 3)))
+void
+strputf(char ** p_str, const char * format, ...) {
+    va_list args_original;
+    va_start(args_original, format);
+
+    while (1) {
+        va_list args;
+        va_copy(args, args_original);
+
+        char * loc = *p_str + arrlen(*p_str);
+        size_t n = arrcap(*p_str) - arrlen(*p_str);
+        size_t pn = stbsp_vsnprintf(loc, n, format, args);
+        if (pn <= n) {
+            int offset = *(loc+pn-1) == '\0' ? -1 : 0;
+            arrsetlen(*p_str, arrlen(*p_str) + pn + offset);
+            break;
+        } else {
+            size_t p_cap = arrcap(*p_str);
+            arrsetcap(*p_str, p_cap ? (p_cap << 1) : 64);
+        }
+
+        va_end(args);
+    }
+
+    va_end(args_original);
+}
+
 #include "lexer.c"
 #include "pre.c"
 
@@ -140,54 +168,28 @@ get_line(char * begin, char * pos, char ** o_start_of_line, char ** o_filename) 
 
 #define BOLD_RED "\e[1;31m"
 #define WHITE "\e[0;37m"
-
 static void
 parse_error_internal(char * buffer, Token * tk, char * message) {
     char * start_of_line;
     char * filename;
     int line_num = get_line(buffer, tk->start, &start_of_line, &filename);
+    char * s = NULL;
     if (line_num < 0) {
-        fprintf(stderr, "Error (?:?): %s\n\n", message ? message : "Failed to parse.");
+        strputf(&s, "Error (?:?): %s\n\n", message ? message : "Failed to parse.");
         return;
     }
     char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
-    fprintf(stderr, "Error (%s:%i): %s\n\n", filename, line_num, message ? message : "Failed to parse.");
-    fprintf(stderr, "%.*s", (int)(tk->start - start_of_line), start_of_line);
-    fprintf(stderr, BOLD_RED "%.*s" WHITE, tk->length, tk->start);
-    fprintf(stderr, "%.*s", (int)(end_of_line - (tk->start + tk->length)), tk->start + tk->length);
-    for (int i=0; i < (tk->start - start_of_line); i++) putc(' ', stderr);
-    for (int i=0; i < (tk->length); i++) putc('~', stderr);
-    putc('\n', stderr);
+    strputf(&s, "Error (%s:%i): %s\n\n", filename, line_num, message ? message : "Failed to parse.");
+    strputf(&s, "%.*s", (int)(tk->start - start_of_line), start_of_line);
+    strputf(&s, BOLD_RED "%.*s" WHITE, tk->length, tk->start);
+    strputf(&s, "%.*s", (int)(end_of_line - (tk->start + tk->length)), tk->start + tk->length);
+    for (int i=0; i < (tk->start - start_of_line); i++) arrput(s, ' ');
+    for (int i=0; i < (tk->length); i++) arrput(s, '~');
+    arrput(s, '\n');
+    strputnull(s);
+    fputs(s, stderr);
 }
 #define parse_error(tk,message) parse_error_internal(buffer, tk, message)
-
-__attribute__ ((format (printf, 2, 3)))
-void
-strputf(char ** p_str, const char * format, ...) {
-    va_list args_original;
-    va_start(args_original, format);
-
-    while (1) {
-        va_list args;
-        va_copy(args, args_original);
-
-        char * loc = *p_str + arrlen(*p_str);
-        size_t n = arrcap(*p_str) - arrlen(*p_str);
-        size_t pn = stbsp_vsnprintf(loc, n, format, args);
-        if (pn <= n) {
-            int offset = *(loc+pn-1) == '\0' ? -1 : 0;
-            arrsetlen(*p_str, arrlen(*p_str) + pn + offset);
-            break;
-        } else {
-            size_t p_cap = arrcap(*p_str);
-            arrsetcap(*p_str, p_cap ? (p_cap << 1) : 64);
-        }
-
-        va_end(args);
-    }
-
-    va_end(args_original);
-}
 
 Declaration2 parse_declaration(char * buffer, char ** o_s);
 Declaration parse_type(char * buffer, char ** o_s);
@@ -803,7 +805,9 @@ main(int argc, char ** argv) {
         if (t->category == INTRO_UNKNOWN) {
             KnownType * kt = shgetp_null(known_types, t->name);
             if (kt == NULL || kt->category == INTRO_UNKNOWN) {
-                fprintf(stderr, "Error: Type is never defined: %s.\n", t->name);
+                fputs("Error: Type is never defined: ", stderr);
+                fputs(t->name, stderr);
+                fputs(".\n", stderr);
                 return 1;
             }
             (void)hmdel(type_set, *t);
@@ -860,12 +864,12 @@ main(int argc, char ** argv) {
     for (int struct_index = 0; struct_index < arrlen(structs); struct_index++) {
         strputf(&str, "\tIntroStruct * %s;\n", structs[struct_index]->name);
     }
-    strput(str, "} intro_data;\n\n");
+    strputf(&str, "} intro_data;\n\n");
 
-    strput(str, "void\n" "intro_init() {\n");
+    strputf(&str, "void\n" "intro_init() {\n");
 
-    strput(str, "\t// CREATE ENUM INTROSPECTION DATA\n");
-    strput(str, "\n\tIntroEnumValue * v = NULL;\n");
+    strputf(&str, "\t// CREATE ENUM INTROSPECTION DATA\n");
+    strputf(&str, "\n\tIntroEnumValue * v = NULL;\n");
     for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
         IntroEnum * e = enums[enum_index];
 
@@ -895,8 +899,8 @@ main(int argc, char ** argv) {
         }
     }
 
-    strput(str, "\n\t// CREATE STRUCT INTROSPECTION DATA\n");
-    strput(str, "\n\tIntroMember * m = NULL;\n");
+    strputf(&str, "\n\t// CREATE STRUCT INTROSPECTION DATA\n");
+    strputf(&str, "\n\tIntroMember * m = NULL;\n");
     char * struct_name = NULL;
     for (int struct_index=0; struct_index < arrlen(structs); struct_index++) {
         IntroStruct * s = structs[struct_index];
@@ -921,9 +925,9 @@ main(int argc, char ** argv) {
         if (!nest) {
             arrsetlen(struct_name, 0);
             if (shgeti(known_types, s->name) < 0) {
-                strput(struct_name, s->is_union ? "union " : "struct ");
+                strputf(&struct_name, s->is_union ? "union " : "struct ");
             }
-            strput(struct_name, s->name);
+            strputf(&struct_name, s->name);
             strputnull(struct_name);
         }
 
@@ -936,9 +940,9 @@ main(int argc, char ** argv) {
             if (m->name) {
                 strputf(&str, "\"%s\"", m->name);
             } else {
-                strput(str, "NULL");
+                arrput(str, '0');
             }
-            strput(str, ";\n");
+            strputf(&str, ";\n");
 
             strputf(&str, "%stype = &intro_data.types[%i];\n",
                     m_buf, (int)hmgeti(type_set, *m->type));
@@ -955,8 +959,8 @@ main(int argc, char ** argv) {
     }
     arrfree(struct_name);
 
-    strput(str, "\n\t// CREATE TYPES\n\n");
-    strput(str, "\tIntroType * t = intro_data.types;\n\n");
+    strputf(&str, "\n\t// CREATE TYPES\n\n");
+    strputf(&str, "\tIntroType * t = intro_data.types;\n\n");
     for (int type_index = 0; type_index < hmlen(type_set); type_index++) {
         char t_buf [64];
         stbsp_sprintf(t_buf, "\tt[%i].", type_index);
@@ -965,8 +969,7 @@ main(int argc, char ** argv) {
 
         strputf(&str, "%sname = \"%s\";\n", t_buf, t->name);
 
-        strput(str, t_buf);
-        strput(str, "size = ");
+        strputf(&str, "%ssize = ", t_buf);
         if (t->size) {
             strputf(&str, "%u", t->size);
         } else {
@@ -974,13 +977,13 @@ main(int argc, char ** argv) {
             if (t->category == INTRO_STRUCT || t->category == INTRO_ENUM) {
                 nest = hmgetp_null(nested_info, t->i_struct);
             }
-            strput(str, "sizeof(");
+            strputf(&str, "sizeof(");
             if (!nest) {
-                strput(str, t->name);
+                strputf(&str, t->name);
             } else {
                 strputf(&str, "((%s*)0)->%s", nest->grand_papi_name, nest->parent_member_name);
             }
-            strput(str, ")");
+            arrput(str, ')');
         }
         strput(str, ";\n");
 
@@ -1010,10 +1013,10 @@ main(int argc, char ** argv) {
 
         arrput(str, '\n');
     }
-    strput(str, "}\n\n");
+    strputf(&str, "}\n\n");
 
-    strput(str, "void\n");
-    strput(str, "intro_uninit() {\n");
+    strputf(&str, "void\n");
+    strputf(&str, "intro_uninit() {\n");
     for (int struct_index = 0; struct_index < arrlen(structs); struct_index++) {
         strputf(&str, "\tfree(intro_data.%s);\n", structs[struct_index]->name);
     }
@@ -1026,10 +1029,8 @@ main(int argc, char ** argv) {
     strputf(&str, "\t}\n");
     strputf(&str, "}\n");
 
-    strputnull(str);
-
     FILE * save_file = fopen(output_filename, "w");
-    fprintf(save_file, str);
+    fwrite(str, arrlen(str), 1, save_file);
     fclose(save_file);
 }
 

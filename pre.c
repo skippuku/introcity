@@ -68,7 +68,10 @@ preprocess_filename(char * filename) {
     size_t file_size;
     char * buffer = read_and_allocate_file(filename, &file_size);
     if (!buffer) {
-        printf("Error: failed to read file \"%s\".\n", filename);
+        char * s = NULL;
+        strputf(&s, "Error: failed to read file \"%s\".\n", filename);
+        strputnull(s);
+        fputs(s, stderr);
         exit(1);
     }
 
@@ -115,7 +118,7 @@ preprocess_filename(char * filename) {
                 if (arrlast(if_depth)) {
                     tk = next_token(&s);
                     if (tk.type != TK_IDENTIFIER) {
-                        fprintf(stderr, "Preprocessor error: Unknown symbol after define.\n");
+                        fputs("Preprocessor error: Unknown symbol after define.\n", stderr);
                         exit(1);
                     }
                     struct defines_s new_def;
@@ -157,7 +160,7 @@ preprocess_filename(char * filename) {
                     int prlen = arrpop(if_depth_prlens);
                     arrsetlen(if_depth, prlen);
                 } else {
-                    fprintf(stderr, "Preprocessor error: stray #endif\n");
+                    fputs("Preprocessor error: stray #endif\n", stderr);
                     exit(1);
                 }
             } else if (tk_equal(&tk, "else")) {
@@ -176,7 +179,10 @@ preprocess_filename(char * filename) {
             } else if (tk_equal(&tk, "error")) {
                 if (arrlast(if_depth)) {
                     tk = next_token(&s);
-                    fprintf(stderr, "Preprocessor error: \"%.*s\"\n", tk.length, tk.start);
+                    char * s = NULL;
+                    strputf(&s, "Preproccessor error: \"%.*s\"\n", tk.length, tk.start);
+                    strputnull(s);
+                    fputs(s, stderr);
                     exit(1);
                 }
             }
@@ -251,13 +257,15 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
             } break;
 
             default: {
-                fprintf(stderr, "Error: Unknown argument: %s\n", arg);
+                fputs("Error: Unknown argument: ", stderr);
+                fputs(arg, stderr);
+                fputs("\n", stderr);
                 exit(1);
             } break;
             }
         } else {
             if (filename) {
-                fprintf(stderr, "Error: This program cannot currently parse more than 1 file.\n");
+                fputs("Error: This program cannot currently parse more than 1 file.\n", stderr);
                 exit(1);
             } else {
                 filename = arg;
@@ -266,7 +274,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
     }
 
     if (!filename) {
-        fprintf(stderr, "No filename given.\n");
+        fputs("No filename given.\n", stderr);
         exit(1);
     }
     if (*o_output_filename == NULL) {
