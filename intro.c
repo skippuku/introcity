@@ -25,6 +25,7 @@
 #define strputnull(a) arrput(a,0)
 // index of last put or get
 #define shtemp(t) stbds_temp((t)-1)
+#define hmtemp(t) stbds_temp((t)-1)
 
 #include "lexer.c"
 #include "pre.c"
@@ -54,6 +55,7 @@ typedef struct KnownType {
     int value;
     IntroCategory category;
     uint16_t indirection_level;
+    uint32_t * indirection;
     union {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
@@ -76,6 +78,8 @@ KnownType * known_types = NULL;
 
 IntroStruct ** structs = NULL;
 IntroEnum   ** enums = NULL;
+
+static uint32_t ZERO = 0;
 
 struct nested_info_s {
     void * key;       // pointer of type that is nested
@@ -185,9 +189,31 @@ strputf(char ** p_str, const char * format, ...) {
     va_end(args_original);
 }
 
-int parse_indirection_level(char ** o_s); // TODO(remove)
 Declaration2 parse_declaration(char * buffer, char ** o_s);
 Declaration parse_type(char * buffer, char ** o_s);
+
+IntroType
+combine_type_and_declaration(IntroType * t, Declaration2 * in) {
+    IntroType type = *t;
+    if (type.indirection_level > 0) {
+        uint32_t * new_indirection = NULL, * n;
+        n = arraddnptr(new_indirection, in->indirection_level);
+        for (int i=0; i < in->indirection_level; i++) {
+            n[i] = in->indirection[i];
+        }
+        n = arraddnptr(new_indirection, type.indirection_level);
+        for (int i=0; i < type.indirection_level; i++) {
+            n[i] = type.indirection[i];
+        }
+        if (type.indirection != &ZERO) arrfree(type.indirection);
+        type.indirection_level += in->indirection_level;
+        type.indirection = new_indirection;
+    } else {
+        type.indirection_level = in->indirection_level;
+        type.indirection = in->indirection;
+    }
+    return type;
+}
 
 int
 parse_struct(char * buffer, char ** o_s, bool is_union) {
@@ -242,25 +268,19 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
             while (1) {
                 IntroMember member = {0};
 
-                IntroType type = decl.type;
-                type.indirection_level += parse_indirection_level(o_s);
+                Declaration2 in = parse_declaration(buffer, o_s);
+                if (!in.success) return 1;
+                IntroType type = combine_type_and_declaration(&decl.type, &in);
 
                 if (type.category == INTRO_UNKNOWN && type.indirection_level == 0) {
                     parse_error(&decl.type_tk, "Unknown type.");
                     return 1;
                 }
 
-                tk = next_token(o_s);
-                if (tk.type != TK_IDENTIFIER) {
-                    parse_error(&tk, "Unexpected symbol in member declaration.");
-                    return 1;
-                }
-                char * temp = copy_and_terminate(tk.start, tk.length);
-                member.name = cache_name(temp);
-                free(temp);
+                member.name = in.name;
 
                 if (hmgeti(type_set, type) >= 0) {
-                    member.type = hmget(type_set, type);
+                    member.type = type_set[hmtemp(type_set)].value;
                 } else {
                     IntroType * stored = malloc(sizeof(IntroType));
                     memcpy(stored, &type, sizeof(IntroType));
@@ -459,18 +479,6 @@ is_ignored(Token * tk) {
     return tk_equal(tk, "const") || tk_equal(tk, "static");
 }
 
-// TODO(remove)
-int
-parse_indirection_level(char ** o_s) {
-    int result = 0;
-    Token tk;
-    while ((tk = next_token(o_s)).type == TK_STAR) {
-        result += 1;
-    }
-    *o_s = tk.start;
-    return result;
-}
-
 Declaration
 parse_type(char * buffer, char ** o_s) {
     Declaration result = {0};
@@ -555,6 +563,7 @@ parse_type(char * buffer, char ** o_s) {
             type.size = type.indirection_level > 0 ? sizeof(void *) : kt->value;
             type.category = kt->category;
             type.indirection_level = kt->indirection_level;
+            type.indirection = kt->indirection;
             if (kt->i_struct) type.i_struct = kt->i_struct; // also covers i_enum
         }
     }
@@ -615,16 +624,15 @@ parse_declaration(char * buffer, char ** o_s) {
                     return result;
                 }
                 arrput(temp, (uint32_t)num);
+                tk = next_token(o_s);
+                if (!(tk.type == TK_BRACKET && !tk.is_open)) {
+                    parse_error(&tk, "Invalid symbol. Expected closing bracket ']'.");
+                    return result;
+                }
             } else if (tk.type == TK_BRACKET && !tk.is_open) {
                 arrput(temp, INTRO_ZERO_LENGTH);
-                continue;
             } else {
                 parse_error(&tk, "Invalid symbol. Expected array size or closing bracket ']'.");
-                return result;
-            }
-            tk = next_token(o_s);
-            if (!(tk.type == TK_BRACKET && !tk.is_open)) {
-                parse_error(&tk, "Invalid symbol. Expected closing bracket ']'.");
                 return result;
             }
             tk = next_token(o_s);
@@ -648,10 +656,17 @@ parse_declaration(char * buffer, char ** o_s) {
         indirection[latter_index] = t;
     }
 
+    if (arrlen(indirection) == 1 && indirection[0] == 0) {
+        arrfree(indirection);
+        result.indirection_level = 1;
+        result.indirection = &ZERO;
+    } else {
+        result.indirection_level = arrlen(indirection);
+        result.indirection = indirection;
+    }
+
     arrfree(temp);
-    *o_s = tk.start;
-    result.indirection = indirection;
-    result.indirection_level = arrlen(indirection);
+    *o_s = end;
     result.success = true;
     return result;
 }
@@ -665,20 +680,10 @@ parse_typedef(char * buffer, char ** o_s) {
         }
         return 1;
     }
-    decl.type.indirection_level += parse_indirection_level(o_s);
-
-    Token name = next_token(o_s);
-    if (name.type != TK_IDENTIFIER) {
-        parse_error(&name, "Unexpected symbol in type definition.");
-        return 1;
-    }
-    char * temp_name = copy_and_terminate(name.start, name.length);
-    char * new_type_name = cache_name(temp_name);
-    free(temp_name);
-    if (shgeti(known_types, new_type_name) >= 0) {
-        parse_error(&name, "Cannot define a type with this name. The name is already reserved.");
-        return 1;
-    }
+    Declaration2 in = parse_declaration(buffer, o_s);
+    if (!in.success) return 1;
+    decl.type = combine_type_and_declaration(&decl.type, &in);
+    char * new_type_name = in.name;
 
     Token semicolon;
     if ((semicolon = next_token(o_s)).type != TK_SEMICOLON) {
@@ -691,6 +696,7 @@ parse_typedef(char * buffer, char ** o_s) {
         nt.key = new_type_name;
         nt.category = decl.type.category;
         nt.indirection_level = decl.type.indirection_level;
+        nt.indirection = decl.type.indirection;
         if (decl.type.category == INTRO_STRUCT) {
             nt.i_struct = arrlast(structs);
             nt.i_struct->name = nt.key;
@@ -708,6 +714,7 @@ parse_typedef(char * buffer, char ** o_s) {
             KnownType nt = *kt;
             nt.key = new_type_name;
             nt.indirection_level = decl.type.indirection_level;
+            nt.indirection = decl.type.indirection;
             shputs(known_types, nt);
             if (kt->category == INTRO_UNKNOWN) {
                 arrput(kt->forward_list, shtemp(known_types));
@@ -717,6 +724,7 @@ parse_typedef(char * buffer, char ** o_s) {
             nt.key = new_type_name;
             nt.category = INTRO_UNKNOWN;
             nt.indirection_level = decl.type.indirection_level;
+            nt.indirection = decl.type.indirection;
             shputs(known_types, nt);
 
             KnownType ut = {0};
@@ -843,6 +851,7 @@ main(int argc, char ** argv) {
         }
     }
 
+    strputf(&str, "\nstatic uint32_t intro_ZERO = 0;\n");
     strputf(&str, "\nstruct {\n");
     strputf(&str, "\tIntroType types [%i];\n", (int)hmlen(type_set));
     for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
@@ -978,6 +987,18 @@ main(int argc, char ** argv) {
         strputf(&str, "%scategory = %s;\n", t_buf, IntroCategory_strings[t->category]);
 
         strputf(&str, "%sindirection_level = %u;\n", t_buf, t->indirection_level);
+        if (t->indirection_level > 0) {
+            if (t->indirection == &ZERO) {
+                strputf(&str, "%sindirection = &intro_ZERO;\n", t_buf);
+            } else {
+                strputf(&str, "%sindirection = malloc(%u * 4);\n", t_buf, t->indirection_level);
+                for (int i=0; i < t->indirection_level; i++) {
+                    strputf(&str, "%sindirection[%i] = %u;\n", t_buf, i, t->indirection[i]);
+                }
+            }
+        } else {
+            strputf(&str, "%sindirection = 0;\n", t_buf);
+        }
 
         if (t->category == INTRO_STRUCT) {
             strputf(&str, "%si_struct = intro_data.%s;\n",
@@ -999,35 +1020,17 @@ main(int argc, char ** argv) {
     for (int enum_index = 0; enum_index < arrlen(enums); enum_index++) {
         strputf(&str, "\tfree(intro_data.%s);\n", enums[enum_index]->name);
     }
-    strput(str, "}\n");
+    strputf(&str, "\tfor (int i=0; i < %i; i++) {\n", (int)hmlen(type_set));
+    strputf(&str, "\t\tIntroType * t = &intro_data.types[i];\n");
+    strputf(&str, "\t\tif (t->indirection && t->indirection != &intro_ZERO) free(t->indirection);\n");
+    strputf(&str, "\t}\n");
+    strputf(&str, "}\n");
 
     strputnull(str);
 
     FILE * save_file = fopen(output_filename, "w");
     fprintf(save_file, str);
     fclose(save_file);
-
-#if 0 
-    // TODO(remove)
-    sh_new_arena(name_set);
-
-    // test TODO(remove)
-    char * something = "** (* (*parr[2])[3][5])[10];";
-    char ** pp = &something;
-    Declaration2 decl = parse_declaration(something, pp);
-    assert(decl.success);
-    printf("name: %s\n", decl.name);
-    for (int i=0; i < decl.indirection_level; i++) {
-        if (decl.indirection[i] == INTRO_POINTER) {
-            printf("pointer to ");
-        } else if (decl.indirection[i] == INTRO_ZERO_LENGTH) {
-            printf("array of ");
-        } else {
-            printf("array %u of ", decl.indirection[i]);
-        }
-    }
-    printf("int \n");
-#endif
 }
 
 // TODO LAND
@@ -1036,16 +1039,16 @@ main(int argc, char ** argv) {
 Refactoring
     The type system is kinda sloppy
     There is a lot of duplicate code
+    Not big on the indirection system
 
-Function pointers
-
-Array types
-    how should multidimentional arrays be handled?
+Function pointers?
 
 Bit fields?
 
 Ignore functions
     should this be done in the preprocessor?
+
+Custom format?
 
 Serialization
 

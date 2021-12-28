@@ -1,4 +1,6 @@
 #include <ctype.h>
+#include <stdbool.h>
+#include <stdio.h> // EOF
 
 typedef struct Token {
     enum {
