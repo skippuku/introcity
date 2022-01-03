@@ -20,8 +20,6 @@
 #define vsnprintf(...) DEPRECATED
 
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
-#define strput(a,v) memcpy(arraddnptr(a, strlen(v)), v, strlen(v))
-#define strputn(a,v,n) memcpy(arraddnptr(a, n), v, n)
 #define strputnull(a) arrput(a,0)
 // index of last put or get
 #define shtemp(t) stbds_temp((t)-1)
@@ -300,6 +298,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 arrput(members, member);
 
                 tk = next_token(o_s);
+
                 if (tk.type == TK_SEMICOLON) {
                     break;
                 } else if (tk.type == TK_COMMA) {
@@ -320,12 +319,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
 
     if (struct_.name != NULL) {
         char * struct_type_name = NULL;
-        if (is_union) {
-            strput(struct_type_name, "union ");
-        } else {
-            strput(struct_type_name, "struct ");
-        }
-        strput(struct_type_name, result->name);
+        strputf(&struct_type_name, "%s %s", is_union ? "union" : "struct", result->name);
         strputnull(struct_type_name);
 
         KnownType struct_type;
@@ -447,8 +441,7 @@ parse_enum(char * buffer, char ** o_s) {
 
     if (enum_.name != NULL) {
         char * enum_type_name = NULL;
-        strput(enum_type_name, "enum ");
-        strput(enum_type_name, enum_.name);
+        strputf(&enum_type_name, "enum %s", enum_.name);
         strputnull(enum_type_name);
 
         KnownType enum_type;
@@ -500,7 +493,7 @@ parse_type(char * buffer, char ** o_s) {
     result.type_tk.start = first.start;
     result.type_tk.type = TK_IDENTIFIER;
 
-    strputn(type_name, first.start, first.length);
+    strputf(&type_name, "%.*s", first.length, first.start);
 
     bool is_struct = tk_equal(&first, "struct");
     bool is_union  = tk_equal(&first, "union");
@@ -518,8 +511,7 @@ parse_type(char * buffer, char ** o_s) {
         if (error == 2) {
             *o_s = after_keyword;
             Token tk = next_token(o_s);
-            strput(type_name, " ");
-            strputn(type_name, tk.start, tk.length);
+            strputf(&type_name, " %.*s", tk.length, tk.start);
         } else if (error != 0) {
             return result;
         } else {
@@ -537,16 +529,14 @@ parse_type(char * buffer, char ** o_s) {
             if (name == NULL) {
                 result.is_anonymous = true;
             } else {
-                strput(type_name, " ");
-                strput(type_name, name);
+                strputf(&type_name, " %s", name);
             }
         }
     } else {
         Token tk, ltk = next_token(o_s), lltk = first;
         if (ltk.type == TK_IDENTIFIER) {
             while ((tk = next_token(o_s)).type == TK_IDENTIFIER) {
-                strput(type_name, " ");
-                strputn(type_name, ltk.start, ltk.length);
+                strputf(&type_name, " %.*s", ltk.length, ltk.start);
                 lltk = ltk;
                 ltk = tk;
             }
@@ -749,21 +739,16 @@ get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_p
         int grand_parent_index = nest->member_index;
 
         char * result = get_parent_member_name(grand_parent, grand_parent_index, o_grand_papi_name);
-        arrput(result, '.');
-        strput(result, parent->members[parent_index].name);
+        strputf(&result, ".%s", parent->members[parent_index].name);
         return result;
     } else {
         char * result = NULL;
-        strput(result, parent->members[parent_index].name);
+        strputf(&result, parent->members[parent_index].name);
         char * grand_papi_name = NULL;
         if (shgeti(known_types, parent->name) < 0) {
-            if (parent->is_union) {
-                strput(grand_papi_name, "union ");
-            } else {
-                strput(grand_papi_name, "struct ");
-            }
+            strputf(&grand_papi_name, parent->is_union ? "union " : "struct ");
         }
-        strput(grand_papi_name, parent->name);
+        strputf(&grand_papi_name, parent->name);
         strputnull(grand_papi_name);
         *o_grand_papi_name = grand_papi_name;
         return result;
@@ -985,7 +970,7 @@ main(int argc, char ** argv) {
             }
             arrput(str, ')');
         }
-        strput(str, ";\n");
+        strputf(&str, ";\n");
 
         strputf(&str, "%scategory = %s;\n", t_buf, IntroCategory_strings[t->category]);
 

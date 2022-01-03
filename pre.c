@@ -193,7 +193,7 @@ preprocess_filename(char * filename) {
                 loc.filename = filename;
                 loc.line = last_paste_line_num;
 
-                strputn(result_buffer, last_paste, last_line - last_paste);
+                strputf(&result_buffer, "%.*s", (int)(last_line - last_paste), last_paste);
 
                 arrput(file_location_lookup, loc);
             }
@@ -220,7 +220,7 @@ preprocess_filename(char * filename) {
     loc.filename = filename;
     loc.line = last_paste_line_num;
 
-    strputn(result_buffer, last_paste, buffer_end - last_paste);
+    strputf(&result_buffer, "%.*s", (int)(buffer_end - last_paste), last_paste);
 
     arrput(file_location_lookup, loc);
 
@@ -278,8 +278,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
         exit(1);
     }
     if (*o_output_filename == NULL) {
-        strput(*o_output_filename, filename);
-        strput(*o_output_filename, ".intro");
+        strputf(o_output_filename, "%s.intro", filename);
         strputnull(*o_output_filename);
     }
 
