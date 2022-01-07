@@ -92,11 +92,10 @@ typedef struct KnownType {
 static const KnownType type_list [] = {
     {"uint8_t", 1, INTRO_UNSIGNED}, {"uint16_t", 2, INTRO_UNSIGNED}, {"uint32_t", 4, INTRO_UNSIGNED}, {"uint64_t", 8, INTRO_UNSIGNED},
     {"int8_t", 1, INTRO_SIGNED}, {"int16_t", 2, INTRO_SIGNED}, {"int32_t", 4, INTRO_SIGNED}, {"int64_t", 8, INTRO_SIGNED},
-    {"size_t", sizeof(size_t), INTRO_UNSIGNED}, {"ptrdiff_t", sizeof(ptrdiff_t), INTRO_SIGNED},
+    {"size_t", 0, INTRO_UNSIGNED}, {"ptrdiff_t", 0, INTRO_SIGNED},
 
-    {"bool", sizeof(bool), INTRO_UNSIGNED}, {"char", 1, INTRO_SIGNED}, {"unsigned char", 1, INTRO_UNSIGNED},
-    {"short", sizeof(short), INTRO_SIGNED}, {"int", sizeof(int), INTRO_SIGNED}, {"long", sizeof(long), INTRO_SIGNED},
-    {"unsigned short", sizeof(short), INTRO_UNSIGNED}, {"unsigned int", sizeof(int), INTRO_UNSIGNED}, {"unsigned long", sizeof(long), INTRO_UNSIGNED},
+    {"bool", 0, INTRO_UNSIGNED}, {"char", 1, INTRO_SIGNED},
+    {"short", 0, INTRO_SIGNED}, {"int", 0, INTRO_SIGNED}, {"long", 0, INTRO_SIGNED}, {"long long", 0, INTRO_SIGNED},
     {"float", 4, INTRO_FLOATING}, {"double", 8, INTRO_FLOATING},
 };
 
@@ -493,14 +492,13 @@ parse_type(char * buffer, char ** o_s) {
     result.type_tk.start = first.start;
     result.type_tk.type = TK_IDENTIFIER;
 
-    strputf(&type_name, "%.*s", first.length, first.start);
-
     bool is_struct = tk_equal(&first, "struct");
     bool is_union  = tk_equal(&first, "union");
     bool is_enum   = tk_equal(&first, "enum");
     if (is_struct || is_union || is_enum) {
         char * after_keyword = *o_s;
         int error;
+        strputf(&type_name, "%.*s", first.length, first.start);
         if (is_struct) {
             error = parse_struct(buffer, o_s, false);
         } else if (is_union) {
@@ -533,16 +531,60 @@ parse_type(char * buffer, char ** o_s) {
             }
         }
     } else {
-        Token tk, ltk = next_token(o_s), lltk = first;
-        if (ltk.type == TK_IDENTIFIER) {
-            while ((tk = next_token(o_s)).type == TK_IDENTIFIER) {
-                strputf(&type_name, " %.*s", ltk.length, ltk.start);
-                lltk = ltk;
+        Token tk, ltk = first;
+        if (tk_equal(&first, "unsigned")) {
+            type.category = INTRO_UNSIGNED;
+        } else if (tk_equal(&first, "signed")) {
+            type.category = INTRO_SIGNED;
+        }
+
+        if (type.category != INTRO_UNKNOWN) {
+            strputf(&type_name, "%.*s", first.length, first.start);
+            tk = next_token(o_s);
+        } else {
+            tk = first;
+        }
+
+        char * known_type_name = NULL;
+        bool can_be_followed_by_int = true;
+        if (tk_equal(&tk, "long")) {
+            Token tk2 = next_token(o_s);
+            if (tk_equal(&tk2, "long")) {
+                known_type_name = "long long";
+                tk = tk2;
+            } else if (tk_equal(&tk2, "double")) {
+                parse_error(&tk2, "long double is not supported.");
+                return result;
+            } else {
+                known_type_name = "long";
+            }
+        } else if (tk_equal(&tk, "short")) {
+            known_type_name = "short";
+        } else if (type.category == INTRO_UNKNOWN) {
+            can_be_followed_by_int = false;
+            strputf(&type_name, "%.*s", tk.length, tk.start);
+        }
+
+        if (can_be_followed_by_int) {
+            if (known_type_name) {
+                if (arrlen(type_name) > 0) {
+                    strputf(&type_name, " ");
+                }
+                strputf(&type_name, known_type_name);
+                ltk = tk;
+                tk = next_token(o_s);
+            }
+            if (tk_equal(&tk, "int")) {
+                strputf(&type_name, " int");
                 ltk = tk;
             }
+            if (type.category == INTRO_UNKNOWN) {
+                type.category = INTRO_SIGNED;
+            }
         }
-        result.type_tk.length = lltk.start - first.start + lltk.length;
-        *o_s = ltk.start;
+
+        result.type_tk.length = ltk.start - first.start + ltk.length;
+        *o_s = ltk.start + ltk.length;
     }
 
     strputnull(type_name);
@@ -731,6 +773,7 @@ parse_typedef(char * buffer, char ** o_s) {
     return 0;
 }
 
+// TODO(critical!!): move "the_integers" into Store. it fucks up *really* bad...
 char *
 get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_papi_name) {
     struct nested_info_s * nest = hmgetp_null(nested_info, parent);
