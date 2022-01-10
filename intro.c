@@ -38,9 +38,8 @@ strputf(char ** p_str, const char * format, ...) {
         char * loc = *p_str + arrlen(*p_str);
         size_t n = arrcap(*p_str) - arrlen(*p_str);
         size_t pn = stbsp_vsnprintf(loc, n, format, args);
-        if (pn <= n) {
-            int offset = *(loc+pn-1) == '\0' ? -1 : 0;
-            arrsetlen(*p_str, arrlen(*p_str) + pn + offset);
+        if (pn < n) {
+            arrsetlen(*p_str, arrlen(*p_str) + pn);
             break;
         } else {
             size_t p_cap = arrcap(*p_str);
