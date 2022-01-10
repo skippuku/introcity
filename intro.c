@@ -214,6 +214,8 @@ combine_type_and_declaration(IntroType * t, Declaration2 * in) {
     return type;
 }
 
+static int last_struct_parsed_index = 0;
+
 int
 parse_struct(char * buffer, char ** o_s, bool is_union) {
     IntroStruct struct_ = {0};
@@ -234,6 +236,8 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     }
 
     IntroMember * members = NULL;
+    int struct_index = arrlen(structs);
+    arrput(structs, NULL);
     while (1) {
         Declaration decl = parse_type(buffer, o_s);
         if (!decl.success) {
@@ -290,7 +294,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 if (decl.is_nested) {
                     struct nested_info_s info = {0};
                     info.key = type.i_struct;
-                    info.struct_index = arrlen(structs);
+                    info.struct_index = struct_index;
                     info.member_index = arrlen(members);
                     hmputs(nested_info, info);
                 }
@@ -341,7 +345,8 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         arrfree(struct_type_name);
     }
 
-    arrput(structs, result);
+    structs[struct_index] = result;
+    last_struct_parsed_index = struct_index;
 
     return 0;
 }
@@ -518,7 +523,7 @@ parse_type(char * buffer, char ** o_s) {
             if (is_struct || is_union) {
                 name = arrlast(structs)->name;
                 type.category = INTRO_STRUCT;
-                type.i_struct = arrlast(structs);
+                type.i_struct = structs[last_struct_parsed_index];
             } else {
                 name = arrlast(enums)->name;
                 type.category = INTRO_ENUM;
@@ -732,7 +737,7 @@ parse_typedef(char * buffer, char ** o_s) {
         nt.indirection_level = decl.type.indirection_level;
         nt.indirection = decl.type.indirection;
         if (decl.type.category == INTRO_STRUCT) {
-            nt.i_struct = arrlast(structs);
+            nt.i_struct = structs[last_struct_parsed_index];
             nt.i_struct->name = nt.key;
         } else if (decl.type.category == INTRO_ENUM) {
             nt.i_enum = arrlast(enums);
@@ -773,7 +778,6 @@ parse_typedef(char * buffer, char ** o_s) {
     return 0;
 }
 
-// TODO(critical!!): move "the_integers" into Store. it fucks up *really* bad...
 char *
 get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_papi_name) {
     struct nested_info_s * nest = hmgetp_null(nested_info, parent);
