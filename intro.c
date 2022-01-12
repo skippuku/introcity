@@ -225,7 +225,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         tk = next_token(o_s);
     }
 
-    if (!(tk.type == TK_BRACE && tk.is_open)) {
+    if (tk.type != TK_L_BRACE) {
         if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
         parse_error(&tk, "Expected open brace here.");
         return 1;
@@ -241,7 +241,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     while (1) {
         Declaration decl = parse_type(buffer, o_s);
         if (!decl.success) {
-            if (decl.type_tk.type == TK_BRACE && !decl.type_tk.is_open) {
+            if (decl.type_tk.type == TK_R_BRACE) {
                 break;
             } else {
                 if (decl.type_tk.length > 0) {
@@ -302,7 +302,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 tk = next_token(o_s);
                 if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "I")) {
                     Token paren = next_token(o_s);
-                    if (!(paren.type == TK_PARENTHESIS && paren.is_open)) {
+                    if (paren.type != TK_L_PARENTHESIS) {
                         parse_error(&paren, "Expected '('.");
                         return 1;
                     }
@@ -391,7 +391,7 @@ parse_enum(char * buffer, char ** o_s) {
         tk = next_token(o_s);
     }
 
-    if (!(tk.type == TK_BRACE && tk.is_open)) {
+    if (tk.type != TK_L_BRACE) {
         if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
         parse_error(&tk, "Expected open brace here.");
         return 1;
@@ -405,7 +405,7 @@ parse_enum(char * buffer, char ** o_s) {
     while (1) {
         IntroEnumValue v = {0};
         Token name = next_token(o_s);
-        if (name.type == TK_BRACE && !name.is_open) {
+        if (name.type == TK_R_BRACE) {
             break;
         }
         if (name.type != TK_IDENTIFIER) {
@@ -437,7 +437,7 @@ parse_enum(char * buffer, char ** o_s) {
             }
             next_int = v.value + 1;
             set = true;
-        } else if (tk.type == TK_BRACE && !tk.is_open) {
+        } else if (tk.type == TK_R_BRACE) {
             v.value = next_int;
             is_last = true;
         } else {
@@ -455,7 +455,7 @@ parse_enum(char * buffer, char ** o_s) {
         if (set) {
             tk = next_token(o_s);
             if (tk.type == TK_COMMA) {
-            } else if (tk.type == TK_BRACE && !tk.is_open) {
+            } else if (tk.type == TK_R_BRACE) {
                 break;
             } else {
                 parse_error(&tk, "Unexpected symbol.");
@@ -661,16 +661,9 @@ parse_declaration(char * buffer, char ** o_s) {
             pointer_level += 1;
         }
 
-        if (tk.type == TK_PARENTHESIS && tk.is_open) {
-            int depth = 1;
+        if (tk.type == TK_L_PARENTHESIS) {
             paren = tk.start + 1;
-            while (depth > 0) {
-                tk = next_token(o_s);
-                if (tk.type == TK_PARENTHESIS) {
-                    if (tk.is_open) depth += 1;
-                    else depth -= 1;
-                }
-            }
+            *o_s = find_closing(tk.start) + 1;
             tk = next_token(o_s);
         }
 
@@ -682,7 +675,7 @@ parse_declaration(char * buffer, char ** o_s) {
         }
 
         arrsetlen(temp, 0);
-        while (tk.type == TK_BRACKET && tk.is_open) {
+        while (tk.type == TK_L_BRACKET) {
             tk = next_token(o_s);
             if (tk.type == TK_IDENTIFIER) {
                 long num = strtol(tk.start, NULL, 0);
@@ -692,11 +685,11 @@ parse_declaration(char * buffer, char ** o_s) {
                 }
                 arrput(temp, (uint32_t)num);
                 tk = next_token(o_s);
-                if (!(tk.type == TK_BRACKET && !tk.is_open)) {
+                if (tk.type != TK_R_BRACKET) {
                     parse_error(&tk, "Invalid symbol. Expected closing bracket ']'.");
                     return result;
                 }
-            } else if (tk.type == TK_BRACKET && !tk.is_open) {
+            } else if (tk.type == TK_R_BRACKET) {
                 arrput(temp, INTRO_ZERO_LENGTH);
             } else {
                 parse_error(&tk, "Invalid symbol. Expected array size or closing bracket ']'.");

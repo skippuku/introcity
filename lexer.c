@@ -9,9 +9,12 @@ typedef struct Token {
         TK_UNKNOWN,
         TK_IDENTIFIER,
         TK_STRING,
-        TK_PARENTHESIS,
-        TK_BRACKET,
-        TK_BRACE,
+        TK_L_PARENTHESIS,
+        TK_R_PARENTHESIS,
+        TK_L_BRACKET,
+        TK_R_BRACKET,
+        TK_L_BRACE,
+        TK_R_BRACE,
         TK_EQUAL,
         TK_COLON,
         TK_SEMICOLON,
@@ -23,7 +26,6 @@ typedef struct Token {
         TK_END,
         TK_COUNT
     } type;
-    bool is_open;
 } Token;
 
 Token
@@ -70,26 +72,16 @@ next_token(char ** o_s) {
         if (*s == '\0') return tk;
     }
 
-    // TODO: open and closed should probably just be different tokens...
     tk.length = 1;
     switch(*s) {
-    case '{':
-        tk.is_open = true; // FALLTHROUGH
-    case '}':
-        tk.type = TK_BRACE;
-        break;
+    case '{': tk.type = TK_L_BRACE; break;
+    case '}': tk.type = TK_R_BRACE; break;
 
-    case '[':
-        tk.is_open = true; // FALLTHROUGH
-    case ']':
-        tk.type = TK_BRACKET;
-        break;
+    case '[': tk.type = TK_L_BRACKET; break;
+    case ']': tk.type = TK_R_BRACKET; break;
 
-    case '(':
-        tk.is_open = true; // FALLTHROUGH
-    case ')':
-        tk.type = TK_PARENTHESIS;
-        break;
+    case '(': tk.type = TK_L_PARENTHESIS; break;
+    case ')': tk.type = TK_R_PARENTHESIS; break;
 
     case '=': tk.type = TK_EQUAL; break;
     case ':': tk.type = TK_COLON; break;

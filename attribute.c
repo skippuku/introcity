@@ -7,6 +7,7 @@ static struct attribute_map_s {
 void
 create_initial_attributes() {
     const struct attribute_map_s initial [] = {
+        // TODO: check to make sure there are not duplicate id's
         {"id",      INTRO_ATTR_ID,      INTRO_V_INT}, // NOTE: maybe this should be part of IntroMember since it is common?
         {"default", INTRO_ATTR_DEFAULT, INTRO_V_VALUE},
         {"length",  INTRO_ATTR_LENGTH,  INTRO_V_MEMBER},
@@ -134,7 +135,7 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
     IntroAttributeData * attributes = NULL;
 
     Token tk = next_token(&s);
-    if (!(tk.type == TK_PARENTHESIS && tk.is_open)) {
+    if (tk.type != TK_L_PARENTHESIS) {
         parse_error(&tk, "Expected '('.");
         return 1;
     }
@@ -159,7 +160,7 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
                 if (error) return 1;
             }
             arrput(attributes, data);
-        } else if (tk.type == TK_PARENTHESIS && !tk.is_open) {
+        } else if (tk.type == TK_R_PARENTHESIS) {
             break;
         } else {
             parse_error(&tk, "Invalid symbol.");
@@ -169,7 +170,7 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
 
         tk = next_token(&s);
         if (tk.type == TK_COMMA) {
-        } else if (tk.type == TK_PARENTHESIS && !tk.is_open) {
+        } else if (tk.type == TK_R_PARENTHESIS) {
             break;
         } else {
             parse_error(&tk, "Expected ',' or ')'.");
