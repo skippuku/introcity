@@ -851,6 +851,10 @@ main(int argc, char ** argv) {
                 error = parse_typedef(buffer, &s);
             }
             if (error) return error;
+        } else if (key.type == TK_L_BRACE) {
+            s = find_closing(key.start);
+            if (!s) break;
+            s++;
         }
     }
 
@@ -1121,9 +1125,6 @@ Refactoring
 Function pointers?
 
 Bit fields?
-
-Ignore functions
-    should this be done in the preprocessor?
 
 Custom format?
 
