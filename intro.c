@@ -13,12 +13,6 @@
 #define STB_SPRINTF_NOFLOAT
 #include "stb_sprintf.h"
 
-#define DEPRECATED _Static_assert(0, "use of deprecated function")
-#define sprintf(...) DEPRECATED
-#define snprintf(...) DEPRECATED
-#define vsprintf(...) DEPRECATED
-#define vsnprintf(...) DEPRECATED
-
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #define strputnull(a) arrput(a,0)
 // index of last put or get
@@ -96,6 +90,7 @@ static const KnownType type_list [] = {
     {"bool", 0, INTRO_UNSIGNED}, {"char", 1, INTRO_SIGNED},
     {"short", 0, INTRO_SIGNED}, {"int", 0, INTRO_SIGNED}, {"long", 0, INTRO_SIGNED}, {"long long", 0, INTRO_SIGNED},
     {"float", 4, INTRO_FLOATING}, {"double", 8, INTRO_FLOATING},
+    {"void", 0, INTRO_UNSIGNED}, // support void*
 };
 
 KnownType * known_types = NULL;
@@ -171,11 +166,11 @@ parse_error_internal(char * buffer, Token * tk, char * message) {
     int line_num = get_line(buffer, tk->start, &start_of_line, &filename);
     char * s = NULL;
     if (line_num < 0) {
-        strputf(&s, "Error (?:?): %s\n\n", message ? message : "Failed to parse.");
+        strputf(&s, "Error (?:?): %s\n\n", message);
         return;
     }
     char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
-    strputf(&s, "Error (%s:%i): %s\n\n", filename, line_num, message ? message : "Failed to parse.");
+    strputf(&s, "Error (%s:%i): %s\n\n", filename, line_num, message);
     strputf(&s, "%.*s", (int)(tk->start - start_of_line), start_of_line);
     strputf(&s, BOLD_RED "%.*s" WHITE, tk->length, tk->start);
     strputf(&s, "%.*s", (int)(end_of_line - (tk->start + tk->length)), tk->start + tk->length);
@@ -186,6 +181,8 @@ parse_error_internal(char * buffer, Token * tk, char * message) {
     fputs(s, stderr);
 }
 #define parse_error(tk,message) parse_error_internal(buffer, tk, message)
+
+#include "attribute.c"
 
 Declaration2 parse_declaration(char * buffer, char ** o_s);
 Declaration parse_type(char * buffer, char ** o_s);
@@ -235,6 +232,10 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     }
 
     IntroMember * members = NULL;
+    struct attribute_specifiers_s {
+        char * location;
+        int member_index;
+    } * attribute_specifiers = NULL;
     int struct_index = arrlen(structs);
     arrput(structs, NULL);
     while (1) {
@@ -297,9 +298,23 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                     info.member_index = arrlen(members);
                     hmputs(nested_info, info);
                 }
-                arrput(members, member);
 
                 tk = next_token(o_s);
+                if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "I")) {
+                    Token paren = next_token(o_s);
+                    if (!(paren.type == TK_PARENTHESIS && paren.is_open)) {
+                        parse_error(&paren, "Expected '('.");
+                        return 1;
+                    }
+                    struct attribute_specifiers_s spec;
+                    spec.location = paren.start;
+                    spec.member_index = arrlen(members);
+                    arrput(attribute_specifiers, spec);
+                    *o_s = find_closing(paren.start) + 1;
+                    tk = next_token(o_s);
+                }
+
+                arrput(members, member);
 
                 if (tk.type == TK_SEMICOLON) {
                     break;
@@ -342,6 +357,20 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         shputs(known_types, struct_type);
 
         arrfree(struct_type_name);
+    }
+
+    if (attribute_specifiers) {
+        IntroAttributeData * d;
+        uint32_t count;
+        for (int i=0; i < arrlen(attribute_specifiers); i++) {
+            int member_index = attribute_specifiers[i].member_index;
+            char * location = attribute_specifiers[i].location;
+            int error = parse_attributes(buffer, location, result, member_index, &d, &count);
+            if (error) return error;
+            result->members[member_index].attributes = d;
+            result->members[member_index].count_attributes = count;
+        }
+        arrfree(attribute_specifiers);
     }
 
     structs[struct_index] = result;
@@ -813,6 +842,7 @@ main(int argc, char ** argv) {
     for (int i=0; i < LENGTH(type_list); i++) {
         shputs(known_types, type_list[i]);
     }
+    create_initial_attributes();
 
     Token key;
     while ((key = next_token(&s)).type != TK_END) {
@@ -883,6 +913,21 @@ main(int argc, char ** argv) {
             int parent_index = nest->member_index;
             nest->parent_member_name = get_parent_member_name(parent, parent_index, &nest->grand_papi_name);
             strputnull(nest->parent_member_name);
+        }
+    }
+
+    for (int struct_index = 0; struct_index < arrlen(structs); struct_index++) {
+        const IntroStruct * s = structs[struct_index];
+        for (int member_index = 0; member_index < s->count_members; member_index++) {
+            const IntroMember * m = &s->members[member_index];
+            if (m->count_attributes > 0) {
+                strputf(&str, "static const IntroAttributeData __intro_%i_%i [] = {\n", struct_index, member_index);
+                for (int attr_index = 0; attr_index < m->count_attributes; attr_index++) {
+                    const IntroAttributeData * attr = &m->attributes[attr_index];
+                    strputf(&str, "\t{%i, %i, %i},\n", attr->type, attr->value_type, attr->v.i);
+                }
+                strputf(&str, "};\n\n");
+            }
         }
     }
 
@@ -986,6 +1031,11 @@ main(int argc, char ** argv) {
                         m_buf, nest->grand_papi_name, nest->parent_member_name, m->name,
                         nest->grand_papi_name, nest->parent_member_name);
             }
+
+            if (m->count_attributes > 0) {
+                strputf(&str, "%scount_attributes = %i;\n", m_buf, m->count_attributes);
+                strputf(&str, "%sattributes = __intro_%i_%i;\n", m_buf, struct_index, i);
+            }
         }
     }
     arrfree(struct_name);
@@ -1073,6 +1123,8 @@ Refactoring
     There is a lot of duplicate code
     Not big on the indirection system
 
+    Change types to integers.
+
 Function pointers?
 
 Bit fields?
@@ -1083,14 +1135,6 @@ Ignore functions
 Custom format?
 
 Serialization
-
-User data (with macros)
-    versions INTRO_V(value)
-    id for serialization INTRO_ID(id)
-    custom type data INTRO_DATA(value)
-    union switch INTRO_SWITCH(member, value)
-    default value INTRO_DEFAULT(value)
-    array/string length -- INTRO_ARRLEN(member)
 
 Transformative program arguments
     create typedefs for structs and enums

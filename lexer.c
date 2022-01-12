@@ -3,6 +3,8 @@
 #include <stdio.h> // EOF
 
 typedef struct Token {
+    char * start;
+    int32_t length;
     enum {
         TK_UNKNOWN,
         TK_IDENTIFIER,
@@ -17,23 +19,24 @@ typedef struct Token {
         TK_COMMA,
         TK_PERIOD,
         TK_HASH,
+        TK_HYPHEN,
         TK_END,
         TK_COUNT
     } type;
-    char * start;
-    int length;
     bool is_open;
 } Token;
 
 Token
 next_token(char ** o_s) {
     Token tk = {0};
+    tk.type = TK_END;
+
     char * s = *o_s;
     while (1) {
         while (*s != '\0' && isspace(*s)) s++; 
-        if (*s == '/' && *(s+1) != '\0') {
+        if (*s == '/') {
             if (*(s+1) == '/') {
-                while (*++s != '\0' && *s != '\n' && *s != '\r');
+                while (*++s != '\0' && *s != '\n');
             } else if (*++s == '*') {
                 while (*++s != '\0' && !(*s == '/' && *(s-1) == '*'));
             }
@@ -41,16 +44,13 @@ next_token(char ** o_s) {
             break;
         }
     }
-    if (*s == '\0') {
-        tk.type = TK_END;
-        return tk;
-    }
+    if (*s == '\0') return tk;
 
     tk.start = s;
 
     if (isalnum(*s) || *s == '_') {
-        tk.type = TK_IDENTIFIER;
         while (*++s != '\0' && (isalnum(*s) || *s == '_'));
+        tk.type = TK_IDENTIFIER;
         tk.length = s - tk.start;
         *o_s = s;
         return tk;
@@ -67,12 +67,10 @@ next_token(char ** o_s) {
                 return tk;
             }
         }
-        if (*s == '\0') {
-            tk.type = TK_END;
-            return tk;
-        }
+        if (*s == '\0') return tk;
     }
 
+    // TODO: open and closed should probably just be different tokens...
     tk.length = 1;
     switch(*s) {
     case '{':
@@ -100,6 +98,7 @@ next_token(char ** o_s) {
     case ',': tk.type = TK_COMMA; break;
     case '.': tk.type = TK_PERIOD; break;
     case '#': tk.type = TK_HASH; break;
+    case '-': tk.type = TK_HYPHEN; break;
 
     case EOF: tk.type = TK_END; break;
 
@@ -108,4 +107,24 @@ next_token(char ** o_s) {
 
     *o_s = s + 1;
     return tk;
+}
+
+char *
+find_closing(char * s) {
+    int depth = 1;
+    char o = *s, c;
+    switch(o) {
+    case '{': c = '}'; break;
+    case '[': c = ']'; break;
+    case '(': c = ')'; break;
+    default: return NULL;
+    }
+    while (*++s != '\0') {
+        if (*s == o) {
+            depth++;
+        } else if (*s == c) {
+            if (--depth == 0) return s;
+        }
+    }
+    return NULL;
 }

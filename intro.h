@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#define I(...)
+
 static const uint32_t INTRO_ZERO_LENGTH = UINT32_MAX;
 static const uint32_t INTRO_POINTER = 0;
 
@@ -37,10 +39,39 @@ typedef struct IntroType {
     uint32_t * indirection;
 } IntroType;
 
+typedef enum IntroAttribute {
+    INTRO_ATTR_ID      = -8,
+    INTRO_ATTR_DEFAULT = -7,
+    INTRO_ATTR_LENGTH  = -6,
+    INTRO_ATTR_SWITCH  = -5,
+    INTRO_ATTR_TYPE    = -4,
+} IntroAttribute;
+
+typedef struct IntroAttributeData {
+    int32_t type;
+    enum {
+        INTRO_V_NONE,
+        INTRO_V_INT,
+        INTRO_V_FLOAT,
+        INTRO_V_VALUE,
+        INTRO_V_CONDITION,
+        INTRO_V_MEMBER,
+    } value_type;
+    union {
+        int32_t i;
+        int32_t member_index;
+        float f;
+        void * value;
+        int32_t condition_func_index; // bool (*condition_func)(void * struct_ptr);
+    } v;
+} IntroAttributeData;
+
 typedef struct IntroMember {
     char * name;
     IntroType * type;
     uint32_t offset;
+    uint32_t count_attributes;
+    const IntroAttributeData * attributes;
 } IntroMember;
 
 struct IntroStruct {
