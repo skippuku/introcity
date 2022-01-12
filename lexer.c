@@ -111,11 +111,13 @@ find_closing(char * s) {
     case '(': c = ')'; break;
     default: return NULL;
     }
-    while (*++s != '\0') {
-        if (*s == o) {
+    s++;
+    Token tk;
+    while ((tk = next_token(&s)).type != TK_END) {
+        if (*tk.start == o) {
             depth++;
-        } else if (*s == c) {
-            if (--depth == 0) return s;
+        } else if (*tk.start == c) {
+            if (--depth == 0) return tk.start;
         }
     }
     return NULL;
