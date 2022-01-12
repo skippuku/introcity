@@ -1,6 +1,6 @@
-#include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h> // EOF
+#include <stdint.h>
 
 typedef struct Token {
     char * start;
@@ -28,6 +28,21 @@ typedef struct Token {
     } type;
 } Token;
 
+static bool
+is_space(char c) {
+    return c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r' || c == ' ';
+}
+
+static bool
+is_digit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+static bool
+is_iden(char c) {
+    return is_digit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
 Token
 next_token(char ** o_s) {
     Token tk = {0};
@@ -35,7 +50,7 @@ next_token(char ** o_s) {
 
     char * s = *o_s;
     while (1) {
-        while (*s != '\0' && isspace(*s)) s++; 
+        while (*s != '\0' && is_space(*s)) s++; 
         if (*s == '/') {
             if (*(s+1) == '/') {
                 while (*++s != '\0' && *s != '\n');
@@ -50,8 +65,8 @@ next_token(char ** o_s) {
 
     tk.start = s;
 
-    if (isalnum(*s) || *s == '_') {
-        while (*++s != '\0' && (isalnum(*s) || *s == '_'));
+    if (is_iden(*s)) {
+        while (*++s != '\0' && is_iden(*s));
         tk.type = TK_IDENTIFIER;
         tk.length = s - tk.start;
         *o_s = s;

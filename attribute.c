@@ -94,7 +94,7 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
 
         case INTRO_V_MEMBER: {
             tk = next_token(o_s);
-            if (tk.type != TK_IDENTIFIER || isdigit(tk.start[0])) {
+            if (tk.type != TK_IDENTIFIER || is_digit(tk.start[0])) {
                 parse_error(&tk, "Expected member name.");
                 return 1;
             }
@@ -144,7 +144,7 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
         IntroAttributeData attr = {0};
         if (tk.type == TK_IDENTIFIER) {
             IntroAttributeData data;
-            if (isdigit(tk.start[0])) {
+            if (is_digit(tk.start[0])) {
                 data.type = INTRO_ATTR_ID;
                 data.value_type = INTRO_V_INT;
                 // copied from above

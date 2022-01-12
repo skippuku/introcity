@@ -92,7 +92,7 @@ preprocess_filename(char * filename) {
             last_line = s + 1;
             line_num++;
             s++;
-        } else if (isspace(*s)) {
+        } else if (is_space(*s)) {
             s++;
         } else if (*s == '#' && line_is_directive) {
             s++;
@@ -204,7 +204,7 @@ preprocess_filename(char * filename) {
                 while (*s != '\n' && *s != '\0') s++;
                 if (*s == '\0') break;
                 char * q = s;
-                while (isspace(*--q));
+                while (is_space(*--q));
                 if (*q != '\\') break;
             }
             last_paste = s + 1;
@@ -278,6 +278,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
         exit(1);
     }
     if (*o_output_filename == NULL) {
+        // TODO: change to "xxx.intro.h"
         strputf(o_output_filename, "%s.intro", filename);
         strputnull(*o_output_filename);
     }
