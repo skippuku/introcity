@@ -40,11 +40,12 @@ typedef struct IntroType {
 } IntroType;
 
 typedef enum IntroAttribute {
-    INTRO_ATTR_ID      = -8,
-    INTRO_ATTR_DEFAULT = -7,
-    INTRO_ATTR_LENGTH  = -6,
-    INTRO_ATTR_SWITCH  = -5,
-    INTRO_ATTR_TYPE    = -4,
+    INTRO_ATTR_ID      = -16,
+    INTRO_ATTR_DEFAULT = -15,
+    INTRO_ATTR_LENGTH  = -14,
+    INTRO_ATTR_SWITCH  = -13,
+    INTRO_ATTR_TYPE    = -12,
+    INTRO_ATTR_NOTE    = -11,
 } IntroAttribute;
 
 typedef struct IntroAttributeData {
@@ -56,13 +57,12 @@ typedef struct IntroAttributeData {
         INTRO_V_VALUE,
         INTRO_V_CONDITION,
         INTRO_V_MEMBER,
+        INTRO_V_STRING,
     } value_type;
     union {
         int32_t i;
-        int32_t member_index;
         float f;
-        void * value;
-        int32_t condition_func_index; // bool (*condition_func)(void * struct_ptr);
+        // bool (*condition_func)(void * struct_ptr);
     } v;
 } IntroAttributeData;
 

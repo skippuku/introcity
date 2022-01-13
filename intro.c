@@ -210,6 +210,30 @@ combine_type_and_declaration(IntroType * t, Declaration2 * in) {
     return type;
 }
 
+typedef struct {
+    char * location;
+    int32_t i;
+    Token tk;
+} AttributeSpecifier;
+
+int
+maybe_expect_attribute(char * buffer, char ** o_s, int32_t i, Token * o_tk, AttributeSpecifier ** p_attribute_specifiers) {
+    if (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
+        Token paren = next_token(o_s);
+        if (paren.type != TK_L_PARENTHESIS) {
+            parse_error(&paren, "Expected '('.");
+            return 1;
+        }
+        AttributeSpecifier spec;
+        spec.location = paren.start;
+        spec.i = i;
+        arrput(*p_attribute_specifiers, spec);
+        *o_s = find_closing(paren.start) + 1;
+        *o_tk = next_token(o_s);
+    }
+    return 0;
+}
+
 static int last_struct_parsed_index = 0;
 
 int
@@ -232,10 +256,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     }
 
     IntroMember * members = NULL;
-    struct attribute_specifiers_s {
-        char * location;
-        int member_index;
-    } * attribute_specifiers = NULL;
+    AttributeSpecifier * attribute_specifiers = NULL;
     int struct_index = arrlen(structs);
     arrput(structs, NULL);
     while (1) {
@@ -300,19 +321,8 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
                 }
 
                 tk = next_token(o_s);
-                if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "I")) {
-                    Token paren = next_token(o_s);
-                    if (paren.type != TK_L_PARENTHESIS) {
-                        parse_error(&paren, "Expected '('.");
-                        return 1;
-                    }
-                    struct attribute_specifiers_s spec;
-                    spec.location = paren.start;
-                    spec.member_index = arrlen(members);
-                    arrput(attribute_specifiers, spec);
-                    *o_s = find_closing(paren.start) + 1;
-                    tk = next_token(o_s);
-                }
+                int e = maybe_expect_attribute(buffer, o_s, arrlen(members), &tk, &attribute_specifiers);
+                if (e) return e;
 
                 arrput(members, member);
 
@@ -363,7 +373,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         IntroAttributeData * d;
         uint32_t count;
         for (int i=0; i < arrlen(attribute_specifiers); i++) {
-            int member_index = attribute_specifiers[i].member_index;
+            int member_index = attribute_specifiers[i].i;
             char * location = attribute_specifiers[i].location;
             int error = parse_attributes(buffer, location, result, member_index, &d, &count);
             if (error) return error;
@@ -391,6 +401,28 @@ parse_enum(char * buffer, char ** o_s) {
         tk = next_token(o_s);
     }
 
+    bool is_attribute = false;
+    AttributeSpecifier * attribute_specifiers = NULL;
+    if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "I")) {
+        tk = next_token(o_s);
+        if (tk.type != TK_L_PARENTHESIS) {
+            parse_error(&tk, "Expected '('.");
+            return 1;
+        }
+        tk = next_token(o_s);
+        if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "attribute")) {
+            is_attribute = true;
+        } else {
+            parse_error(&tk, "Invalid.");
+            return 1;
+        }
+        tk = next_token(o_s);
+        if (tk.type != TK_R_PARENTHESIS) {
+            parse_error(&tk, "Expected ')'.");
+            return 1;
+        }
+        tk = next_token(o_s);
+    }
     if (tk.type != TK_L_BRACE) {
         if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
         parse_error(&tk, "Expected open brace here.");
@@ -421,13 +453,21 @@ parse_enum(char * buffer, char ** o_s) {
         v.name = cache_name(new_name);
 
         tk = next_token(o_s);
+        if (is_attribute) {
+            int index = arrlen(attribute_specifiers);
+            maybe_expect_attribute(buffer, o_s, arrlen(members), &tk, &attribute_specifiers);
+            if (arrlen(attribute_specifiers) != index) {
+                attribute_specifiers[index].tk = name;
+            }
+        }
         bool set = false;
         bool is_last = false;
         if (tk.type == TK_COMMA) {
             v.value = next_int++;
         } else if (tk.type == TK_EQUAL) {
+            char * prev_loc = *o_s;
             long num = strtol(*o_s, o_s, 0);
-            if (num == 0 && errno != 0) {
+            if (*o_s == prev_loc) {
                 parse_error(&tk, "Unable to parse enumeration value.");
                 return 1;
             }
@@ -494,6 +534,14 @@ parse_enum(char * buffer, char ** o_s) {
         shputs(known_types, enum_type);
 
         arrfree(enum_type_name);
+    }
+
+    if (attribute_specifiers != NULL) {
+        for (int i=0; i < arrlen(attribute_specifiers); i++) {
+            AttributeSpecifier spec = attribute_specifiers[i];
+            int e = parse_attribute_register(buffer, spec.location, spec.i, &spec.tk);
+            if (e) return e;
+        }
     }
 
     arrput(enums, result);
@@ -830,7 +878,7 @@ get_parent_member_name(IntroStruct * parent, int parent_index, char ** o_grand_p
 int
 main(int argc, char ** argv) {
     char * output_filename;
-    char * buffer = run_preprocessor(argc, argv, &output_filename);
+    char * buffer = run_preprocessor(argc, argv, &output_filename); // maybe buffer should be global since it gets passed around so much?
     char * s = buffer;
 
     sh_new_arena(known_types);
@@ -930,6 +978,14 @@ main(int argc, char ** argv) {
                 strputf(&str, "};\n\n");
             }
         }
+    }
+
+    if (note_set != NULL) {
+        strputf(&str, "static const char * __intro_notes [] = {\n");
+        for (int note_index = 0; note_index < arrlen(note_set); note_index++) {
+            strputf(&str, "\t\"%s\",\n", note_set[note_index]);
+        }
+        strputf(&str, "};\n\n");
     }
 
     strputf(&str, "\nstatic uint32_t intro_ZERO = 0;\n");
@@ -1125,6 +1181,9 @@ Refactoring
     Not big on the indirection system
 
     Change types to integers.
+        would be nice if type id's could remain consistent
+
+    Redo generation. No mallocs, prefer no init
 
 get type parent (for typedefs)
 

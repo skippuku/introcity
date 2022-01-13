@@ -4,6 +4,8 @@ static struct attribute_map_s {
     int32_t value_type;
 } * attribute_map = NULL;
 
+static char ** note_set = NULL;
+
 void
 create_initial_attributes() {
     const struct attribute_map_s initial [] = {
@@ -13,6 +15,7 @@ create_initial_attributes() {
         {"length",  INTRO_ATTR_LENGTH,  INTRO_V_MEMBER},
         {"switch",  INTRO_ATTR_SWITCH,  INTRO_V_CONDITION},
         {"type",    INTRO_ATTR_TYPE,    INTRO_V_NONE},
+        {"note",    INTRO_ATTR_NOTE,    INTRO_V_STRING},
     };
     // NOTE: might need to do this later:
     //sh_new_arena(attribute_map);
@@ -22,16 +25,76 @@ create_initial_attributes() {
 }
 
 int
-register_attribute_type(int type, int value_type, char * identifier) {
-    int map_index = shgeti(attribute_map, identifier);
-    if (map_index >= 0) return 1;
+parse_attribute_register(char * buffer, char * s, int type, Token * type_tk) {
+    const struct { char * key; int value_type; } value_type_lookup [] = {
+        {"none",      INTRO_V_NONE},
+        {"int",       INTRO_V_INT},
+        {"float",     INTRO_V_FLOAT},
+        {"value",     INTRO_V_VALUE},
+        {"condition", INTRO_V_CONDITION},
+        {"member",    INTRO_V_MEMBER},
+        {"string",    INTRO_V_STRING},
+    };
+
+    Token tk0 = next_token(&s), tk1;
+    if (tk0.type != TK_L_PARENTHESIS) {
+        parse_error(&tk0, "Expected '('.");
+        return 1;
+    }
+
+    tk0 = next_token(&s);
+    if (tk0.type != TK_IDENTIFIER) {
+        parse_error(&tk0, "Expected identifier.");
+        return 1;
+    }
+
+    int value_type = INTRO_V_NONE;
+    char * name = NULL;
+    Token * name_ref = NULL;
+
+    tk1 = next_token(&s);
+    if (tk1.type == TK_IDENTIFIER) {
+        bool matched = false;
+        for (int i=0; i < LENGTH(value_type_lookup); i++) {
+            if (tk_equal(&tk0, value_type_lookup[i].key)) {
+                value_type = value_type_lookup[i].value_type;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            parse_error(&tk0, "Unknown attribute value type.");
+            return 1;
+        }
+        name = copy_and_terminate(tk1.start, tk1.length);
+        name_ref = &tk1;
+    } else if (tk1.type == TK_R_PARENTHESIS) {
+        name = copy_and_terminate(tk0.start, tk0.length);
+        name_ref = &tk0;
+    } else {
+        parse_error(&tk1, "Expected identifier or ')'.");
+        return 1;
+    }
+
+    int map_index = shgeti(attribute_map, name);
+    if (map_index >= 0) {
+        parse_error(name_ref, "Attribute name is reserved.");
+        return 1;
+    }
 
     for (int i=0; i < shlen(attribute_map); i++) {
-        if (attribute_map[i].type == type) return 2;
+        if (attribute_map[i].type == type) {
+            char * msg = NULL;
+            strputf(&msg, "Attribute type (%i) is reserved by attribute '%s'.", type, attribute_map[i].key);
+            strputnull(msg);
+            parse_error(type_tk, msg);
+            arrfree(msg);
+            return 2;
+        }
     }
 
     struct attribute_map_s entry;
-    entry.key = identifier;
+    entry.key = name;
     entry.type = type;
     entry.value_type = value_type;
     shputs(attribute_map, entry);
@@ -87,6 +150,18 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
             data.v.f = result;
         } break;
 
+        case INTRO_V_STRING: {
+            tk = next_token(o_s);
+            if (tk.type != TK_STRING) {
+                parse_error(&tk, "Expected string.");
+                return 1;
+            }
+            char * result = copy_and_terminate(tk.start, tk.length);
+            int32_t index = arrlen(note_set);
+            arrput(note_set, result);
+            data.v.i = index;
+        } break;
+
         case INTRO_V_VALUE: {
             parse_error(&tk, "Value attributes are not currently supported.");
             return 1;
@@ -108,7 +183,7 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
                             return 1;
                         }
                     }
-                    data.v.member_index = mi;
+                    data.v.i = mi;
                     success = true;
                     break;
                 }
