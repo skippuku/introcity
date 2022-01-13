@@ -56,10 +56,10 @@ static char * result_buffer = NULL;
 int
 parse_expression(char ** o_s) {
     Token tk = next_token(o_s);
-    if (tk.length == 1 && *tk.start == '0') {
-        return 0;
-    } else {
+    if (tk.length == 1 && *tk.start == '1') {
         return 1;
+    } else {
+        return 0;
     }
 }
 
@@ -83,15 +83,26 @@ preprocess_filename(char * filename) {
     int line_num = 1;
     int last_paste_line_num = 1;
     bool line_is_directive = true;
-    bool in_comment = false;
 
     // TODO: handle c-style comments
     while (s && s < buffer_end) {
         if (*s == '\n') {
-            if (!in_comment) line_is_directive = true;
+            line_is_directive = true;
             last_line = s + 1;
             line_num++;
             s++;
+        } else if (*s == '/' && *(s+1) == '*') {
+            s += 1;
+            while (*++s != '\0') {
+                if (*s == '/' && *(s-1) == '*') {
+                    s = memchr(s, '\n', buffer_end - s);
+                    break;
+                } else if (*s == '\n') {
+                    // from above
+                    last_line = s + 1;
+                    line_num++;
+                }
+            }
         } else if (is_space(*s)) {
             s++;
         } else if (*s == '#' && line_is_directive) {
@@ -206,6 +217,8 @@ preprocess_filename(char * filename) {
                 char * q = s;
                 while (is_space(*--q));
                 if (*q != '\\') break;
+                line_num++;
+                s++;
             }
             last_paste = s + 1;
             last_line = s + 1;

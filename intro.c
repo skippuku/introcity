@@ -580,22 +580,26 @@ parse_type(char * buffer, char ** o_s) {
 
         char * known_type_name = NULL;
         bool can_be_followed_by_int = true;
-        if (tk_equal(&tk, "long")) {
-            Token tk2 = next_token(o_s);
-            if (tk_equal(&tk2, "long")) {
-                known_type_name = "long long";
-                tk = tk2;
-            } else if (tk_equal(&tk2, "double")) {
-                parse_error(&tk2, "long double is not supported.");
-                return result;
-            } else {
-                known_type_name = "long";
-            }
-        } else if (tk_equal(&tk, "short")) {
-            known_type_name = "short";
-        } else if (type.category == INTRO_UNKNOWN) {
+        if (type.category == INTRO_UNKNOWN) {
             can_be_followed_by_int = false;
             strputf(&type_name, "%.*s", tk.length, tk.start);
+        } else {
+            if (tk_equal(&tk, "long")) {
+                Token tk2 = next_token(o_s);
+                if (tk_equal(&tk2, "long")) {
+                    known_type_name = "long long";
+                    tk = tk2;
+                } else if (tk_equal(&tk2, "double")) {
+                    parse_error(&tk2, "long double is not supported.");
+                    return result;
+                } else {
+                    known_type_name = "long";
+                }
+            } else if (tk_equal(&tk, "short")) {
+                known_type_name = "short";
+            } else if (tk_equal(&tk, "char")) {
+                known_type_name = "char";
+            }
         }
 
         if (can_be_followed_by_int) {
@@ -1121,6 +1125,8 @@ Refactoring
     Not big on the indirection system
 
     Change types to integers.
+
+get type parent (for typedefs)
 
 Function pointers?
 
