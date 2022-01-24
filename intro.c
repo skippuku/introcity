@@ -193,11 +193,12 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
     IntroStruct struct_ = {0};
     struct_.is_union = is_union;
 
-    Token tk = next_token(o_s);
+    Token tk = next_token(o_s), name_tk;
     if (tk.type == TK_IDENTIFIER) {
         char * temp = copy_and_terminate(tk.start, tk.length);
         struct_.name = cache_name(temp);
         free(temp);
+        name_tk = tk;
         tk = next_token(o_s);
     }
 
@@ -298,7 +299,7 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
 
     if (struct_.name != NULL) {
         char * struct_type_name = NULL;
-        strputf(&struct_type_name, "%s %s", is_union ? "union" : "struct", result->name);
+        strputf(&struct_type_name, "%s %s", is_union ? "union" : "struct", struct_.name);
         strputnull(struct_type_name);
 
         KnownType struct_type;
@@ -308,13 +309,18 @@ parse_struct(char * buffer, char ** o_s, bool is_union) {
         struct_type.i_struct = result;
         
         KnownType * prev = shgetp_null(known_types, struct_type_name);
-        if (prev != NULL && prev->category == INTRO_UNKNOWN) {
-            for (int i=0; i < arrlen(prev->forward_list); i++) {
-                KnownType * ft = &known_types[prev->forward_list[i]];
-                ft->category = INTRO_STRUCT;
-                ft->i_struct = result;
+        if (prev != NULL) {
+            if (prev->category == INTRO_UNKNOWN) {
+                for (int i=0; i < arrlen(prev->forward_list); i++) {
+                    KnownType * ft = &known_types[prev->forward_list[i]];
+                    ft->category = INTRO_STRUCT;
+                    ft->i_struct = result;
+                }
+                arrfree(prev->forward_list);
+            } else {
+                parse_error(&name_tk, "Redefinition of type.");
+                return 1;
             }
-            arrfree(prev->forward_list);
         }
         shputs(known_types, struct_type);
 
@@ -345,11 +351,12 @@ int
 parse_enum(char * buffer, char ** o_s) {
     IntroEnum enum_ = {0};
 
-    Token tk = next_token(o_s);
+    Token tk = next_token(o_s), name_tk;
     if (tk.type == TK_IDENTIFIER) {
         char * temp = copy_and_terminate(tk.start, tk.length);
         enum_.name = cache_name(temp);
         free(temp);
+        name_tk = tk;
         tk = next_token(o_s);
     }
 
@@ -475,13 +482,18 @@ parse_enum(char * buffer, char ** o_s) {
         enum_type.i_enum = result;
 
         KnownType * prev = shgetp_null(known_types, enum_type_name);
-        if (prev != NULL && prev->category == INTRO_UNKNOWN) {
-            for (int i=0; i < arrlen(prev->forward_list); i++) {
-                KnownType * ft = &known_types[prev->forward_list[i]];
-                ft->category = INTRO_ENUM;
-                ft->i_enum = result;
+        if (prev != NULL) {
+            if (prev->category == INTRO_UNKNOWN) {
+                for (int i=0; i < arrlen(prev->forward_list); i++) {
+                    KnownType * ft = &known_types[prev->forward_list[i]];
+                    ft->category = INTRO_ENUM;
+                    ft->i_enum = result;
+                }
+                arrfree(prev->forward_list);
+            } else {
+                parse_error(&name_tk, "Redefinition of type.");
+                return 1;
             }
-            arrfree(prev->forward_list);
         }
         shputs(known_types, enum_type);
 
