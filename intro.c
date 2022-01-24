@@ -83,14 +83,15 @@ typedef struct KnownType {
 } KnownType;
 
 static const KnownType type_list [] = {
+    {"void", 1, INTRO_UNSIGNED},
     {"uint8_t", 1, INTRO_UNSIGNED}, {"uint16_t", 2, INTRO_UNSIGNED}, {"uint32_t", 4, INTRO_UNSIGNED}, {"uint64_t", 8, INTRO_UNSIGNED},
     {"int8_t", 1, INTRO_SIGNED}, {"int16_t", 2, INTRO_SIGNED}, {"int32_t", 4, INTRO_SIGNED}, {"int64_t", 8, INTRO_SIGNED},
+    {"float", 4, INTRO_FLOATING}, {"double", 8, INTRO_FLOATING},
+
     {"size_t", 0, INTRO_UNSIGNED}, {"ptrdiff_t", 0, INTRO_SIGNED},
 
     {"bool", 0, INTRO_UNSIGNED}, {"char", 1, INTRO_SIGNED},
     {"short", 0, INTRO_SIGNED}, {"int", 0, INTRO_SIGNED}, {"long", 0, INTRO_SIGNED}, {"long long", 0, INTRO_SIGNED},
-    {"float", 4, INTRO_FLOATING}, {"double", 8, INTRO_FLOATING},
-    {"void", 0, INTRO_UNSIGNED}, // support void*
 };
 
 KnownType * known_types = NULL;
@@ -132,55 +133,6 @@ cache_name(char * name) {
         return shputs(name_set, (struct name_set_s){name});
     }
 }
-
-static int
-get_line(char * begin, char * pos, char ** o_start_of_line, char ** o_filename) {
-    FileLoc * loc = NULL;
-    for (int i = arrlen(file_location_lookup) - 1; i >= 0; i--) {
-        if (pos - begin >= file_location_lookup[i].offset) {
-            loc = &file_location_lookup[i];
-            break;
-        }
-    }
-    if (loc == NULL) return -1;
-    char * s = begin + loc->offset;
-    char * last_line = s;
-    int line_num = loc->line;
-    while (s < pos) {
-        if (*s++ == '\n') {
-            last_line = s;
-            line_num++;
-        }
-    }
-    if (o_start_of_line) *o_start_of_line = last_line;
-    if (o_filename) *o_filename = loc->filename;
-    return line_num;
-}
-
-#define BOLD_RED "\e[1;31m"
-#define WHITE "\e[0;37m"
-static void
-parse_error_internal(char * buffer, Token * tk, char * message) {
-    char * start_of_line;
-    char * filename;
-    int line_num = get_line(buffer, tk->start, &start_of_line, &filename);
-    char * s = NULL;
-    if (line_num < 0) {
-        strputf(&s, "Error (?:?): %s\n\n", message);
-        return;
-    }
-    char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
-    strputf(&s, "Error (%s:%i): %s\n\n", filename, line_num, message);
-    strputf(&s, "%.*s", (int)(tk->start - start_of_line), start_of_line);
-    strputf(&s, BOLD_RED "%.*s" WHITE, tk->length, tk->start);
-    strputf(&s, "%.*s", (int)(end_of_line - (tk->start + tk->length)), tk->start + tk->length);
-    for (int i=0; i < (tk->start - start_of_line); i++) arrput(s, ' ');
-    for (int i=0; i < (tk->length); i++) arrput(s, '~');
-    arrput(s, '\n');
-    strputnull(s);
-    fputs(s, stderr);
-}
-#define parse_error(tk,message) parse_error_internal(buffer, tk, message)
 
 #include "attribute.c"
 
@@ -1176,14 +1128,22 @@ main(int argc, char ** argv) {
 
 /*
 Refactoring
-    The type system is kinda sloppy
+    The type system is kinda sloppy (KnownType shouldn't be a thing)
     There is a lot of duplicate code
-    Not big on the indirection system
+    Change indirection system. Just point to referenced type.
 
     Change types to integers.
-        would be nice if type id's could remain consistent
+        Basic types (at least) should be consistent
 
     Redo generation. No mallocs, prefer no init
+
+
+Parse const-ness
+
+Parse C++ structs/classes
+    could be used to generate C APIs
+
+Parse functions
 
 get type parent (for typedefs)
 
@@ -1198,4 +1158,5 @@ Serialization
 Transformative program arguments
     create typedefs for structs and enums
     create initializers
+    create typeof with _Generic
 */

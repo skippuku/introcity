@@ -38,9 +38,10 @@ copy_and_terminate(char * str, int length) {
     return result;
 }
 
-struct defines_s {
+typedef struct {
     char * key;
-} * defines = NULL;
+} Define;
+static Define * defines = NULL;
 
 typedef struct {
     size_t offset;
@@ -49,12 +50,76 @@ typedef struct {
 } FileLoc;
 FileLoc * file_location_lookup = NULL;
 
+#define BOLD_RED "\e[1;31m"
+#define WHITE "\e[0;37m"
+static void
+strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char * highlight_start, char * highlight_end) {
+    strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
+    strputf(p_s, BOLD_RED "%.*s" WHITE, (int)(highlight_end - highlight_start), highlight_start);
+    strputf(p_s, "%.*s", (int)(segment_end - highlight_end), highlight_end);
+    for (int i=0; i < (highlight_start - segment_start); i++) arrput(*p_s, ' ');
+    for (int i=0; i < highlight_end - highlight_start; i++) arrput(*p_s, '~');
+    arrput(*p_s, '\n');
+    strputnull(*p_s);
+}
+
+static int
+get_line(char * begin, char * pos, char ** o_start_of_line, char ** o_filename) {
+    FileLoc * loc = NULL;
+    for (int i = arrlen(file_location_lookup) - 1; i >= 0; i--) {
+        if (pos - begin >= file_location_lookup[i].offset) {
+            loc = &file_location_lookup[i];
+            break;
+        }
+    }
+    if (loc == NULL) return 0;
+    char * s = begin + loc->offset;
+    char * last_line = s;
+    int line_num = loc->line;
+    while (s < pos) {
+        if (*s++ == '\n') {
+            last_line = s;
+            line_num++;
+        }
+    }
+    if (o_start_of_line) *o_start_of_line = last_line;
+    if (o_filename) *o_filename = loc->filename;
+    return line_num;
+}
+
+static void
+parse_error_internal(char * buffer, Token * tk, char * message) {
+    char * start_of_line;
+    char * filename;
+    int line_num = get_line(buffer, tk->start, &start_of_line, &filename);
+    char * s = NULL;
+    if (line_num < 0) {
+        strputf(&s, "Error (?:?): %s\n\n", message);
+        return;
+    }
+    strputf(&s, "Error (%s:%i): %s\n\n", filename, line_num, message);
+    char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
+    strput_code_segment(&s, start_of_line, end_of_line, tk->start, tk->start + tk->length);
+    fputs(s, stderr);
+}
+#define parse_error(tk,message) parse_error_internal(buffer, tk, message)
+
+static void
+preprocess_error(char * start_of_line, char * filename, int line, char * message, Token * p_tk) {
+    char * end_of_line = strchr(p_tk->start + p_tk->length, '\n') + 1;
+    char * s = NULL;
+    strputf(&s, "Preprocessor error (%s:%i): %s\n\n", filename, line, message);
+    strput_code_segment(&s, start_of_line, end_of_line, p_tk->start, p_tk->start + p_tk->length);
+    strputnull(s);
+    fputs(s, stderr);
+}
+
 bool * if_depth = NULL;
 int * if_depth_prlens = NULL;
 static char * result_buffer = NULL;
 
 int
-parse_expression(char ** o_s) {
+parse_expression(char ** o_s) { // TODO
     Token tk = next_token(o_s);
     if (tk.length == 1 && *tk.start == '1') {
         return 1;
@@ -85,6 +150,7 @@ preprocess_filename(char * filename) {
     bool line_is_directive = true;
 
     // TODO: handle c-style comments
+    // TODO: expand macros, open original file instead of buffer for parse_error
     while (s && s < buffer_end) {
         if (*s == '\n') {
             line_is_directive = true;
@@ -132,7 +198,7 @@ preprocess_filename(char * filename) {
                         fputs("Preprocessor error: Unknown symbol after define.\n", stderr);
                         exit(1);
                     }
-                    struct defines_s new_def;
+                    Define new_def;
                     char * name = copy_and_terminate(tk.start, tk.length);
                     // NOTE: compilers warn on redefinitions, but we don't care
                     new_def.key = name;
@@ -171,7 +237,7 @@ preprocess_filename(char * filename) {
                     int prlen = arrpop(if_depth_prlens);
                     arrsetlen(if_depth, prlen);
                 } else {
-                    fputs("Preprocessor error: stray #endif\n", stderr);
+                    preprocess_error(last_line, filename, line_num, "stray #endif.", &tk);
                     exit(1);
                 }
             } else if (tk_equal(&tk, "else")) {
@@ -189,11 +255,15 @@ preprocess_filename(char * filename) {
                 }
             } else if (tk_equal(&tk, "error")) {
                 if (arrlast(if_depth)) {
-                    tk = next_token(&s);
-                    char * s = NULL;
-                    strputf(&s, "Preproccessor error: \"%.*s\"\n", tk.length, tk.start);
-                    strputnull(s);
-                    fputs(s, stderr);
+                    char * message = NULL;
+                    Token error_string = next_token(&s);
+                    if (error_string.type == TK_STRING) {
+                        strputf(&message, "\"%.*s\"", error_string.length, error_string.start);
+                        strputnull(message);
+                    } else {
+                        message = "Unspecified error.";
+                    }
+                    preprocess_error(last_line, filename, line_num, message, &tk);
                     exit(1);
                 }
             }
@@ -243,7 +313,7 @@ preprocess_filename(char * filename) {
 char *
 run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
     sh_new_arena(defines);
-    struct defines_s intro_define;
+    Define intro_define;
     intro_define.key = "__INTROCITY__";
     shputs(defines, intro_define);
 
@@ -256,7 +326,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
         if (arg[0] == '-') {
             switch(arg[1]) {
             case 'D': {
-                struct defines_s new_def;
+                Define new_def;
                 new_def.key = strlen(arg) == 2 ? argv[++i] : arg+2;
                 shputs(defines, new_def);
             } break;
