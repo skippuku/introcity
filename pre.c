@@ -10,7 +10,7 @@ fsize(FILE * file) {
 static char *
 read_and_allocate_file(const char * filename, size_t * o_size) {
     FILE * file = fopen(filename, "rb");
-    assert(file != NULL);
+    if (!file) return NULL;
     size_t file_size = fsize(file);
     char * buffer = malloc(file_size + 1);
     if (fread(buffer, file_size, 1, file) != 1) {
@@ -37,6 +37,13 @@ copy_and_terminate(char * str, int length) {
     result[length] = '\0';
     return result;
 }
+
+typedef struct {
+    char * filename;
+    char * buffer;
+    size_t buffer_size;
+} FileBuffer;
+static FileBuffer * file_buffers = NULL;
 
 typedef struct {
     char * key;
@@ -128,16 +135,30 @@ parse_expression(char ** o_s) { // TODO
     }
 }
 
-void
+int
 preprocess_filename(char * filename) {
     size_t file_size;
-    char * buffer = read_and_allocate_file(filename, &file_size);
+
+    char * buffer = NULL;
+    for (int i=0; i < arrlen(file_buffers); i++) {
+        FileBuffer * fb = &file_buffers[i];
+        if (strcmp(filename, fb->filename) == 0) {
+            buffer = fb->buffer;
+            file_size = fb->buffer_size;
+            printf("used cache to load %s (original: %s)!\n", filename, fb->filename);
+            break;
+        }
+    }
     if (!buffer) {
-        char * s = NULL;
-        strputf(&s, "Error: failed to read file \"%s\".\n", filename);
-        strputnull(s);
-        fputs(s, stderr);
-        exit(1);
+        if ((buffer = read_and_allocate_file(filename, &file_size))) {
+            FileBuffer new_buf;
+            new_buf.filename = filename; // should we copy here?
+            new_buf.buffer = buffer;
+            new_buf.buffer_size = file_size;
+            arrput(file_buffers, new_buf);
+        } else {
+            return -1;
+        }
     }
 
     char * buffer_end = buffer + file_size;
@@ -279,7 +300,13 @@ preprocess_filename(char * filename) {
                 arrput(file_location_lookup, loc);
             }
 
-            if (inc_filename) preprocess_filename(inc_filename);
+            if (inc_filename) {
+                int result = preprocess_filename(inc_filename);
+                if (result < 0) {
+                    preprocess_error(last_line, filename, line_num, "Cannot read file.", &tk);
+                    exit(1);
+                }
+            }
 
             while (1) {
                 while (*s != '\n' && *s != '\0') s++;
@@ -307,7 +334,7 @@ preprocess_filename(char * filename) {
 
     arrput(file_location_lookup, loc);
 
-    free(buffer);
+    return 0;
 }
 
 char *
