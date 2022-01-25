@@ -47,6 +47,8 @@ static FileBuffer * file_buffers = NULL;
 
 typedef struct {
     char * key;
+    char * start;
+    int length;
 } Define;
 static Define * defines = NULL;
 
@@ -58,11 +60,14 @@ typedef struct {
 FileLoc * file_location_lookup = NULL;
 
 #define BOLD_RED "\e[1;31m"
+#define BOLD_YELLOW "\e[1;33m"
+#define CYAN "\e[0;36m"
 #define WHITE "\e[0;37m"
+#define BOLD_WHITE "\e[1;37m"
 static void
-strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char * highlight_start, char * highlight_end) {
+strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char * highlight_start, char * highlight_end, const char * highlight_color) {
     strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
-    strputf(p_s, BOLD_RED "%.*s" WHITE, (int)(highlight_end - highlight_start), highlight_start);
+    strputf(p_s, "%s%.*s" WHITE, highlight_color, (int)(highlight_end - highlight_start), highlight_start);
     strputf(p_s, "%.*s", (int)(segment_end - highlight_end), highlight_end);
     for (int i=0; i < (highlight_start - segment_start); i++) arrput(*p_s, ' ');
     for (int i=0; i < highlight_end - highlight_start; i++) arrput(*p_s, '~');
@@ -79,7 +84,7 @@ get_line(char * begin, char * pos, char ** o_start_of_line, char ** o_filename) 
             break;
         }
     }
-    if (loc == NULL) return 0;
+    if (loc == NULL) return -1;
     char * s = begin + loc->offset;
     char * last_line = s;
     int line_num = loc->line;
@@ -101,29 +106,42 @@ parse_error_internal(char * buffer, Token * tk, char * message) {
     int line_num = get_line(buffer, tk->start, &start_of_line, &filename);
     char * s = NULL;
     if (line_num < 0) {
-        strputf(&s, "Error (?:?): %s\n\n", message);
+        strputf(&s, BOLD_RED "Error" WHITE " (?:?): %s\n\n", message);
         return;
     }
-    strputf(&s, "Error (%s:%i): %s\n\n", filename, line_num, message);
+    strputf(&s, BOLD_RED "Error" WHITE " (%s:%i): %s\n\n", filename, line_num, message);
     char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
-    strput_code_segment(&s, start_of_line, end_of_line, tk->start, tk->start + tk->length);
+    strput_code_segment(&s, start_of_line, end_of_line, tk->start, tk->start + tk->length, BOLD_RED);
     fputs(s, stderr);
 }
 #define parse_error(tk,message) parse_error_internal(buffer, tk, message)
 
 static void
-preprocess_error(char * start_of_line, char * filename, int line, char * message, Token * p_tk) {
+preprocess_message_internal(char * start_of_line, char * filename, int line, Token * p_tk, char * message, int message_type) {
     char * end_of_line = strchr(p_tk->start + p_tk->length, '\n') + 1;
     char * s = NULL;
-    strputf(&s, "Preprocessor error (%s:%i): %s\n\n", filename, line, message);
-    strput_code_segment(&s, start_of_line, end_of_line, p_tk->start, p_tk->start + p_tk->length);
+    const char * message_type_string = message_type == 1 ? "warning" : "error";
+    const char * color = message_type == 1 ? BOLD_YELLOW : BOLD_RED;
+    strputf(&s, "%s" "Preprocessor %s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n\n", color, message_type_string, filename, line, message);
+    strput_code_segment(&s, start_of_line, end_of_line, p_tk->start, p_tk->start + p_tk->length, color);
     strputnull(s);
     fputs(s, stderr);
 }
+#define preprocess_error(tk, message)   preprocess_message_internal(last_line, filename, line_num, tk, message, 0)
+#define preprocess_warning(tk, message) preprocess_message_internal(last_line, filename, line_num, tk, message, 1)
 
-bool * if_depth = NULL;
-int * if_depth_prlens = NULL;
+static bool * if_depth = NULL;
+static int * if_depth_prlens = NULL;
 static char * result_buffer = NULL;
+
+static int
+count_newlines_in_range(const char * s, const char * end) {
+    int result = 0;
+    while (s < end) {
+        if (*s++ == '\n') result += 1;
+    }
+    return result;
+}
 
 int
 parse_expression(char ** o_s) { // TODO
@@ -145,14 +163,13 @@ preprocess_filename(char * filename) {
         if (strcmp(filename, fb->filename) == 0) {
             buffer = fb->buffer;
             file_size = fb->buffer_size;
-            printf("used cache to load %s (original: %s)!\n", filename, fb->filename);
             break;
         }
     }
     if (!buffer) {
         if ((buffer = read_and_allocate_file(filename, &file_size))) {
             FileBuffer new_buf;
-            new_buf.filename = filename; // should we copy here?
+            new_buf.filename = filename;
             new_buf.buffer = buffer;
             new_buf.buffer_size = file_size;
             arrput(file_buffers, new_buf);
@@ -170,6 +187,7 @@ preprocess_filename(char * filename) {
     int last_paste_line_num = 1;
     bool line_is_directive = true;
 
+    // TODO: rewrite if/elif/else system
     // TODO: handle c-style comments
     // TODO: expand macros, open original file instead of buffer for parse_error
     while (s && s < buffer_end) {
@@ -201,7 +219,7 @@ preprocess_filename(char * filename) {
                 if (arrlast(if_depth)) {
                     tk = next_token(&s);
                     if (tk.type == TK_STRING) {
-                        inc_filename = copy_and_terminate(tk.start, tk.length); // leak
+                        inc_filename = copy_and_terminate(tk.start, tk.length);
                     } else { // TODO: implement <> includes
                     }
                 }
@@ -216,14 +234,43 @@ preprocess_filename(char * filename) {
                 if (arrlast(if_depth)) {
                     tk = next_token(&s);
                     if (tk.type != TK_IDENTIFIER) {
-                        fputs("Preprocessor error: Unknown symbol after define.\n", stderr);
+                        preprocess_error(&tk, "Expected identifier.");
                         exit(1);
                     }
                     Define new_def;
-                    char * name = copy_and_terminate(tk.start, tk.length);
                     // NOTE: compilers warn on redefinitions, but we don't care
+                    char * name = copy_and_terminate(tk.start, tk.length);
                     new_def.key = name;
-                    shputs(defines, new_def);
+
+                    bool valid = true;
+                    char * after_name = tk.start + tk.length;
+                    tk = next_token(&s);
+                    if (memchr(after_name, '\n', tk.start - after_name) == NULL) {
+                        if (tk.type == TK_L_PARENTHESIS) {
+                            preprocess_warning(&tk, "Function-like macros are currently ignored.");
+                            valid = false;
+                        }
+                        // @copy from below
+                        while (1) {
+                            while (*s != '\n' && *s != '\0') s++;
+                            if (*s == '\0') break;
+                            char * q = s;
+                            while (is_space(*--q));
+                            if (*q != '\\') break;
+                            line_num++;
+                            s++;
+                        }
+                        new_def.start = tk.start;
+                        new_def.length = s - tk.start;
+                    } else {
+                        s = after_name;
+                        new_def.start = "";
+                        new_def.length = 0;
+                    }
+                    if (valid) {
+                        //printf("new definition: %s = \"%.*s\"\n\n", new_def.key, new_def.length, new_def.start);
+                        shputs(defines, new_def);
+                    }
                     free(name);
                 }
             } else if (tk_equal(&tk, "undef")) {
@@ -258,7 +305,7 @@ preprocess_filename(char * filename) {
                     int prlen = arrpop(if_depth_prlens);
                     arrsetlen(if_depth, prlen);
                 } else {
-                    preprocess_error(last_line, filename, line_num, "stray #endif.", &tk);
+                    preprocess_error(&tk, "stray #endif.");
                     exit(1);
                 }
             } else if (tk_equal(&tk, "else")) {
@@ -284,7 +331,7 @@ preprocess_filename(char * filename) {
                     } else {
                         message = "Unspecified error.";
                     }
-                    preprocess_error(last_line, filename, line_num, message, &tk);
+                    preprocess_error(&tk, message);
                     exit(1);
                 }
             }
@@ -303,7 +350,7 @@ preprocess_filename(char * filename) {
             if (inc_filename) {
                 int result = preprocess_filename(inc_filename);
                 if (result < 0) {
-                    preprocess_error(last_line, filename, line_num, "Cannot read file.", &tk);
+                    preprocess_error(&tk, "Cannot read file.");
                     exit(1);
                 }
             }
@@ -325,6 +372,7 @@ preprocess_filename(char * filename) {
             s = memchr(s, '\n', buffer_end - s);
         }
     }
+    // @copy from above
     FileLoc loc;
     loc.offset = arrlen(result_buffer);
     loc.filename = filename;
@@ -388,7 +436,6 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
         exit(1);
     }
     if (*o_output_filename == NULL) {
-        // TODO: change to "xxx.intro.h"
         strputf(o_output_filename, "%s.intro", filename);
         strputnull(*o_output_filename);
     }
