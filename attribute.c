@@ -9,7 +9,6 @@ static char ** note_set = NULL;
 void
 create_initial_attributes() {
     const struct attribute_map_s initial [] = {
-        // TODO: check to make sure there are not duplicate id's
         {"id",      INTRO_ATTR_ID,      INTRO_V_INT}, // NOTE: maybe this should be part of IntroMember since it is common?
         {"default", INTRO_ATTR_DEFAULT, INTRO_V_VALUE},
         {"length",  INTRO_ATTR_LENGTH,  INTRO_V_MEMBER},
@@ -102,6 +101,20 @@ parse_attribute_register(char * buffer, char * s, int type, Token * type_tk) {
     return 0;
 }
 
+bool
+check_id_valid(const IntroStruct * i_struct, int id) {
+    for (int member_index = 0; member_index < i_struct->count_members; member_index++) {
+        const IntroMember * member = &i_struct->members[member_index];
+        for (int attr_index = 0; attr_index < member->count_attributes; attr_index++) {
+            const IntroAttributeData * attr = &member->attributes[attr_index];
+            if (attr->type == INTRO_ATTR_ID && attr->v.i == id) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 int
 parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_index, IntroAttributeData * o_result) {
     IntroAttributeData data = {0};
@@ -138,6 +151,10 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
                 return 1;
             }
             data.v.i = (int32_t)result;
+            if (data.type == INTRO_ATTR_ID && !check_id_valid(i_struct, data.v.i)) {
+                parse_error(&tk, "This ID is reserved.");
+                return 1;
+            }
         } break;
 
         case INTRO_V_FLOAT: {
@@ -216,9 +233,8 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
     }
     while (1) {
         tk = next_token(&s);
-        IntroAttributeData attr = {0};
+        IntroAttributeData data;
         if (tk.type == TK_IDENTIFIER) {
-            IntroAttributeData data;
             if (is_digit(tk.start[0])) {
                 data.type = INTRO_ATTR_ID;
                 data.value_type = INTRO_V_INT;
@@ -229,6 +245,10 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
                     return 1;
                 }
                 data.v.i = (int32_t)result;
+                if (!check_id_valid(i_struct, data.v.i)) {
+                    parse_error(&tk, "This ID is reserved.");
+                    return 1;
+                }
             } else {
                 s = tk.start;
                 int error = parse_attribute(buffer, &s, i_struct, member_index, &data);
@@ -241,7 +261,6 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
             parse_error(&tk, "Invalid symbol.");
             return 1;
         }
-        if (attr.type != 0) arrput(attributes, attr);
 
         tk = next_token(&s);
         if (tk.type == TK_COMMA) {
