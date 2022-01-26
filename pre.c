@@ -113,6 +113,7 @@ parse_error_internal(char * buffer, Token * tk, char * message) {
     char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
     strput_code_segment(&s, start_of_line, end_of_line, tk->start, tk->start + tk->length, BOLD_RED);
     fputs(s, stderr);
+    arrfree(s);
 }
 #define parse_error(tk,message) parse_error_internal(buffer, tk, message)
 
@@ -126,6 +127,7 @@ preprocess_message_internal(char * start_of_line, char * filename, int line, Tok
     strput_code_segment(&s, start_of_line, end_of_line, p_tk->start, p_tk->start + p_tk->length, color);
     strputnull(s);
     fputs(s, stderr);
+    arrfree(s);
 }
 #define preprocess_error(tk, message)   preprocess_message_internal(last_line, filename, line_num, tk, message, 0)
 #define preprocess_warning(tk, message) preprocess_message_internal(last_line, filename, line_num, tk, message, 1)
@@ -135,10 +137,13 @@ static int * if_depth_prlens = NULL;
 static char * result_buffer = NULL;
 
 static int
-count_newlines_in_range(const char * s, const char * end) {
+count_newlines_in_range(char * s, char * end, char ** o_last_line) {
     int result = 0;
     while (s < end) {
-        if (*s++ == '\n') result += 1;
+        if (*s++ == '\n') {
+            *o_last_line = s;
+            result += 1;
+        }
     }
     return result;
 }
@@ -190,28 +195,16 @@ preprocess_filename(char * filename) {
     // TODO: rewrite if/elif/else system
     // TODO: handle c-style comments
     // TODO: expand macros, open original file instead of buffer for parse_error
-    while (s && s < buffer_end) {
-        if (*s == '\n') {
+    char * last_token_location = buffer;
+    Token tk;
+    while ((tk = next_token(&s)).type != TK_END) {
+        int lines_passed = count_newlines_in_range(last_token_location, tk.start + tk.length, &last_line);
+        last_token_location = tk.start + tk.length;
+        if (lines_passed > 0) {
             line_is_directive = true;
-            last_line = s + 1;
-            line_num++;
-            s++;
-        } else if (*s == '/' && *(s+1) == '*') {
-            s += 1;
-            while (*++s != '\0') {
-                if (*s == '/' && *(s-1) == '*') {
-                    s = memchr(s, '\n', buffer_end - s);
-                    break;
-                } else if (*s == '\n') {
-                    // from above
-                    last_line = s + 1;
-                    line_num++;
-                }
-            }
-        } else if (is_space(*s)) {
-            s++;
-        } else if (*s == '#' && line_is_directive) {
-            s++;
+            line_num += lines_passed;
+        }
+        if (tk.type == TK_HASH && line_is_directive) {
             Token tk = next_token(&s);
             char * inc_filename = NULL;
             bool paste_last_chunk = arrlast(if_depth);
@@ -369,7 +362,21 @@ preprocess_filename(char * filename) {
             last_paste_line_num = line_num + 1;
         } else {
             line_is_directive = false;
-            s = memchr(s, '\n', buffer_end - s);
+            if (tk.type == TK_IDENTIFIER) {
+                char terminated [tk.length + 1];
+                memcpy(terminated, tk.start, tk.length);
+                terminated[tk.length] = 0;
+
+                int def_index = shgeti(defines, terminated);
+                if (def_index >= 0) {
+                    Define def = defines[def_index];
+                    strputf(&result_buffer, "%.*s", (int)(tk.start - last_paste), last_paste);
+                    strputf(&result_buffer, "%.*s", def.length, def.start);
+                    last_paste = tk.start + tk.length;
+                    last_line = last_paste;
+                    last_paste_line_num = line_num + 1;
+                }
+            }
         }
     }
     // @copy from above
