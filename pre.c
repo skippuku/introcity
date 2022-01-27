@@ -193,8 +193,12 @@ preprocess_filename(char * filename) {
     bool line_is_directive = true;
 
     // TODO: rewrite if/elif/else system
-    // TODO: handle c-style comments
-    // TODO: expand macros, open original file instead of buffer for parse_error
+    // TODO: open original file instead of buffer for parse_error
+    // TODO: function-like macros
+    //
+    // TODO(bugs):
+    //     comments are included in macros which breaks things
+    //     macro definitions which expand to paranthesis are seen as function-like
     char * last_token_location = buffer;
     Token tk;
     while ((tk = next_token(&s)).type != TK_END) {
@@ -250,7 +254,6 @@ preprocess_filename(char * filename) {
                             char * q = s;
                             while (is_space(*--q));
                             if (*q != '\\') break;
-                            line_num++;
                             s++;
                         }
                         new_def.start = tk.start;
@@ -354,13 +357,13 @@ preprocess_filename(char * filename) {
                 char * q = s;
                 while (is_space(*--q));
                 if (*q != '\\') break;
-                line_num++;
                 s++;
             }
             last_paste = s + 1;
             last_line = s + 1;
             last_paste_line_num = line_num + 1;
         } else {
+            if (!arrlast(if_depth)) continue;
             line_is_directive = false;
             if (tk.type == TK_IDENTIFIER) {
                 char terminated [tk.length + 1];
