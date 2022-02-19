@@ -8,7 +8,7 @@ fsize(FILE * file) {
 }
 
 static char *
-read_and_allocate_file(const char * filename, size_t * o_size) {
+read_entire_file(const char * filename, size_t * o_size) {
     FILE * file = fopen(filename, "rb");
     if (!file) return NULL;
     size_t file_size = fsize(file);
@@ -47,8 +47,7 @@ static FileBuffer * file_buffers = NULL;
 
 typedef struct {
     char * key;
-    char * start;
-    int length;
+    char * str;
 } Define;
 static Define * defines = NULL;
 
@@ -129,8 +128,8 @@ preprocess_message_internal(char * start_of_line, char * filename, int line, Tok
     fputs(s, stderr);
     arrfree(s);
 }
-#define preprocess_error(tk, message)   preprocess_message_internal(last_line, filename, line_num, tk, message, 0)
-#define preprocess_warning(tk, message) preprocess_message_internal(last_line, filename, line_num, tk, message, 1)
+#define preprocess_error(tk, message)   preprocess_message_internal(last_to_be, filename, line_num, tk, message, 0)
+#define preprocess_warning(tk, message) preprocess_message_internal(last_to_be, filename, line_num, tk, message, 1)
 
 static bool * if_depth = NULL;
 static int * if_depth_prlens = NULL;
@@ -158,6 +157,32 @@ parse_expression(char ** o_s) { // TODO
     }
 }
 
+char *
+get_simple_macro_definition(char ** o_s) {
+    char * result = NULL;
+    bool new_line_ok = false;
+    while (1) {
+        char * last_loc = *o_s;
+        Token tk = next_token(o_s);
+        char * _last_line;
+        int new_lines = count_newlines_in_range(last_loc, *o_s, &_last_line);
+        if ((new_lines && !new_line_ok) || tk.type == TK_END) {
+            *o_s = strchr(last_loc, '\n');
+            break;
+        }
+        if (tk.type == TK_BACKSLASH) {
+            new_line_ok = true;
+            continue;
+        }
+
+        strputf(&result, "%.*s ", tk.length, tk.start);
+    }
+
+    (void) arrpop(result); // remove last space
+    arrput(result, 0);
+    return result;
+}
+
 int
 preprocess_filename(char * filename) {
     size_t file_size;
@@ -172,7 +197,7 @@ preprocess_filename(char * filename) {
         }
     }
     if (!buffer) {
-        if ((buffer = read_and_allocate_file(filename, &file_size))) {
+        if ((buffer = read_entire_file(filename, &file_size))) {
             FileBuffer new_buf;
             new_buf.filename = filename;
             new_buf.buffer = buffer;
@@ -184,7 +209,7 @@ preprocess_filename(char * filename) {
     }
 
     char * buffer_end = buffer + file_size;
-    char * last_line = buffer;
+    char * last_to_be = buffer;
     char * last_paste = buffer;
     char * s = buffer;
 
@@ -202,7 +227,7 @@ preprocess_filename(char * filename) {
     char * last_token_location = buffer;
     Token tk;
     while ((tk = next_token(&s)).type != TK_END) {
-        int lines_passed = count_newlines_in_range(last_token_location, tk.start + tk.length, &last_line);
+        int lines_passed = count_newlines_in_range(last_token_location, tk.start + tk.length, &last_to_be);
         last_token_location = tk.start + tk.length;
         if (lines_passed > 0) {
             line_is_directive = true;
@@ -216,7 +241,7 @@ preprocess_filename(char * filename) {
                 if (arrlast(if_depth)) {
                     tk = next_token(&s);
                     if (tk.type == TK_STRING) {
-                        inc_filename = copy_and_terminate(tk.start, tk.length);
+                        inc_filename = copy_and_terminate(tk.start+1, tk.length-2);
                     } else { // TODO: implement <> includes
                     }
                 }
@@ -247,24 +272,14 @@ preprocess_filename(char * filename) {
                             preprocess_warning(&tk, "Function-like macros are currently ignored.");
                             valid = false;
                         }
-                        // @copy from below
-                        while (1) {
-                            while (*s != '\n' && *s != '\0') s++;
-                            if (*s == '\0') break;
-                            char * q = s;
-                            while (is_space(*--q));
-                            if (*q != '\\') break;
-                            s++;
-                        }
-                        new_def.start = tk.start;
-                        new_def.length = s - tk.start;
+                        s = after_name;
+                        new_def.str = get_simple_macro_definition(&s);
                     } else {
                         s = after_name;
-                        new_def.start = "";
-                        new_def.length = 0;
+                        new_def.str = "";
                     }
                     if (valid) {
-                        //printf("new definition: %s = \"%.*s\"\n\n", new_def.key, new_def.length, new_def.start);
+                        fprintf(stderr, "new definition: %s = \"%s\"\n", new_def.key, new_def.str);
                         shputs(defines, new_def);
                     }
                     free(name);
@@ -322,7 +337,7 @@ preprocess_filename(char * filename) {
                     char * message = NULL;
                     Token error_string = next_token(&s);
                     if (error_string.type == TK_STRING) {
-                        strputf(&message, "\"%.*s\"", error_string.length, error_string.start);
+                        strputf(&message, "%.*s", error_string.length, error_string.start);
                         strputnull(message);
                     } else {
                         message = "Unspecified error.";
@@ -332,13 +347,13 @@ preprocess_filename(char * filename) {
                 }
             }
 
-            if (paste_last_chunk && last_line - last_paste > 0) {
+            if (paste_last_chunk && last_to_be - last_paste > 0) {
                 FileLoc loc;
                 loc.offset = arrlen(result_buffer);
                 loc.filename = filename;
                 loc.line = last_paste_line_num;
 
-                strputf(&result_buffer, "%.*s", (int)(last_line - last_paste), last_paste);
+                strputf(&result_buffer, "%.*s", (int)(last_to_be - last_paste), last_paste);
 
                 arrput(file_location_lookup, loc);
             }
@@ -360,7 +375,7 @@ preprocess_filename(char * filename) {
                 s++;
             }
             last_paste = s + 1;
-            last_line = s + 1;
+            last_to_be = last_paste;
             last_paste_line_num = line_num + 1;
         } else {
             if (!arrlast(if_depth)) continue;
@@ -374,9 +389,9 @@ preprocess_filename(char * filename) {
                 if (def_index >= 0) {
                     Define def = defines[def_index];
                     strputf(&result_buffer, "%.*s", (int)(tk.start - last_paste), last_paste);
-                    strputf(&result_buffer, "%.*s", def.length, def.start);
+                    strputf(&result_buffer, "%s", def.str);
                     last_paste = tk.start + tk.length;
-                    last_line = last_paste;
+                    last_to_be = last_paste;
                     last_paste_line_num = line_num + 1;
                 }
             }

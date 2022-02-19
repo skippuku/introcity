@@ -919,7 +919,7 @@ main(int argc, char ** argv) {
             int len = stbsp_sprintf(num_buf, "Anon_%i", anon_index++);
             e->name = copy_and_terminate(num_buf, len);
         }
-        // copied from above (TODO)
+        // @copy from above
         struct nested_info_s * nest = hmgetp_null(nested_info, e);
         if (nest) {
             IntroStruct * parent = structs[nest->struct_index];
@@ -1149,6 +1149,9 @@ Refactoring
 
     Redo generation. No mallocs, prefer no init
 
+Attributes
+    Ability to apply attributes to a type which will be applied to any variable of that type
+    Ability to remove an attribute I(~unwanted_attribute)
 
 Parse const-ness
 

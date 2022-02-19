@@ -29,8 +29,8 @@ parse_attribute_register(char * buffer, char * s, int type, Token * type_tk) {
         {"none",      INTRO_V_NONE},
         {"int",       INTRO_V_INT},
         {"float",     INTRO_V_FLOAT},
-        {"value",     INTRO_V_VALUE},
-        {"condition", INTRO_V_CONDITION},
+        {"value",     INTRO_V_VALUE}, // TODO
+        {"condition", INTRO_V_CONDITION}, // TODO
         {"member",    INTRO_V_MEMBER},
         {"string",    INTRO_V_STRING},
     };
@@ -173,7 +173,7 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
                 parse_error(&tk, "Expected string.");
                 return 1;
             }
-            char * result = copy_and_terminate(tk.start, tk.length);
+            char * result = copy_and_terminate(tk.start+1, tk.length-2); // TODO: parse escape codes
             int32_t index = arrlen(note_set);
             arrput(note_set, result);
             data.v.i = index;
@@ -238,7 +238,7 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
             if (is_digit(tk.start[0])) {
                 data.type = INTRO_ATTR_ID;
                 data.value_type = INTRO_V_INT;
-                // copied from above
+                // @copy from above
                 long result = strtol(tk.start, &s, 0);
                 if (s == tk.start) {
                     parse_error(&tk, "Invalid integer.");

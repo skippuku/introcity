@@ -23,6 +23,7 @@ typedef struct Token {
         TK_PERIOD,
         TK_HASH,
         TK_HYPHEN,
+        TK_BACKSLASH,
         TK_END,
         TK_COUNT
     } type;
@@ -74,13 +75,12 @@ next_token(char ** o_s) {
     }
 
     if (*s == '\'' || *s == '"') {
-        tk.start++;
         char started_with = *s;
         while (*++s != '\0') {
             if (*s == started_with && *(s-1) != '\\') {
                 tk.type = TK_STRING;
-                tk.length = s - tk.start;
-                *o_s = s + 1;
+                tk.length = ++s - tk.start;
+                *o_s = s;
                 return tk;
             }
         }
@@ -106,6 +106,7 @@ next_token(char ** o_s) {
     case '.': tk.type = TK_PERIOD; break;
     case '#': tk.type = TK_HASH; break;
     case '-': tk.type = TK_HYPHEN; break;
+    case '\\': tk.type = TK_BACKSLASH; break;
 
     case EOF: tk.type = TK_END; break;
 
