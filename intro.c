@@ -843,6 +843,10 @@ int
 main(int argc, char ** argv) {
     char * output_filename;
     char * buffer = run_preprocessor(argc, argv, &output_filename); // maybe buffer should be global since it gets passed around so much?
+    if (!buffer) {
+        fputs("Preprocessor failed.\n", stderr);
+        return -1;
+    }
     char * s = buffer;
 
     sh_new_arena(known_types);
@@ -1139,6 +1143,8 @@ main(int argc, char ** argv) {
 // TODO LAND
 
 /*
+Handle `struct Someting;`
+
 Refactoring
     The type system is kinda sloppy (KnownType shouldn't be a thing)
     There is a lot of duplicate code

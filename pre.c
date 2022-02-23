@@ -54,6 +54,7 @@ static Define * defines = NULL;
 typedef struct {
     size_t offset;
     char * filename;
+    int file_offset;
     int line;
 } FileLoc;
 FileLoc * file_location_lookup = NULL;
@@ -68,7 +69,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
     strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
     strputf(p_s, "%s%.*s" WHITE, highlight_color, (int)(highlight_end - highlight_start), highlight_start);
     strputf(p_s, "%.*s", (int)(segment_end - highlight_end), highlight_end);
-    for (int i=0; i < (highlight_start - segment_start); i++) arrput(*p_s, ' ');
+    for (int i=0; i < highlight_start - segment_start; i++) arrput(*p_s, ' ');
     for (int i=0; i < highlight_end - highlight_start; i++) arrput(*p_s, '~');
     arrput(*p_s, '\n');
     strputnull(*p_s);
@@ -98,6 +99,7 @@ get_line(char * begin, char * pos, char ** o_start_of_line, char ** o_filename) 
     return line_num;
 }
 
+// TODO: open original file instead of buffer for parse_error
 static void
 parse_error_internal(char * buffer, Token * tk, char * message) {
     char * start_of_line;
@@ -147,60 +149,120 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
     return result;
 }
 
-int
-parse_expression(char ** o_s) { // TODO
-    Token tk = next_token(o_s);
-    if (tk.length == 1 && *tk.start == '1') {
-        return 1;
-    } else {
-        return 0;
-    }
+static void
+ignore_section(char ** buffer, char * filename, char * file_buffer, char ** o_paste_begin, char * ignore_begin, char * end) {
+    // save last chunk location
+    FileLoc loc;
+    loc.offset = arrlen(*buffer);
+    loc.filename = filename;
+    loc.file_offset = *o_paste_begin - file_buffer;
+    arrput(file_location_lookup, loc);
+
+    // insert last chunk into result buffer
+    strputf(buffer, "%.*s", (int)(ignore_begin - *o_paste_begin), *o_paste_begin);
+    *o_paste_begin = end;
 }
 
 char *
-get_simple_macro_definition(char ** o_s) {
-    char * result = NULL;
-    bool new_line_ok = false;
+strip_comments(char ** o_s) {
+    char * content = NULL;
+    bool last_was_identifier = false;
     while (1) {
-        char * last_loc = *o_s;
-        Token tk = next_token(o_s);
-        char * _last_line;
-        int new_lines = count_newlines_in_range(last_loc, *o_s, &_last_line);
-        if ((new_lines && !new_line_ok) || tk.type == TK_END) {
-            *o_s = strchr(last_loc, '\n');
+        Token tk = pre_next_token(o_s);
+        if (tk.type == TK_NEWLINE) {
+            *o_s = tk.start;
             break;
-        }
-        if (tk.type == TK_BACKSLASH) {
-            new_line_ok = true;
+        } else if (tk.type == TK_COMMENT) {
             continue;
+        } else {
+            if (last_was_identifier && tk.type == TK_IDENTIFIER) {
+                arrput(content, ' ');
+            }
+            last_was_identifier = tk.type == TK_IDENTIFIER;
+            strputf(&content, "%.*s", (int)(tk.length), tk.start);
         }
-
-        strputf(&result, "%.*s ", tk.length, tk.start);
     }
+    return content;
+}
 
-    (void) arrpop(result); // remove last space
-    arrput(result, 0);
-    return result;
+bool
+parse_expression(char * s) {
+    Token tk = next_token(&s);
+    if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "1")) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void
+pre_skip(char ** o_s, bool elif_ok) {
+    int depth = 1;
+    while (1) {
+        Token tk = pre_next_token(o_s);
+        if (tk.length == 1 && tk.start[0] == '#') {
+            tk = pre_next_token(o_s);
+            if (tk.type == TK_IDENTIFIER) {
+                if (tk_equal(&tk, "if")
+                 || tk_equal(&tk, "ifdef")
+                 || tk_equal(&tk, "ifndef"))
+                {
+                    depth++;
+                } else if (tk_equal(&tk, "endif")) {
+                    depth--;
+                } else if (tk_equal(&tk, "else")) {
+                    if (depth == 1) {
+                        while (tk.type != TK_NEWLINE && tk.type != TK_END) {
+                            tk = pre_next_token(o_s);
+                        }
+                        *o_s = tk.start;
+                        return;
+                    }
+                } else if (tk_equal(&tk, "elif")) {
+                    if (elif_ok && depth == 1) {
+                        char * expr = strip_comments(o_s);
+                        bool expr_result = parse_expression(expr);
+                        arrfree(expr);
+                        if (expr_result) {
+                            return;
+                        }
+                    }
+                } else {
+                    goto endif_nextline;
+                }
+            }
+        } else {
+        endif_nextline:
+            while (tk.type != TK_NEWLINE && tk.type != TK_END) {
+                tk = pre_next_token(o_s);
+            }
+            if (depth == 0 || tk.type == TK_END) {
+                *o_s = tk.start;
+                return;
+            }
+        }
+    }
 }
 
 int
-preprocess_filename(char * filename) {
+preprocess_filename(char ** result_buffer, char * filename) {
+    char * file_buffer = NULL;
     size_t file_size;
 
-    char * buffer = NULL;
+    // search for buffer or create it if it doesn't exist
     for (int i=0; i < arrlen(file_buffers); i++) {
         FileBuffer * fb = &file_buffers[i];
         if (strcmp(filename, fb->filename) == 0) {
-            buffer = fb->buffer;
+            file_buffer = fb->buffer;
             file_size = fb->buffer_size;
             break;
         }
     }
-    if (!buffer) {
-        if ((buffer = read_entire_file(filename, &file_size))) {
+    if (!file_buffer) {
+        if ((file_buffer = read_entire_file(filename, &file_size))) {
             FileBuffer new_buf;
             new_buf.filename = filename;
-            new_buf.buffer = buffer;
+            new_buf.buffer = file_buffer;
             new_buf.buffer_size = file_size;
             arrput(file_buffers, new_buf);
         } else {
@@ -208,204 +270,131 @@ preprocess_filename(char * filename) {
         }
     }
 
-    char * buffer_end = buffer + file_size;
-    char * last_to_be = buffer;
-    char * last_paste = buffer;
-    char * s = buffer;
+    char * s = file_buffer;
+    char * chunk_begin = s;
 
-    int line_num = 1;
-    int last_paste_line_num = 1;
-    bool line_is_directive = true;
+    while (1) {
+        char * start_of_line = s;
+        char * inc_filename = NULL;
+        Token tk = pre_next_token(&s);
 
-    // TODO: rewrite if/elif/else system
-    // TODO: open original file instead of buffer for parse_error
-    // TODO: function-like macros
-    //
-    // TODO(bugs):
-    //     comments are included in macros which breaks things
-    //     macro definitions which expand to paranthesis are seen as function-like
-    char * last_token_location = buffer;
-    Token tk;
-    while ((tk = next_token(&s)).type != TK_END) {
-        int lines_passed = count_newlines_in_range(last_token_location, tk.start + tk.length, &last_to_be);
-        last_token_location = tk.start + tk.length;
-        if (lines_passed > 0) {
-            line_is_directive = true;
-            line_num += lines_passed;
-        }
-        if (tk.type == TK_HASH && line_is_directive) {
-            Token tk = next_token(&s);
-            char * inc_filename = NULL;
-            bool paste_last_chunk = arrlast(if_depth);
-            if (tk_equal(&tk, "include")) {
-                if (arrlast(if_depth)) {
-                    tk = next_token(&s);
-                    if (tk.type == TK_STRING) {
-                        inc_filename = copy_and_terminate(tk.start+1, tk.length-2);
-                    } else { // TODO: implement <> includes
-                    }
-                }
-            } else if (tk_equal(&tk, "if")) {
-                arrput(if_depth_prlens, arrlen(if_depth));
-                if (arrlast(if_depth)) {
-                    arrput(if_depth, parse_expression(&s));
-                } else {
-                    arrput(if_depth, false);
-                }
-            } else if (tk_equal(&tk, "define")) {
-                if (arrlast(if_depth)) {
-                    tk = next_token(&s);
-                    if (tk.type != TK_IDENTIFIER) {
-                        preprocess_error(&tk, "Expected identifier.");
-                        exit(1);
-                    }
-                    Define new_def;
-                    // NOTE: compilers warn on redefinitions, but we don't care
-                    char * name = copy_and_terminate(tk.start, tk.length);
-                    new_def.key = name;
-
-                    bool valid = true;
-                    char * after_name = tk.start + tk.length;
-                    tk = next_token(&s);
-                    if (memchr(after_name, '\n', tk.start - after_name) == NULL) {
-                        if (tk.type == TK_L_PARENTHESIS) {
-                            preprocess_warning(&tk, "Function-like macros are currently ignored.");
-                            valid = false;
-                        }
-                        s = after_name;
-                        new_def.str = get_simple_macro_definition(&s);
-                    } else {
-                        s = after_name;
-                        new_def.str = "";
-                    }
-                    if (valid) {
-                        fprintf(stderr, "new definition: %s = \"%s\"\n", new_def.key, new_def.str);
-                        shputs(defines, new_def);
-                    }
-                    free(name);
-                }
-            } else if (tk_equal(&tk, "undef")) {
-                if (arrlast(if_depth)) {
-                    tk = next_token(&s);
-                    char * name = copy_and_terminate(tk.start, tk.length);
-                    (void)shdel(defines, name);
-                    free(name);
-                }
-            } else if (tk_equal(&tk, "ifdef")) {
-                arrput(if_depth_prlens, arrlen(if_depth));
-                if (arrlast(if_depth)) {
-                    tk = next_token(&s);
-                    char * name = copy_and_terminate(tk.start, tk.length);
-                    arrput(if_depth, shgeti(defines, name) >= 0 ? true : false);
-                    free(name);
-                } else {
-                    arrput(if_depth, false);
-                }
-            } else if (tk_equal(&tk, "ifndef")) {
-                arrput(if_depth_prlens, arrlen(if_depth));
-                if (arrlast(if_depth)) {
-                    tk = next_token(&s);
-                    char * name = copy_and_terminate(tk.start, tk.length);
-                    arrput(if_depth, shgeti(defines, name) >= 0 ? false : true);
-                    free(name);
-                } else {
-                    arrput(if_depth, false);
-                }
-            } else if (tk_equal(&tk, "endif")) {
-                if (arrlen(if_depth) > 1) {
-                    int prlen = arrpop(if_depth_prlens);
-                    arrsetlen(if_depth, prlen);
-                } else {
-                    preprocess_error(&tk, "stray #endif.");
-                    exit(1);
-                }
-            } else if (tk_equal(&tk, "else")) {
-                bool take_else = !arrpop(if_depth);
-                if (arrlast(if_depth)) {
-                    arrput(if_depth, take_else);
-                }
-            } else if (tk_equal(&tk, "elif")) {
-                bool take_else = !arrpop(if_depth);
-                if (arrlast(if_depth)) {
-                    arrput(if_depth, take_else);
-                    arrput(if_depth, (take_else && parse_expression(&s)));
-                } else {
-                    arrput(if_depth, false);
-                }
-            } else if (tk_equal(&tk, "error")) {
-                if (arrlast(if_depth)) {
-                    char * message = NULL;
-                    Token error_string = next_token(&s);
-                    if (error_string.type == TK_STRING) {
-                        strputf(&message, "%.*s", error_string.length, error_string.start);
-                        strputnull(message);
-                    } else {
-                        message = "Unspecified error.";
-                    }
-                    preprocess_error(&tk, message);
-                    exit(1);
-                }
+        if (tk.type == TK_END) {
+            ignore_section(result_buffer, filename, file_buffer, &chunk_begin, s, NULL);
+            break;
+        } else if (tk.type == TK_COMMENT) {
+            ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
+        } else if (tk.type == TK_IDENTIFIER) {
+            char terminated [tk.length + 1];
+            memcpy(terminated, tk.start, tk.length);
+            terminated[tk.length] = '\0';
+            int def_index = shgeti(defines, terminated);
+            if (def_index >= 0) {
+                ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
+                strputf(result_buffer, "%s", defines[def_index].str);
+            }
+        } else if (*tk.start == '#') {
+            Token directive = pre_next_token(&s); // TODO: handle comments here
+            if (directive.type != TK_IDENTIFIER) {
+                goto unknown_directive;
             }
 
-            if (paste_last_chunk && last_to_be - last_paste > 0) {
-                FileLoc loc;
-                loc.offset = arrlen(result_buffer);
-                loc.filename = filename;
-                loc.line = last_paste_line_num;
+            if (tk_equal(&directive, "include")) {
+                Token next = pre_next_token(&s);
+                if (next.type == TK_STRING) {
+                    // defer this till after the last section gets pasted
+                    inc_filename = copy_and_terminate(next.start + 1, next.length - 2);
+                } else if (*next.start == '<') { // TODO
+                    // ignored for now
+                } else {
+                    // TODO(print_error)
+                    puts("Error: unexpected token in include directive.");
+                    return -1;
+                }
+            } else if (tk_equal(&directive, "define")) {
+                // TODO: function-like macros
+                Token macro_name = pre_next_token(&s);
+                if (macro_name.type != TK_IDENTIFIER) {
+                    // TODO(print_error) Expected identifier
+                    return -1;
+                }
 
-                strputf(&result_buffer, "%.*s", (int)(last_to_be - last_paste), last_paste);
+                if (tk_equal(&macro_name, "I")) {
+                    goto pre_nextline;
+                }
 
-                arrput(file_location_lookup, loc);
+                bool is_func_like = *s == '(';
+                if (is_func_like) {
+                    s = strchr(s, ')');
+                    if (s == NULL) {
+                        // TODO(print_error)
+                        return -1;
+                    }
+                    s++;
+                }
+
+                char * macro_content = strip_comments(&s);
+
+                // create macro
+                Define def;
+                def.key = copy_and_terminate(macro_name.start, macro_name.length);
+                def.str = macro_content;
+                shputs(defines, def);
+            } else if (tk_equal(&directive, "undef")) {
+                Token def = pre_next_token(&s);
+                char * iden = copy_and_terminate(def.start, def.length);
+                (void) shdel(defines, iden);
+                free(iden);
+            } else if (tk_equal(&directive, "if")) {
+                char * expr = strip_comments(&s);
+                bool expr_result = parse_expression(expr);
+                arrfree(expr);
+                if (!expr_result) {
+                    pre_skip(&s, true);
+                }
+            } else if (tk_equal(&directive, "ifdef")) {
+                tk = pre_next_token(&s);
+                char * name = copy_and_terminate(tk.start, tk.length);
+                int def_index = shgeti(defines, name);
+                free(name);
+                if (def_index < 0) {
+                    pre_skip(&s, true);
+                }
+            } else if (tk_equal(&directive, "ifndef")) {
+                tk = pre_next_token(&s);
+                char * name = copy_and_terminate(tk.start, tk.length);
+                int def_index = shgeti(defines, name);
+                free(name);
+                if (def_index >= 0) {
+                    pre_skip(&s, true);
+                }
+            } else if (tk_equal(&directive, "elif")) {
+                pre_skip(&s, false);
+            } else if (tk_equal(&directive, "else")) {
+            } else if (tk_equal(&directive, "endif")) {
+            } else if (tk_equal(&directive, "error")) {
+                preprocess_message_internal(start_of_line, filename, 0, &directive, "User error", 0); // TODO(line)
+                return -1;
+            } else if (tk_equal(&directive, "pragma")) {
+                // TODO: pragma once
+            } else {
+            unknown_directive:
+                // TODO: line number
+                preprocess_message_internal(start_of_line, filename, 0, &directive, "Unknown directive", 0); // TODO(line)
+                return -1;
             }
+
+        pre_nextline:
+            // find next line
+            while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
+
+            ignore_section(result_buffer, filename, file_buffer, &chunk_begin, start_of_line, s);
 
             if (inc_filename) {
-                int result = preprocess_filename(inc_filename);
-                if (result < 0) {
-                    preprocess_error(&tk, "Cannot read file.");
-                    exit(1);
-                }
-            }
-
-            while (1) {
-                while (*s != '\n' && *s != '\0') s++;
-                if (*s == '\0') break;
-                char * q = s;
-                while (is_space(*--q));
-                if (*q != '\\') break;
-                s++;
-            }
-            last_paste = s + 1;
-            last_to_be = last_paste;
-            last_paste_line_num = line_num + 1;
-        } else {
-            if (!arrlast(if_depth)) continue;
-            line_is_directive = false;
-            if (tk.type == TK_IDENTIFIER) {
-                char terminated [tk.length + 1];
-                memcpy(terminated, tk.start, tk.length);
-                terminated[tk.length] = 0;
-
-                int def_index = shgeti(defines, terminated);
-                if (def_index >= 0) {
-                    Define def = defines[def_index];
-                    strputf(&result_buffer, "%.*s", (int)(tk.start - last_paste), last_paste);
-                    strputf(&result_buffer, "%s", def.str);
-                    last_paste = tk.start + tk.length;
-                    last_to_be = last_paste;
-                    last_paste_line_num = line_num + 1;
-                }
+                int error = preprocess_filename(result_buffer, inc_filename);
+                if (error) return error;
             }
         }
     }
-    // @copy from above
-    FileLoc loc;
-    loc.offset = arrlen(result_buffer);
-    loc.filename = filename;
-    loc.line = last_paste_line_num;
-
-    strputf(&result_buffer, "%.*s", (int)(buffer_end - last_paste), last_paste);
-
-    arrput(file_location_lookup, loc);
 
     return 0;
 }
@@ -467,7 +456,9 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
 
     arrput(if_depth, true);
 
-    preprocess_filename(filename);
+    int error = preprocess_filename(&result_buffer, filename);
+    if (error) return NULL;
+
     strputnull(result_buffer);
 
     arrfree(if_depth);
