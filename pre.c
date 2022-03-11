@@ -42,6 +42,7 @@ typedef struct {
     char * filename;
     char * buffer;
     size_t buffer_size;
+    bool once;
 } FileBuffer;
 static FileBuffer * file_buffers = NULL;
 
@@ -249,12 +250,17 @@ preprocess_filename(char ** result_buffer, char * filename) {
     char * file_buffer = NULL;
     size_t file_size;
 
+    FileBuffer * buf_for_this_file = NULL;
     // search for buffer or create it if it doesn't exist
     for (int i=0; i < arrlen(file_buffers); i++) {
         FileBuffer * fb = &file_buffers[i];
         if (strcmp(filename, fb->filename) == 0) {
+            if (fb->once) {
+                return 0;
+            }
             file_buffer = fb->buffer;
             file_size = fb->buffer_size;
+            buf_for_this_file = fb;
             break;
         }
     }
@@ -265,8 +271,9 @@ preprocess_filename(char ** result_buffer, char * filename) {
             new_buf.buffer = file_buffer;
             new_buf.buffer_size = file_size;
             arrput(file_buffers, new_buf);
+            buf_for_this_file = &arrlast(file_buffers);
         } else {
-            return -1;
+            return -1; // TODO(print_error)
         }
     }
 
@@ -375,7 +382,10 @@ preprocess_filename(char ** result_buffer, char * filename) {
                 preprocess_message_internal(start_of_line, filename, 0, &directive, "User error", 0); // TODO(line)
                 return -1;
             } else if (tk_equal(&directive, "pragma")) {
-                // TODO: pragma once
+                tk = pre_next_token(&s);
+                if (tk_equal(&tk, "once")) {
+                    buf_for_this_file->once = true;
+                }
             } else {
             unknown_directive:
                 // TODO: line number
