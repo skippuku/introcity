@@ -1,13 +1,12 @@
-
 CC = gcc -std=gnu99
 
-default: db_test
+default: test.h.intro
 
-store.h.intro: store.h db_intro
-	./db_intro store.h
+test.h.intro: db_intro test.h
+	./db_intro test.h
 
-db_intro: intro.c intro.h lexer.c pre.c attribute.c stb_ds.h
-	$(CC) intro.c -Wall -g -o $@
+db_intro: intro.c intro.h parse.c lexer.c pre.c attribute.c stb_ds.h
+	$(CC) intro.c -Wall -g -fdiagnostics-color=always -o $@
 
 db_test: test.c store.h.intro intro.h basic.h
 	$(CC) test.c -g -o $@

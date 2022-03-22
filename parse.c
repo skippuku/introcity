@@ -238,9 +238,27 @@ parse_enum(ParseContext * ctx, char ** o_s) {
 }
 
 static int
-parse_typedef(ParseContext * ctx, char ** o_s) {
-    parse_error(ctx, NULL, "typedef not supported right now.");
-    return -1;
+parse_typedef(ParseContext * ctx, char ** o_s) { // TODO: store base somehow
+    IntroType * base = parse_base_type(ctx, o_s);
+    if (!base) return 1;
+
+    char * name = NULL;
+    IntroType * type = parse_declaration(ctx, base, o_s, &name);
+    if (!type) return 1;
+    if (name == NULL) {
+        parse_error(ctx, NULL, "typedef has no name."); // TODO: token
+        return 1;
+    }
+
+    IntroType new_type = *type;
+    new_type.name = name;
+    if (shgeti(ctx->type_map, name) >= 0) {
+        parse_error(ctx, NULL, "type is redefined."); // TODO: token
+        return 1;
+    }
+    store_type(ctx, &new_type);
+
+    return 0;
 }
 
 static IntroType *
