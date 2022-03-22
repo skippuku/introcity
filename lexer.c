@@ -1,3 +1,6 @@
+#ifndef LEXER_C
+#define LEXER_C
+
 #include <stdbool.h>
 #include <stdio.h> // EOF
 #include <stdint.h>
@@ -230,3 +233,19 @@ find_closing(char * s) {
     }
     return NULL;
 }
+
+bool
+tk_equal(Token * tk, const char * str) {
+    size_t len = strlen(str);
+    return (tk->length == len && memcmp(tk->start, str, len) == 0);
+}
+
+char *
+copy_and_terminate(char * str, int length) {
+    char * result = malloc(length + 1);
+    memcpy(result, str, length);
+    result[length] = '\0';
+    return result;
+}
+
+#endif

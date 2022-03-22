@@ -1,3 +1,6 @@
+#include "util.c"
+#include "lexer.c"
+
 static size_t
 fsize(FILE * file) {
     long location = ftell(file);
@@ -22,20 +25,6 @@ read_entire_file(const char * filename, size_t * o_size) {
     buffer[file_size] = '\0';
     if (o_size) *o_size = file_size;
     return buffer;
-}
-
-static bool
-tk_equal(Token * tk, const char * str) {
-    size_t len = strlen(str);
-    return (tk->length == len && memcmp(tk->start, str, len) == 0);
-}
-
-static char *
-copy_and_terminate(char * str, int length) {
-    char * result = malloc(length + 1);
-    memcpy(result, str, length);
-    result[length] = '\0';
-    return result;
 }
 
 typedef struct {
