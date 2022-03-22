@@ -2,6 +2,7 @@
 #define INTRO_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifndef __INTROCITY__
 #define I(...)
@@ -52,15 +53,42 @@ struct IntroType {
     };
 };
 
+typedef enum IntroAttribute {
+    INTRO_ATTR_ID      = -16,
+    INTRO_ATTR_DEFAULT = -15,
+    INTRO_ATTR_LENGTH  = -14,
+    INTRO_ATTR_SWITCH  = -13,
+    INTRO_ATTR_TYPE    = -12,
+    INTRO_ATTR_NOTE    = -11,
+} IntroAttribute;
+
+typedef struct IntroAttributeData {
+    int32_t type;
+    enum {
+        INTRO_V_NONE,
+        INTRO_V_INT,
+        INTRO_V_FLOAT,
+        INTRO_V_VALUE,
+        INTRO_V_CONDITION,
+        INTRO_V_MEMBER,
+        INTRO_V_STRING,
+    } value_type;
+    union {
+        int32_t i;
+        float f;
+    } v;
+} IntroAttributeData;
+
 typedef struct IntroMember {
     char * name;
     IntroType * type;
     uint32_t offset;
+    uint32_t count_attributes;
+    const IntroAttributeData * attributes;
 } IntroMember;
 
 struct IntroStruct {
-    char * name;
-    uint32_t count;
+    uint32_t count_members;
     bool is_union;
     IntroMember members [];
 };
@@ -71,8 +99,7 @@ typedef struct IntroEnumValue {
 } IntroEnumValue;
 
 struct IntroEnum {
-    char * name;
-    uint32_t count;
+    uint32_t count_members;
     bool is_flags;
     bool is_sequential;
     IntroEnumValue members [];
@@ -83,4 +110,4 @@ typedef struct IntroInfo {
     IntroType * types;
 } IntroInfo;
 
-#endif
+#endif // INTRO_H

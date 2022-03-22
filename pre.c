@@ -1,32 +1,6 @@
 #include "util.c"
 #include "lexer.c"
 
-static size_t
-fsize(FILE * file) {
-    long location = ftell(file);
-    fseek(file, 0, SEEK_END);
-    size_t result = ftell(file);
-    fseek(file, location, SEEK_SET);
-    return result;
-}
-
-static char *
-read_entire_file(const char * filename, size_t * o_size) {
-    FILE * file = fopen(filename, "rb");
-    if (!file) return NULL;
-    size_t file_size = fsize(file);
-    char * buffer = malloc(file_size + 1);
-    if (fread(buffer, file_size, 1, file) != 1) {
-        fclose(file);
-        free(buffer);
-        return NULL;
-    }
-    fclose(file);
-    buffer[file_size] = '\0';
-    if (o_size) *o_size = file_size;
-    return buffer;
-}
-
 typedef struct {
     char * filename;
     char * buffer;
@@ -106,7 +80,7 @@ parse_error_internal(char * buffer, Token * tk, char * message) {
     fputs(s, stderr);
     arrfree(s);
 }
-#define parse_error(tk,message) parse_error_internal(buffer, tk, message)
+//#define parse_error(tk,message) parse_error_internal(buffer, tk, message)
 
 static void
 preprocess_message_internal(char * start_of_line, char * filename, int line, Token * p_tk, char * message, int message_type) {

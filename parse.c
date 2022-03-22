@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 
@@ -10,23 +9,63 @@ typedef struct {
     char * buffer;
     struct{char * key; IntroType * value;} * type_map;
     struct{char * key;} * member_map;
+    IntroType ** nameless_types;
 } ParseContext;
+
+void
+parse_error(ParseContext * ctx, Token * tk, char * message) { // TODO
+    (void) ctx;
+    (void) tk;
+    fprintf(stderr, "Error: %s\n", message);
+}
+
+#include "attribute.c"
 
 static IntroType *
 store_type(ParseContext * ctx, const IntroType * type) {
     IntroType * stored = malloc(sizeof(*stored));
     memcpy(stored, type, sizeof(*stored));
-    shput(ctx->type_map, stored);
-    ptrdiff_t index = shtemp(ctx->type_map);
-    stored.name = ctx->type_map[index].key;
-    return ctx->type_map[index].value;
+    if (type->name) {
+        shput(ctx->type_map, stored->name, stored);
+        ptrdiff_t index = shtemp(ctx->type_map);
+        stored->name = ctx->type_map[index].key;
+    } else {
+        arrput(ctx->nameless_types, stored);
+    }
+    return stored;
 }
 
-void parse_error(ParseContext * ctx, Token * tk, char * message) { // TODO
+static IntroType * parse_base_type(ParseContext *, char **);
+static IntroType * parse_declaration(ParseContext *, IntroType *, char **, char **);
+
+typedef struct {
+    char * location;
+    int32_t i;
+    Token tk;
+} AttributeSpecifier;
+
+int
+maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk, AttributeSpecifier ** p_attribute_specifiers) {
+    if (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
+        Token paren = next_token(o_s);
+        if (paren.type != TK_L_PARENTHESIS) {
+            parse_error(ctx, &paren, "Expected '('.");
+            return 1;
+        }
+        AttributeSpecifier spec;
+        spec.location = paren.start;
+        spec.i = i;
+        arrput(*p_attribute_specifiers, spec);
+        *o_s = find_closing(paren.start) + 1;
+        *o_tk = next_token(o_s);
+    }
+    return 0;
 }
 
-IntroType * parse_base_type(ParseContext *, char **);
-IntroType * parse_declaration(ParseContext *, char **, char **);
+static bool
+is_ignored(Token * tk) {
+    return tk_equal(tk, "const") || tk_equal(tk, "static");
+}
 
 static int
 parse_struct(ParseContext * ctx, char ** o_s) {
@@ -50,14 +89,14 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
     if (tk.type != TK_L_BRACE) {
         if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
-        parse_error(&tk, "Expected '{'.");
+        parse_error(ctx, &tk, "Expected '{'.");
         return -1;
     }
 
     IntroMember * members = NULL;
     AttributeSpecifier * attribute_specifiers = NULL;
-    int struct_index = arrlen(structs);
-    arrput(structs, NULL);
+    //int struct_index = arrlen(structs);
+    //arrput(structs, NULL);
     while (1) {
         IntroType * base_type = parse_base_type(ctx, o_s);
         if (!base_type) {
@@ -71,8 +110,8 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         Token tk = next_token(o_s);
         if (tk.type == TK_SEMICOLON) {
-            if (type->category == INTRO_STRUCT) {
-                IntroStruct * s = type->i_struct;
+            if (base_type->category == INTRO_STRUCT) {
+                IntroStruct * s = base_type->i_struct;
                 for (int i=0; i < s->count_members; i++) {
                     arrput(members, s->members[i]);
                 }
@@ -83,7 +122,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 #endif
                 continue;
             } else {
-                parse_error(&tk, "Struct member has no name or type is unknown.");
+                parse_error(ctx, &tk, "Struct member has no name or type is unknown.");
                 return 1;
             }
         } else {
@@ -91,11 +130,11 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             while (1) {
                 IntroMember member = {0};
 
-                IntroType * type = parse_declaration(buffer, o_s, &member.name);
+                IntroType * type = parse_declaration(ctx, base_type, o_s, &member.name);
                 if (!type) return 1;
 
                 if (type->category == INTRO_UNKNOWN) {
-                    parse_error(&decl.type_tk, "Unknown type.");
+                    //parse_error(ctx, &decl.type_tk, "Unknown type."); // TODO
                     return 1;
                 }
 
@@ -110,7 +149,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 #endif
 
                 tk = next_token(o_s);
-                int error = maybe_expect_attribute(buffer, o_s, arrlen(members), &tk, &attribute_specifiers);
+                int error = maybe_expect_attribute(ctx, o_s, arrlen(members), &tk, &attribute_specifiers);
                 if (error) return error;
 
                 arrput(members, member);
@@ -127,8 +166,8 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     }
 
     IntroStruct * result = malloc(sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
-    result.count_members = arrlen(members);
-    result.is_union = is_union;
+    result->count_members = arrlen(members);
+    result->is_union = is_union;
     memcpy(result->members, members, sizeof(IntroMember) * arrlen(members));
     arrfree(members);
 
@@ -148,7 +187,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         type.category = INTRO_STRUCT;
         type.i_struct = result;
         
-        shput(ctx->type_map, &type);
+        store_type(ctx, &type);
         arrfree(struct_type_name);
 #if 0 // TODO
         if (prev != NULL) {
@@ -160,7 +199,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 }
                 arrfree(prev->forward_list);
             } else {
-                parse_error(&name_tk, "Redefinition of type.");
+                parse_error(ctx, &name_tk, "Redefinition of type.");
                 return 1;
             }
         }
@@ -174,7 +213,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         for (int i=0; i < arrlen(attribute_specifiers); i++) {
             int member_index = attribute_specifiers[i].i;
             char * location = attribute_specifiers[i].location;
-            int error = parse_attributes(buffer, location, result, member_index, &d, &count);
+            int error = parse_attributes(ctx, location, result, member_index, &d, &count);
             if (error) return error;
             result->members[member_index].attributes = d;
             result->members[member_index].count_attributes = count;
@@ -182,10 +221,24 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrfree(attribute_specifiers);
     }
 
+#if 0
     structs[struct_index] = result;
     last_struct_parsed_index = struct_index;
+#endif
 
     return 0;
+}
+
+static int
+parse_enum(ParseContext * ctx, char ** o_s) {
+    parse_error(ctx, NULL, "enum not supported right now.");
+    return -1;
+}
+
+static int
+parse_typedef(ParseContext * ctx, char ** o_s) {
+    parse_error(ctx, NULL, "typedef not supported right now.");
+    return -1;
 }
 
 static IntroType *
@@ -221,7 +274,7 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
             *o_s = first.start;
             error = parse_struct(ctx, o_s);
         } else {
-            error = parse_enum(buffer, o_s);
+            error = parse_enum(ctx, o_s);
         }
         if (error == 2) {
             *o_s = after_keyword;
@@ -231,7 +284,8 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
             return NULL;
         } else {
             result.is_nested = true; // TODO: does this matter?
-            return arrlast(ctx->types);
+            ptrdiff_t last_index = shlen(ctx->type_map) - 1;
+            return ctx->type_map[last_index].value;
         }
     } else {
         Token tk, ltk = first;
@@ -260,7 +314,7 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
                     known_type_name = "long long";
                     tk = tk2;
                 } else if (tk_equal(&tk2, "double")) {
-                    parse_error(&tk2, "long double is not supported.");
+                    parse_error(ctx, &tk2, "long double is not supported.");
                     return NULL;
                 } else {
                     known_type_name = "long";
@@ -288,7 +342,7 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
                 strputf(&type_name, " int");
                 ltk = tk;
             }
-            if (type.category & 0x0f == 0) {
+            if ((type.category & 0x0f) == 0) {
                 type.category |= 0x04;
             }
         }
@@ -310,18 +364,97 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
 }
 
 static IntroType *
-parse_declaration(ParseContext * ctx, char ** o_s, char ** o_name) {
+parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, char ** o_name) {
+    int32_t * indirection = NULL;
+    int32_t * temp = NULL;
+    char * paren;
+
+    const uint32_t POINTER = -1;
+    Token tk;
+    char * end = *o_s;
+    do {
+        paren = NULL;
+
+        int pointer_level = 0;
+        while ((tk = next_token(o_s)).type == TK_STAR) {
+            pointer_level += 1;
+        }
+
+        if (tk.type == TK_L_PARENTHESIS) {
+            paren = tk.start + 1;
+            *o_s = find_closing(tk.start) + 1;
+            tk = next_token(o_s);
+        }
+
+        if (tk.type == TK_IDENTIFIER) {
+            // TODO: leak?
+            *o_name = copy_and_terminate(tk.start, tk.length);
+            tk = next_token(o_s);
+        }
+
+        arrsetlen(temp, 0);
+        while (tk.type == TK_L_BRACKET) {
+            tk = next_token(o_s);
+            if (tk.type == TK_IDENTIFIER) {
+                long num = strtol(tk.start, NULL, 0);
+                if (num <= 0) {
+                    parse_error(ctx, &tk, "Invalid array size.");
+                    return NULL;
+                }
+                arrput(temp, (uint32_t)num);
+                tk = next_token(o_s);
+                if (tk.type != TK_R_BRACKET) {
+                    parse_error(ctx, &tk, "Invalid symbol. Expected closing bracket ']'.");
+                    return NULL;
+                }
+            } else if (tk.type == TK_R_BRACKET) {
+                arrput(temp, 0);
+            } else {
+                parse_error(ctx, &tk, "Invalid symbol. Expected array size or closing bracket ']'.");
+                return NULL;
+            }
+            tk = next_token(o_s);
+        }
+
+        if (tk.start > end) end = tk.start;
+
+        for (int i=0; i < pointer_level; i++) {
+            arrput(indirection, POINTER);
+        }
+        for (int i = arrlen(temp) - 1; i >= 0; i--) {
+            arrput(indirection, temp[i]);
+        }
+    } while ((*o_s = paren) != NULL);
+
+    arrfree(temp);
+    
+    IntroType * last_type = base_type;
+    for (int i=0; i < arrlen(indirection); i++) {
+        uint32_t it = indirection[i];
+        IntroType new_type = {0};
+        new_type.parent = last_type;
+        if (it == POINTER) {
+            new_type.category = INTRO_POINTER;
+        } else {
+            new_type.category = INTRO_ARRAY;
+            new_type.array_size = it;
+        }
+        last_type = store_type(ctx, &new_type);
+    }
+
+    *o_s = end;
+    return last_type;
 }
 
 int
 parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
-    ParseContext ctx = malloc(sizeof(ParseContext));
+    ParseContext * ctx = malloc(sizeof(ParseContext));
     memset(ctx, 0, sizeof(*ctx));
 
     sh_new_arena(ctx->type_map);
     sh_new_arena(ctx->member_map);
 
-    static const IntroStruct known_types [] = {
+    static const IntroType known_types [] = {
         {"void",     NULL, INTRO_UNKNOWN},
         {"uint8_t",  NULL, INTRO_U8 },
         {"uint16_t", NULL, INTRO_U16},

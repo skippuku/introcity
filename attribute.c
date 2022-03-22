@@ -24,7 +24,7 @@ create_initial_attributes() {
 }
 
 int
-parse_attribute_register(char * buffer, char * s, int type, Token * type_tk) {
+parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk) {
     const struct { char * key; int value_type; } value_type_lookup [] = {
         {"none",      INTRO_V_NONE},
         {"int",       INTRO_V_INT},
@@ -37,13 +37,13 @@ parse_attribute_register(char * buffer, char * s, int type, Token * type_tk) {
 
     Token tk0 = next_token(&s), tk1;
     if (tk0.type != TK_L_PARENTHESIS) {
-        parse_error(&tk0, "Expected '('.");
+        parse_error(ctx, &tk0, "Expected '('.");
         return 1;
     }
 
     tk0 = next_token(&s);
     if (tk0.type != TK_IDENTIFIER) {
-        parse_error(&tk0, "Expected identifier.");
+        parse_error(ctx, &tk0, "Expected identifier.");
         return 1;
     }
 
@@ -62,7 +62,7 @@ parse_attribute_register(char * buffer, char * s, int type, Token * type_tk) {
             }
         }
         if (!matched) {
-            parse_error(&tk0, "Unknown attribute value type.");
+            parse_error(ctx, &tk0, "Unknown attribute value type.");
             return 1;
         }
         name = copy_and_terminate(tk1.start, tk1.length);
@@ -71,13 +71,13 @@ parse_attribute_register(char * buffer, char * s, int type, Token * type_tk) {
         name = copy_and_terminate(tk0.start, tk0.length);
         name_ref = &tk0;
     } else {
-        parse_error(&tk1, "Expected identifier or ')'.");
+        parse_error(ctx, &tk1, "Expected identifier or ')'.");
         return 1;
     }
 
     int map_index = shgeti(attribute_map, name);
     if (map_index >= 0) {
-        parse_error(name_ref, "Attribute name is reserved.");
+        parse_error(ctx, name_ref, "Attribute name is reserved.");
         return 1;
     }
 
@@ -86,7 +86,7 @@ parse_attribute_register(char * buffer, char * s, int type, Token * type_tk) {
             char * msg = NULL;
             strputf(&msg, "Attribute type (%i) is reserved by attribute '%s'.", type, attribute_map[i].key);
             strputnull(msg);
-            parse_error(type_tk, msg);
+            parse_error(ctx, type_tk, msg);
             arrfree(msg);
             return 2;
         }
@@ -116,7 +116,7 @@ check_id_valid(const IntroStruct * i_struct, int id) {
 }
 
 int
-parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_index, IntroAttributeData * o_result) {
+parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int member_index, IntroAttributeData * o_result) {
     IntroAttributeData data = {0};
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
@@ -124,7 +124,7 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
         int map_index = shgeti(attribute_map, terminated_name);
         free(terminated_name);
         if (map_index < 0) {
-            parse_error(&tk, "No such attribute.");
+            parse_error(ctx, &tk, "No such attribute.");
             return 1;
         }
 
@@ -135,8 +135,8 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
         case INTRO_V_NONE: {
             if (data.type == INTRO_ATTR_TYPE) {
                 IntroType * type = i_struct->members[member_index].type;
-                if (type->indirection_level != 0 || strcmp(type->name, "IntroType") != 0) {
-                    parse_error(&tk, "Member must be of type 'IntroType' to have type attribute.");
+                if (!(type->name && strcmp(type->name, "IntroType") == 0)) {
+                    parse_error(ctx, &tk, "Member must be of type 'IntroType' to have type attribute.");
                     return 1;
                 }
             }
@@ -147,12 +147,12 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
             tk = next_token(o_s);
             long result = strtol(tk.start, o_s, 0);
             if (*o_s == tk.start) {
-                parse_error(&tk, "Invalid integer.");
+                parse_error(ctx, &tk, "Invalid integer.");
                 return 1;
             }
             data.v.i = (int32_t)result;
             if (data.type == INTRO_ATTR_ID && !check_id_valid(i_struct, data.v.i)) {
-                parse_error(&tk, "This ID is reserved.");
+                parse_error(ctx, &tk, "This ID is reserved.");
                 return 1;
             }
         } break;
@@ -161,7 +161,7 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
             tk = next_token(o_s);
             float result = strtof(tk.start, o_s);
             if (*o_s == tk.start) {
-                parse_error(&tk, "Invalid floating point number.");
+                parse_error(ctx, &tk, "Invalid floating point number.");
                 return 1;
             }
             data.v.f = result;
@@ -170,7 +170,7 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
         case INTRO_V_STRING: {
             tk = next_token(o_s);
             if (tk.type != TK_STRING) {
-                parse_error(&tk, "Expected string.");
+                parse_error(ctx, &tk, "Expected string.");
                 return 1;
             }
             char * result = copy_and_terminate(tk.start+1, tk.length-2); // TODO: parse escape codes
@@ -180,14 +180,14 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
         } break;
 
         case INTRO_V_VALUE: {
-            parse_error(&tk, "Value attributes are not currently supported.");
+            parse_error(ctx, &tk, "Value attributes are not currently supported.");
             return 1;
         } break;
 
         case INTRO_V_MEMBER: {
             tk = next_token(o_s);
             if (tk.type != TK_IDENTIFIER || is_digit(tk.start[0])) {
-                parse_error(&tk, "Expected member name.");
+                parse_error(ctx, &tk, "Expected member name.");
                 return 1;
             }
             bool success = false;
@@ -195,8 +195,9 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
                 if (tk_equal(&tk, i_struct->members[mi].name)) {
                     if (data.type == INTRO_ATTR_LENGTH) {
                         IntroType * type = i_struct->members[mi].type;
-                        if (type->indirection_level > 0 || (type->category != INTRO_SIGNED && type->category != INTRO_UNSIGNED)) {
-                            parse_error(&tk, "Length defining member must be an integer type.");
+                        uint32_t category_no_size = type->category & 0xff0;
+                        if (category_no_size != INTRO_SIGNED && category_no_size != INTRO_UNSIGNED) {
+                            parse_error(ctx, &tk, "Length defining member must be an integer type.");
                             return 1;
                         }
                     }
@@ -206,13 +207,13 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
                 }
             }
             if (!success) {
-                parse_error(&tk, "No such member.");
+                parse_error(ctx, &tk, "No such member.");
                 return 1;
             }
         } break;
 
         case INTRO_V_CONDITION: {
-            parse_error(&tk, "Condition attributes are not currently supported.");
+            parse_error(ctx, &tk, "Condition attributes are not currently supported.");
             return 1;
         } break;
         }
@@ -223,12 +224,12 @@ parse_attribute(char * buffer, char ** o_s, IntroStruct * i_struct, int member_i
 }
 
 int
-parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_index, IntroAttributeData ** o_result, uint32_t * o_count_attributes) {
+parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int member_index, IntroAttributeData ** o_result, uint32_t * o_count_attributes) {
     IntroAttributeData * attributes = NULL;
 
     Token tk = next_token(&s);
     if (tk.type != TK_L_PARENTHESIS) {
-        parse_error(&tk, "Expected '('.");
+        parse_error(ctx, &tk, "Expected '('.");
         return 1;
     }
     while (1) {
@@ -241,24 +242,24 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
                 // @copy from above
                 long result = strtol(tk.start, &s, 0);
                 if (s == tk.start) {
-                    parse_error(&tk, "Invalid integer.");
+                    parse_error(ctx, &tk, "Invalid integer.");
                     return 1;
                 }
                 data.v.i = (int32_t)result;
                 if (!check_id_valid(i_struct, data.v.i)) {
-                    parse_error(&tk, "This ID is reserved.");
+                    parse_error(ctx, &tk, "This ID is reserved.");
                     return 1;
                 }
             } else {
                 s = tk.start;
-                int error = parse_attribute(buffer, &s, i_struct, member_index, &data);
+                int error = parse_attribute(ctx, &s, i_struct, member_index, &data);
                 if (error) return 1;
             }
             arrput(attributes, data);
         } else if (tk.type == TK_R_PARENTHESIS) {
             break;
         } else {
-            parse_error(&tk, "Invalid symbol.");
+            parse_error(ctx, &tk, "Invalid symbol.");
             return 1;
         }
 
@@ -267,7 +268,7 @@ parse_attributes(char * buffer, char * s, IntroStruct * i_struct, int member_ind
         } else if (tk.type == TK_R_PARENTHESIS) {
             break;
         } else {
-            parse_error(&tk, "Expected ',' or ')'.");
+            parse_error(ctx, &tk, "Expected ',' or ')'.");
             return 1;
         }
     }
