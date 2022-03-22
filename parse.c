@@ -32,6 +32,7 @@ store_type(ParseContext * ctx, const IntroType * type) {
     } else {
         arrput(ctx->nameless_types, stored);
     }
+    assert(stored);
     return stored;
 }
 
@@ -104,6 +105,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             if (tk.type == TK_R_BRACE) {
                 break;
             } else {
+                parse_error(ctx, NULL, "Failed to parse base type.");
                 return 1;
             }
         }
@@ -134,7 +136,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 if (!type) return 1;
 
                 if (type->category == INTRO_UNKNOWN) {
-                    //parse_error(ctx, &decl.type_tk, "Unknown type."); // TODO
+                    parse_error(ctx, NULL, "Unknown type."); // TODO: token
                     return 1;
                 }
 
@@ -246,19 +248,18 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
     IntroType type = {0};
     char * type_name = NULL;
 
-    struct { // TODO: not sure what to do with this
-        bool is_nested;
-    } result = {0};
-
     Token first;
     do {
         first = next_token(o_s);
     } while (first.type == TK_IDENTIFIER && is_ignored(&first));
     if (first.type != TK_IDENTIFIER) {
-        // TODO(print error)
+        *o_s = first.start;
         return NULL;
     }
 
+    struct { // TODO: not sure what to do with this
+        bool is_nested;
+    } result = {0};
     Token error_tk = {0};
     error_tk.start = first.start;
     error_tk.type = TK_IDENTIFIER;
@@ -295,55 +296,52 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
             type.category = INTRO_SIGNED;
         }
 
-        if (type.category != INTRO_UNKNOWN) {
+        if (type.category) {
             strputf(&type_name, "%.*s", first.length, first.start);
             tk = next_token(o_s);
         } else {
             tk = first;
         }
 
-        char * known_type_name = NULL;
-        bool can_be_followed_by_int = true;
-        if (type.category == INTRO_UNKNOWN) {
-            can_be_followed_by_int = false;
-            strputf(&type_name, "%.*s", tk.length, tk.start);
-        } else {
-            if (tk_equal(&tk, "long")) {
-                Token tk2 = next_token(o_s);
-                if (tk_equal(&tk2, "long")) {
-                    known_type_name = "long long";
-                    tk = tk2;
-                } else if (tk_equal(&tk2, "double")) {
-                    parse_error(ctx, &tk2, "long double is not supported.");
-                    return NULL;
-                } else {
-                    known_type_name = "long";
-                }
-                type.category |= 0x08;
-            } else if (tk_equal(&tk, "short")) {
-                known_type_name = "short";
-                type.category |= 0x02;
-            } else if (tk_equal(&tk, "char")) {
-                known_type_name = "char";
-                type.category |= 0x01;
+        bool can_be_followed_by_int = false;
+        if (tk_equal(&tk, "long")) {
+            Token tk2 = next_token(o_s);
+            if (tk_equal(&tk2, "long")) {
+                tk = tk2;
+            } else if (tk_equal(&tk2, "double")) {
+                parse_error(ctx, &tk2, "long double is not supported.");
+                return NULL;
             }
+            type.category |= 0x08;
+            can_be_followed_by_int = true;
+        } else if (tk_equal(&tk, "short")) {
+            type.category |= 0x02;
+            can_be_followed_by_int = true;
+        } else if (tk_equal(&tk, "char")) {
+            type.category |= 0x01;
+        } else if (tk_equal(&tk, "int")) {
+            type.category |= 0x04;
+        }
+
+        if ((type.category & 0x0f)) {
+            if (arrlen(type_name) > 0) {
+                strputf(&type_name, " ");
+            }
+            strputf(&type_name, "%.*s", tk.length, tk.start);
+            ltk = tk;
+            tk = next_token(o_s);
+            if ((type.category & 0xf0) == 0) {
+                type.category |= 0x20;
+            }
+        }
+        if (type.category && (type.category & 0x0f) == 0) {
+            type.category |= 0x04;
         }
 
         if (can_be_followed_by_int) {
-            if (known_type_name) {
-                if (arrlen(type_name) > 0) {
-                    strputf(&type_name, " ");
-                }
-                strputf(&type_name, known_type_name);
-                ltk = tk;
-                tk = next_token(o_s);
-            }
             if (tk_equal(&tk, "int")) {
                 strputf(&type_name, " int");
                 ltk = tk;
-            }
-            if ((type.category & 0x0f) == 0) {
-                type.category |= 0x04;
             }
         }
 
@@ -358,8 +356,9 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
         return t;
     } else {
         type.name = type_name;
+        IntroType * stored = store_type(ctx, &type);
         arrfree(type_name);
-        return store_type(ctx, &type);
+        return stored;
     }
 }
 
@@ -369,7 +368,7 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, char *
     int32_t * temp = NULL;
     char * paren;
 
-    const uint32_t POINTER = -1;
+    const int32_t POINTER = -1;
     Token tk;
     char * end = *o_s;
     do {
@@ -430,7 +429,7 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, char *
     
     IntroType * last_type = base_type;
     for (int i=0; i < arrlen(indirection); i++) {
-        uint32_t it = indirection[i];
+        int32_t it = indirection[i];
         IntroType new_type = {0};
         new_type.parent = last_type;
         if (it == POINTER) {
@@ -464,6 +463,8 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"int16_t",  NULL, INTRO_S16},
         {"int32_t",  NULL, INTRO_S32},
         {"int64_t",  NULL, INTRO_S64},
+        {"float",    NULL, INTRO_F32},
+        {"double",   NULL, INTRO_F64},
     };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);
@@ -502,4 +503,17 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
             s++;
         }
     }
+
+    IntroType * type_list = NULL;
+    arrsetcap(type_list, shlen(ctx->type_map) + arrlen(ctx->nameless_types));
+    for (int i=0; i < shlen(ctx->type_map); i++) {
+        arrput(type_list, *ctx->type_map[i].value);
+    }
+    for (int i=0; i < arrlen(ctx->nameless_types); i++) {
+        arrput(type_list, *ctx->nameless_types[i]);
+    }
+
+    o_info->count_types = arrlen(type_list);
+    o_info->types = type_list;
+    return 0;
 }
