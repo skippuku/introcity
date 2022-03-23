@@ -76,7 +76,7 @@ dump_to_file(const char * filename, void * data, size_t data_size) {
     if (!file) return -1;
     int res = fwrite(data, data_size, 1, file);
     fclose(file);
-    return res == 1 ? 0 : -1;
+    return (res == 1)? 0 : -1;
 }
 
 #endif

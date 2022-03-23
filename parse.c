@@ -61,11 +61,12 @@ store_type(ParseContext * ctx, const IntroType * type) {
         hmput(ctx->type_set, *stored, stored);
     }
     // TODO: i am not a fan of this
-    if (type->category == INTRO_STRUCT
-     || type->category == INTRO_UNION
-     || type->category == INTRO_ENUM)
+    if (original
+        && (type->category == INTRO_STRUCT
+         || type->category == INTRO_UNION
+         || type->category == INTRO_ENUM))
     {
-        for (int i=0; i < hmlen(ctx->type_set); i++) {
+        for (int i=15; i < hmlen(ctx->type_set); i++) {
             IntroType * t = ctx->type_set[i].value;
             if (t->category == INTRO_UNKNOWN) {
                 if (t->parent == original) {
@@ -216,14 +217,11 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
     {
         char * struct_type_name = NULL;
-        strputf(&struct_type_name, "%s ", is_union ? "union" : "struct");
         if (name_tk.type == TK_IDENTIFIER) {
-            strputf(&struct_type_name, "%.*s", name_tk.length, name_tk.start);
-        } else {
-            static int anon_index = 0; // NOTE: not sure about this...
-            strputf(&struct_type_name, "Anon_%i", anon_index++); 
+            strputf(&struct_type_name, "%s %.*s", 
+                    (is_union)? "union" : "struct", name_tk.length, name_tk.start);
+            strputnull(struct_type_name);
         }
-        strputnull(struct_type_name);
 
         IntroType type;
         type.name = struct_type_name;
@@ -232,22 +230,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         
         store_type(ctx, &type);
         arrfree(struct_type_name);
-#if 0 // TODO
-        if (prev != NULL) {
-            if (prev->category == INTRO_UNKNOWN) {
-                for (int i=0; i < arrlen(prev->forward_list); i++) {
-                    KnownType * ft = &known_types[prev->forward_list[i]];
-                    ft->category = INTRO_STRUCT;
-                    ft->i_struct = result;
-                }
-                arrfree(prev->forward_list);
-            } else {
-                parse_error(ctx, &name_tk, "Redefinition of type.");
-                return 1;
-            }
-        }
-        shputs(known_types, struct_type);
-#endif
     }
 
     if (attribute_specifiers) {
@@ -389,14 +371,10 @@ parse_enum(ParseContext * ctx, char ** o_s) {
 
     {
         char * enum_type_name = NULL;
-        strputf(&enum_type_name, "enum ");
         if (name_tk.type == TK_IDENTIFIER) {
-            strputf(&enum_type_name, "%.*s", name_tk.length, name_tk.start);
-        } else {
-            static int anon_index = 0; // NOTE: hmm
-            strputf(&enum_type_name, "Anon_%i", anon_index++);
+            strputf(&enum_type_name, "enum %.*s", name_tk.length, name_tk.start);
+            strputnull(enum_type_name);
         }
-        strputnull(enum_type_name);
 
         IntroType type;
         type.name = enum_type_name;
@@ -405,23 +383,6 @@ parse_enum(ParseContext * ctx, char ** o_s) {
 
         store_type(ctx, &type);
         arrfree(enum_type_name);
-
-#if 0 // TODO
-        if (prev != NULL) {
-            if (prev->category == INTRO_UNKNOWN) {
-                for (int i=0; i < arrlen(prev->forward_list); i++) {
-                    KnownType * ft = &known_types[prev->forward_list[i]];
-                    ft->category = INTRO_ENUM;
-                    ft->i_enum = result;
-                }
-                arrfree(prev->forward_list);
-            } else {
-                parse_error(&name_tk, "Redefinition of type.");
-                return 1;
-            }
-        }
-        shputs(known_types, enum_type);
-#endif
     }
 
     if (attribute_specifiers != NULL) {
@@ -493,7 +454,6 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
     if (is_struct || is_union || is_enum) {
         char * after_keyword = *o_s;
         int error;
-        //strputf(&type_name, "%.*s", first.length, first.start);
         if (is_struct || is_union) {
             *o_s = first.start;
             error = parse_struct(ctx, o_s);
@@ -508,8 +468,8 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
             return NULL;
         } else {
             result.is_nested = true; // TODO: does this matter?
-            ptrdiff_t last_index = shlen(ctx->type_map) - 1;
-            return ctx->type_map[last_index].value;
+            ptrdiff_t last_index = hmtemp(ctx->type_set);
+            return ctx->type_set[last_index].value;
         }
     } else {
         Token tk, ltk = first;
@@ -520,7 +480,6 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
         }
 
         if (type.category) {
-            //strputf(&type_name, "%.*s", first.length, first.start);
             tk = next_token(o_s);
         } else {
             tk = first;
@@ -687,15 +646,18 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"int64_t",  NULL, INTRO_S64},
         {"float",    NULL, INTRO_F32},
         {"double",   NULL, INTRO_F64},
+        {"_Bool",    NULL, INTRO_U8 },
+        {"size_t",   NULL, INTRO_U64}, // TODO
+        {"ptrdiff_t",NULL, INTRO_S64},
         {"bool",     NULL, INTRO_U8 },
     };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);
     }
+
     create_initial_attributes();
 
     char * s = buffer;
-
     while (1) {
         Token tk = next_token(&s);
 
@@ -727,11 +689,15 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
 
     IntroType * type_list = NULL;
     arrsetcap(type_list, hmlen(ctx->type_set));
+    IndexByPtrMap * index_by_ptr = NULL;
     for (int i=0; i < hmlen(ctx->type_set); i++) {
-        arrput(type_list, *ctx->type_set[i].value);
+        IntroType * type_ptr = ctx->type_set[i].value;
+        arrput(type_list, *type_ptr);
+        hmput(index_by_ptr, (void *)type_ptr, i);
     }
 
     o_info->count_types = arrlen(type_list);
     o_info->types = type_list;
+    o_info->index_by_ptr_map = index_by_ptr;
     return 0;
 }

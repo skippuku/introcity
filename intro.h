@@ -105,9 +105,15 @@ struct IntroEnum {
     IntroEnumValue members [];
 };
 
+typedef struct {
+    void * key;
+    int32_t value;
+} IndexByPtrMap;
+
 typedef struct IntroInfo {
     uint32_t count_types;
     IntroType * types;
+    IndexByPtrMap * index_by_ptr_map;
 } IntroInfo;
 
 #endif // INTRO_H
