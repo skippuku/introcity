@@ -6,33 +6,76 @@
 #include "lexer.c"
 
 typedef struct {
+    char * key;
+} NameSet;
+
+typedef struct {
     char * buffer;
     struct{char * key; IntroType * value;} * type_map;
-    struct{char * key;} * member_map;
-    IntroType ** nameless_types;
+    struct{IntroType key; IntroType * value;} * type_set;
+    NameSet * name_set;
 } ParseContext;
 
 void
 parse_error(ParseContext * ctx, Token * tk, char * message) { // TODO
     (void) ctx;
     (void) tk;
-    fprintf(stderr, "Error: %s\n", message);
+    if (tk) {
+        fprintf(stderr, "Error(tk: %.*s): %s\n", tk->length, tk->start, message);
+    } else {
+        fprintf(stderr, "Error: %s\n", message);
+    }
 }
 
 #include "attribute.c"
+
+static char *
+cache_name(ParseContext * ctx, char * name) {
+    ptrdiff_t index = shgeti(ctx->name_set, name);
+    if (index < 0) {
+        shputs(ctx->name_set, (NameSet){name});
+        index = shtemp(ctx->name_set);
+    }
+    return ctx->name_set[index].key;
+}
 
 static IntroType *
 store_type(ParseContext * ctx, const IntroType * type) {
     IntroType * stored = malloc(sizeof(*stored));
     memcpy(stored, type, sizeof(*stored));
-    if (type->name) {
+    IntroType * original = NULL;
+    if (stored->name) {
+        ptrdiff_t index = shgeti(ctx->type_map, stored->name);
+        if (index >= 0) {
+            original = ctx->type_map[index].value;
+        }
         shput(ctx->type_map, stored->name, stored);
-        ptrdiff_t index = shtemp(ctx->type_map);
+        index = shtemp(ctx->type_map);
         stored->name = ctx->type_map[index].key;
-    } else {
-        arrput(ctx->nameless_types, stored);
     }
-    assert(stored);
+    if (original) {
+        (void) hmdel(ctx->type_set, *original);
+        free(original);
+    }
+    if (hmgeti(ctx->type_set, *stored) < 0) {
+        hmput(ctx->type_set, *stored, stored);
+    }
+    // TODO: i am not a fan of this
+    if (type->category == INTRO_STRUCT
+     || type->category == INTRO_UNION
+     || type->category == INTRO_ENUM)
+    {
+        for (int i=0; i < hmlen(ctx->type_set); i++) {
+            IntroType * t = ctx->type_set[i].value;
+            if (t->category == INTRO_UNKNOWN) {
+                if (t->parent == original) {
+                    t->i_struct = stored->i_struct; // covers i_enum
+                    t->category = stored->category;
+                    t->parent = stored;
+                }
+            }
+        }
+    }
     return stored;
 }
 
@@ -78,7 +121,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     } else if (tk_equal(&tk, "union")) {
         is_union = true;
     } else {
-        // TODO(print error)
         return -1;
     }
 
@@ -96,8 +138,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
     IntroMember * members = NULL;
     AttributeSpecifier * attribute_specifiers = NULL;
-    //int struct_index = arrlen(structs);
-    //arrput(structs, NULL);
     while (1) {
         IntroType * base_type = parse_base_type(ctx, o_s);
         if (!base_type) {
@@ -139,6 +179,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                     parse_error(ctx, NULL, "Unknown type."); // TODO: token
                     return 1;
                 }
+                member.type = type;
 
                 #if 0 // TODO: handle this
                 if (decl.is_nested) {
@@ -223,18 +264,175 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrfree(attribute_specifiers);
     }
 
-#if 0
-    structs[struct_index] = result;
-    last_struct_parsed_index = struct_index;
-#endif
-
     return 0;
 }
 
 static int
 parse_enum(ParseContext * ctx, char ** o_s) {
-    parse_error(ctx, NULL, "enum not supported right now.");
-    return -1;
+    IntroEnum enum_ = {0};
+
+    Token tk = next_token(o_s), name_tk = {0};
+    if (tk.type == TK_IDENTIFIER) {
+        name_tk = tk;
+        tk = next_token(o_s);
+    }
+
+    bool is_attribute = false;
+    AttributeSpecifier * attribute_specifiers = NULL;
+    if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "I")) {
+        tk = next_token(o_s);
+        if (tk.type != TK_L_PARENTHESIS) {
+            parse_error(ctx, &tk, "Expected '('.");
+            return 1;
+        }
+        tk = next_token(o_s);
+        if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "attribute")) {
+            is_attribute = true;
+        } else {
+            parse_error(ctx, &tk, "Invalid.");
+            return 1;
+        }
+        tk = next_token(o_s);
+        if (tk.type != TK_R_PARENTHESIS) {
+            parse_error(ctx, &tk, "Expected ')'.");
+            return 1;
+        }
+        tk = next_token(o_s);
+    }
+    if (tk.type != TK_L_BRACE) {
+        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
+        parse_error(ctx, &tk, "Expected '{'.");
+        return 1;
+    }
+
+    enum_.is_flags = true;
+    enum_.is_sequential = true;
+    IntroEnumValue * members = NULL;
+    int next_int = 0;
+    int mask = 0;
+    while (1) {
+        IntroEnumValue v = {0};
+        Token name = next_token(o_s);
+        if (name.type == TK_R_BRACE) {
+            break;
+        }
+        if (name.type != TK_IDENTIFIER) {
+            parse_error(ctx, &name, "Expected identifier.");
+            return 1;
+        }
+
+        char * new_name = copy_and_terminate(name.start, name.length);
+        if (shgeti(ctx->name_set, new_name) >= 0) {
+            parse_error(ctx, &name, "Cannot define enumeration with reserved name.");
+            return 1;
+        }
+        v.name = cache_name(ctx, new_name);
+        free(new_name);
+
+        tk = next_token(o_s);
+        if (is_attribute) {
+            int index = arrlen(attribute_specifiers);
+            maybe_expect_attribute(ctx, o_s, arrlen(members), &tk, &attribute_specifiers);
+            if (arrlen(attribute_specifiers) != index) {
+                attribute_specifiers[index].tk = name;
+            }
+        }
+        bool set = false;
+        bool is_last = false;
+        if (tk.type == TK_COMMA) {
+            v.value = next_int++;
+        } else if (tk.type == TK_EQUAL) {
+            char * prev_loc = *o_s;
+            long num = strtol(*o_s, o_s, 0);
+            if (*o_s == prev_loc) {
+                parse_error(ctx, &tk, "Unable to parse enumeration value.");
+                return 1;
+            }
+            v.value = (int)num;
+            if (v.value != next_int) {
+                enum_.is_sequential = false;
+            }
+            next_int = v.value + 1;
+            set = true;
+        } else if (tk.type == TK_R_BRACE) {
+            v.value = next_int;
+            is_last = true;
+        } else {
+            parse_error(ctx, &tk, "Unexpected symbol.");
+            return 1;
+        }
+
+        if (mask & v.value) enum_.is_flags = false;
+        mask |= v.value;
+
+        arrput(members, v);
+
+        if (is_last) break;
+
+        if (set) {
+            tk = next_token(o_s);
+            if (tk.type == TK_COMMA) {
+            } else if (tk.type == TK_R_BRACE) {
+                break;
+            } else {
+                parse_error(ctx, &tk, "Unexpected symbol.");
+                return 1;
+            }
+        }
+    }
+    enum_.count_members = arrlen(members);
+
+    IntroEnum * result = malloc(sizeof(IntroEnum) + sizeof(*members) * arrlen(members));
+    memcpy(result, &enum_, sizeof(IntroEnum));
+    memcpy(result->members, members, sizeof(*members) * arrlen(members));
+    arrfree(members);
+
+    {
+        char * enum_type_name = NULL;
+        strputf(&enum_type_name, "enum ");
+        if (name_tk.type == TK_IDENTIFIER) {
+            strputf(&enum_type_name, "%.*s", name_tk.length, name_tk.start);
+        } else {
+            static int anon_index = 0; // NOTE: hmm
+            strputf(&enum_type_name, "Anon_%i", anon_index++);
+        }
+        strputnull(enum_type_name);
+
+        IntroType type;
+        type.name = enum_type_name;
+        type.category = INTRO_ENUM;
+        type.i_enum = result;
+
+        store_type(ctx, &type);
+        arrfree(enum_type_name);
+
+#if 0 // TODO
+        if (prev != NULL) {
+            if (prev->category == INTRO_UNKNOWN) {
+                for (int i=0; i < arrlen(prev->forward_list); i++) {
+                    KnownType * ft = &known_types[prev->forward_list[i]];
+                    ft->category = INTRO_ENUM;
+                    ft->i_enum = result;
+                }
+                arrfree(prev->forward_list);
+            } else {
+                parse_error(&name_tk, "Redefinition of type.");
+                return 1;
+            }
+        }
+        shputs(known_types, enum_type);
+#endif
+    }
+
+    if (attribute_specifiers != NULL) {
+        for (int i=0; i < arrlen(attribute_specifiers); i++) {
+            AttributeSpecifier spec = attribute_specifiers[i];
+            int error = parse_attribute_register(ctx, spec.location, spec.i, &spec.tk);
+            if (error) return error;
+        }
+    }
+
+    return 0;
 }
 
 static int
@@ -252,6 +450,12 @@ parse_typedef(ParseContext * ctx, char ** o_s) { // TODO: store base somehow
 
     IntroType new_type = *type;
     new_type.name = name;
+    if (new_type.category == INTRO_STRUCT
+     || new_type.category == INTRO_UNION
+     || new_type.category == INTRO_ENUM)
+    {
+        new_type.parent = type;
+    }
     if (shgeti(ctx->type_map, name) >= 0) {
         parse_error(ctx, NULL, "type is redefined."); // TODO: token
         return 1;
@@ -274,6 +478,7 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
         *o_s = first.start;
         return NULL;
     }
+    strputf(&type_name, "%.*s", first.length, first.start);
 
     struct { // TODO: not sure what to do with this
         bool is_nested;
@@ -288,7 +493,7 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
     if (is_struct || is_union || is_enum) {
         char * after_keyword = *o_s;
         int error;
-        strputf(&type_name, "%.*s", first.length, first.start);
+        //strputf(&type_name, "%.*s", first.length, first.start);
         if (is_struct || is_union) {
             *o_s = first.start;
             error = parse_struct(ctx, o_s);
@@ -315,7 +520,7 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
         }
 
         if (type.category) {
-            strputf(&type_name, "%.*s", first.length, first.start);
+            //strputf(&type_name, "%.*s", first.length, first.start);
             tk = next_token(o_s);
         } else {
             tk = first;
@@ -342,14 +547,12 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
         }
 
         if ((type.category & 0x0f)) {
-            if (arrlen(type_name) > 0) {
-                strputf(&type_name, " ");
-            }
-            strputf(&type_name, "%.*s", tk.length, tk.start);
             ltk = tk;
             tk = next_token(o_s);
             if ((type.category & 0xf0) == 0) {
                 type.category |= 0x20;
+            } else {
+                strputf(&type_name, " %.*s", tk.length, tk.start);
             }
         }
         if (type.category && (type.category & 0x0f) == 0) {
@@ -467,9 +670,10 @@ int
 parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     ParseContext * ctx = malloc(sizeof(ParseContext));
     memset(ctx, 0, sizeof(*ctx));
+    ctx->buffer = buffer;
 
     sh_new_arena(ctx->type_map);
-    sh_new_arena(ctx->member_map);
+    sh_new_arena(ctx->name_set);
 
     static const IntroType known_types [] = {
         {"void",     NULL, INTRO_UNKNOWN},
@@ -483,10 +687,12 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"int64_t",  NULL, INTRO_S64},
         {"float",    NULL, INTRO_F32},
         {"double",   NULL, INTRO_F64},
+        {"bool",     NULL, INTRO_U8 },
     };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);
     }
+    create_initial_attributes();
 
     char * s = buffer;
 
@@ -496,7 +702,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         if (tk.type == TK_END) {
             break;
         } else if (tk.type == TK_IDENTIFIER) {
-            int error;
+            int error = 0;
             if (tk_equal(&tk, "struct") || tk_equal(&tk, "union")) {
                 s = tk.start;
                 error = parse_struct(ctx, &s);
@@ -504,9 +710,6 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
                 error = parse_enum(ctx, &s);
             } else if (tk_equal(&tk, "typedef")) {
                 error = parse_typedef(ctx, &s);
-            } else {
-                // TODO(print error)
-                error = -1;
             }
 
             if (error) {
@@ -523,12 +726,9 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     }
 
     IntroType * type_list = NULL;
-    arrsetcap(type_list, shlen(ctx->type_map) + arrlen(ctx->nameless_types));
-    for (int i=0; i < shlen(ctx->type_map); i++) {
-        arrput(type_list, *ctx->type_map[i].value);
-    }
-    for (int i=0; i < arrlen(ctx->nameless_types); i++) {
-        arrput(type_list, *ctx->nameless_types[i]);
+    arrsetcap(type_list, hmlen(ctx->type_set));
+    for (int i=0; i < hmlen(ctx->type_set); i++) {
+        arrput(type_list, *ctx->type_set[i].value);
     }
 
     o_info->count_types = arrlen(type_list);
