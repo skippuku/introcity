@@ -112,7 +112,7 @@ typedef struct {
 
 typedef struct IntroInfo {
     uint32_t count_types;
-    IntroType * types;
+    IntroType ** types;
     IndexByPtrMap * index_by_ptr_map;
 } IntroInfo;
 

@@ -22,35 +22,36 @@ generate_c_header(IntroInfo * info) {
 
     // complex type information (enums, structs, unions)
     for (int type_index = 0; type_index < info->count_types; type_index++) {
-        const IntroType * t = &info->types[type_index];
+        const IntroType * t = info->types[type_index];
         if (t->category == INTRO_STRUCT && hmgeti(complex_type_map, t->i_struct) < 0) {
-            char * saved_name;
             char * ref_name;
             if (!t->name) {
                 for (int t2_index=15; t2_index < info->count_types; t2_index++) {
                     if (t2_index == type_index) continue;
-                    const IntroType * t2 = &info->types[t2_index];
+                    const IntroType * t2 = info->types[t2_index];
                     if (t2->category == t->category && t2->i_struct == t->i_struct) {
-                        saved_name = t2->name;
-                        ref_name = saved_name;
+                        ref_name = t2->name;
                         break;
                     }
                 }
-                if (!saved_name) {
+                if (!ref_name) {
                     fprintf(stderr, "no way to reference anonymous struct.\n");
                     return NULL;
                 }
-            } else if (strchr(t->name, ' ')) {
-                size_t name_len = strlen(t->name);
-                saved_name = malloc(strlen(t->name) + 1);
+            } else {
+                ref_name = t->name;
+            }
+
+            char * saved_name;
+            if (strchr(ref_name, ' ')) {
+                size_t name_len = strlen(ref_name);
+                saved_name = malloc(name_len + 1);
                 for (int i=0; i < name_len; i++) {
-                    saved_name[i] = (t->name[i] == ' ')? '_' : t->name[i];
+                    saved_name[i] = (ref_name[i] == ' ')? '_' : ref_name[i];
                 }
                 saved_name[name_len] = '\0';
-                ref_name = t->name;
             } else {
-                saved_name = t->name;
-                ref_name = t->name;
+                saved_name = ref_name;
             }
 
             hmput(complex_type_map, t->i_struct, saved_name);
@@ -69,7 +70,7 @@ generate_c_header(IntroInfo * info) {
     // type list
     strputf(&s, "IntroType __intro_types [%u] = {\n", info->count_types);
     for (int type_index = 0; type_index < info->count_types; type_index++) {
-        const IntroType * t = &info->types[type_index];
+        const IntroType * t = info->types[type_index];
         strputf(&s, "%s{", tab);
         if (t->name) {
             strputf(&s, "\"%s\", ", t->name);

@@ -68,12 +68,12 @@ store_type(ParseContext * ctx, const IntroType * type) {
     {
         for (int i=15; i < hmlen(ctx->type_set); i++) {
             IntroType * t = ctx->type_set[i].value;
-            if (t->category == INTRO_UNKNOWN) {
-                if (t->parent == original) {
+            if (t->parent == original) {
+                if (t->category == INTRO_UNKNOWN) {
                     t->i_struct = stored->i_struct; // covers i_enum
                     t->category = stored->category;
-                    t->parent = stored;
                 }
+                t->parent = stored;
             }
         }
     }
@@ -691,12 +691,12 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         }
     }
 
-    IntroType * type_list = NULL;
+    IntroType ** type_list = NULL;
     arrsetcap(type_list, hmlen(ctx->type_set));
     IndexByPtrMap * index_by_ptr = NULL;
     for (int i=0; i < hmlen(ctx->type_set); i++) {
         IntroType * type_ptr = ctx->type_set[i].value;
-        arrput(type_list, *type_ptr);
+        arrput(type_list, type_ptr);
         hmput(index_by_ptr, (void *)type_ptr, i);
     }
 
