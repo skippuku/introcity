@@ -223,7 +223,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             strputnull(struct_type_name);
         }
 
-        IntroType type;
+        IntroType type = {0};
         type.name = struct_type_name;
         type.category = INTRO_STRUCT;
         type.i_struct = result;
@@ -411,10 +411,13 @@ parse_typedef(ParseContext * ctx, char ** o_s) { // TODO: store base somehow
 
     IntroType new_type = *type;
     new_type.name = name;
-    if (new_type.category == INTRO_STRUCT
-     || new_type.category == INTRO_UNION
-     || new_type.category == INTRO_ENUM)
-    {
+    bool base_is_complex = type->category == INTRO_STRUCT
+                        || type->category == INTRO_UNION
+                        || type->category == INTRO_ENUM
+                        || type->category == INTRO_UNKNOWN;
+    bool new_type_is_indirect = new_type.category == INTRO_POINTER
+                             || new_type.category == INTRO_ARRAY;
+    if (base_is_complex && !new_type_is_indirect) {
         new_type.parent = type;
     }
     if (shgeti(ctx->type_map, name) >= 0) {
@@ -489,6 +492,7 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
         if (tk_equal(&tk, "long")) {
             Token tk2 = next_token(o_s);
             if (tk_equal(&tk2, "long")) {
+                strputf(&type_name, " long");
                 tk = tk2;
             } else if (tk_equal(&tk2, "double")) {
                 parse_error(ctx, &tk2, "long double is not supported.");
@@ -506,13 +510,13 @@ parse_base_type(ParseContext * ctx, char ** o_s) {
         }
 
         if ((type.category & 0x0f)) {
-            ltk = tk;
-            tk = next_token(o_s);
             if ((type.category & 0xf0) == 0) {
                 type.category |= 0x20;
             } else {
                 strputf(&type_name, " %.*s", tk.length, tk.start);
             }
+            ltk = tk;
+            tk = next_token(o_s);
         }
         if (type.category && (type.category & 0x0f) == 0) {
             type.category |= 0x04;

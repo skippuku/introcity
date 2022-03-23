@@ -88,7 +88,7 @@ generate_c_header(IntroInfo * info) {
          || t->category == INTRO_ENUM)
         {
             char * saved_name = hmget(complex_type_map, t->i_struct);
-            strputf(&s, "&__intro_%s},\n", saved_name);
+            strputf(&s, ".%s=&__intro_%s},\n", (t->category == INTRO_ENUM)? "i_enum" : "i_struct", saved_name);
         } else {
             strputf(&s, "%u},\n", (t->category == INTRO_ARRAY)? t->array_size : 0);
         }

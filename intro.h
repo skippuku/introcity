@@ -47,9 +47,9 @@ struct IntroType {
     IntroType * parent;
     IntroCategory category;
     union {
+        uint32_t array_size;
         IntroStruct * i_struct;
         IntroEnum * i_enum;
-        uint32_t array_size;
     };
 };
 
