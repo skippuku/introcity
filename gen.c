@@ -3,8 +3,49 @@
 #include "intro.h"
 #include "util.c"
 
+static char *
+get_ref_name(IntroInfo * info, const IntroType * t) {
+    if (!t->name) {
+        for (int t2_index=15; t2_index < info->count_types; t2_index++) {
+            const IntroType * t2 = info->types[t2_index];
+            if (t2 == t) continue;
+            if (t2->category == t->category && t2->i_struct == t->i_struct) {
+                return t2->name;
+            }
+        }
+        fprintf(stderr, "no way to reference anonymous struct.\n");
+        return NULL;
+    } else {
+        return t->name;
+    }
+}
+
+static char *
+get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, char ** o_top_level_name) {
+    NestInfo * nest = hmgetp_null(info->nest_map, parent);
+    if (nest) {
+        IntroType * grand_parent = nest->parent;
+        int grand_parent_index = nest->member_index;
+
+        char * result = get_parent_member_name(info, grand_parent, grand_parent_index, o_top_level_name);
+        strputf(&result, ".%s", parent->i_struct->members[parent_index].name);
+        return result;
+    } else {
+        char * result = NULL;
+        strputf(&result, parent->i_struct->members[parent_index].name);
+        char * top_level_name = get_ref_name(info, parent);
+        *o_top_level_name = top_level_name;
+        return result;
+    }
+}
+
 char *
 generate_c_header(IntroInfo * info) {
+    for (int i=0; i < hmlen(info->nest_map); i++) {
+        NestInfo * nest = &info->nest_map[i];
+        nest->parent_member_name = get_parent_member_name(info, nest->parent, nest->member_index, &nest->top_level_name);
+    }
+
     char * s = NULL;
 
     const char * tab = "    ";
@@ -23,25 +64,23 @@ generate_c_header(IntroInfo * info) {
 
     // complex type information (enums, structs, unions)
     for (int type_index = 0; type_index < info->count_types; type_index++) {
-        const IntroType * t = info->types[type_index];
+        IntroType * t = info->types[type_index];
         if (t->category == INTRO_STRUCT && hmgeti(complex_type_map, t->i_struct) < 0) {
-            char * ref_name = NULL;
-            if (!t->name) {
-                for (int t2_index=15; t2_index < info->count_types; t2_index++) {
-                    if (t2_index == type_index) continue;
-                    const IntroType * t2 = info->types[t2_index];
-                    if (t2->category == t->category && t2->i_struct == t->i_struct) {
-                        ref_name = t2->name;
-                        break;
+            const NestInfo * nest = hmgetp_null(info->nest_map, t);
+            char * ref_name;
+            if (!nest) {
+                ref_name = get_ref_name(info, t);
+            } else {
+                ref_name = NULL;
+                strputf(&ref_name, "%s_%s", nest->top_level_name, nest->parent_member_name);
+                for (int i=0; i < arrlen(ref_name); i++) {
+                    if (ref_name[i] == '.' || ref_name[i] == ' ') {
+                        ref_name[i] = '_';
                     }
                 }
-                if (!ref_name) {
-                    fprintf(stderr, "no way to reference anonymous struct.\n");
-                    return NULL;
-                }
-            } else {
-                ref_name = t->name;
+                strputnull(ref_name);
             }
+            if (!ref_name) return NULL;
 
             char * saved_name;
             if (strchr(ref_name, ' ')) {
@@ -61,8 +100,16 @@ generate_c_header(IntroInfo * info) {
             for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
                 const IntroMember * m = &t->i_struct->members[m_index];
                 int32_t member_type_index = hmget(info->index_by_ptr_map, m->type);
-                strputf(&s, "%s{\"%s\", &__intro_types[%i], offsetof(%s, %s), 0},\n", // TODO: attributes
-                             tab, m->name, member_type_index, ref_name, m->name);
+                // TODO: attributes
+                strputf(&s, "%s{\"%s\", &__intro_types[%i], ", tab, m->name, member_type_index);
+                if (!nest) {
+                    strputf(&s, "offsetof(%s, %s)", ref_name, m->name);
+                } else {
+                    strputf(&s, "offsetof(%s, %s.%s) - offsetof(%s, %s)",
+                            nest->top_level_name, nest->parent_member_name, m->name,
+                            nest->top_level_name, nest->parent_member_name);
+                }
+                strputf(&s, ", 0},\n");
             }
             strputf(&s, "}};\n\n");
         }
@@ -85,10 +132,7 @@ generate_c_header(IntroInfo * info) {
             strputf(&s, "0, ");
         }
         strputf(&s, "0x%03x, ", t->category);
-        if (t->category == INTRO_STRUCT
-         || t->category == INTRO_UNION
-         || t->category == INTRO_ENUM)
-        {
+        if (is_complex(t->category)) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
             strputf(&s, ".%s=&__intro_%s},\n", (t->category == INTRO_ENUM)? "i_enum" : "i_struct", saved_name);
         } else {

@@ -14,6 +14,7 @@ typedef struct {
     struct{char * key; IntroType * value;} * type_map;
     struct{IntroType key; IntroType * value;} * type_set;
     NameSet * name_set;
+    NestInfo * nest_map;
 } ParseContext;
 
 void
@@ -31,6 +32,13 @@ cache_name(ParseContext * ctx, char * name) {
         index = shtemp(ctx->name_set);
     }
     return ctx->name_set[index].key;
+}
+
+static bool
+is_complex(int category) {
+    return (category == INTRO_STRUCT
+         || category == INTRO_UNION
+         || category == INTRO_ENUM);
 }
 
 static IntroType *
@@ -59,11 +67,7 @@ store_type(ParseContext * ctx, const IntroType * type) {
         stored = ctx->type_set[set_index].value;
     }
     // TODO: i am not a fan of this
-    if (original
-        && (type->category == INTRO_STRUCT
-         || type->category == INTRO_UNION
-         || type->category == INTRO_ENUM))
-    {
+    if (original && is_complex(type->category)) {
         for (int i=15; i < hmlen(ctx->type_set); i++) {
             IntroType * t = ctx->type_set[i].value;
             if (t->parent == original) {
@@ -137,6 +141,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
     IntroMember * members = NULL;
     AttributeSpecifier * attribute_specifiers = NULL;
+    NestInfo * nests = NULL;
     while (1) {
         Token type_tk = {0};
         IntroType * base_type = parse_base_type(ctx, o_s, &type_tk);
@@ -175,20 +180,17 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 if (!type) return 1;
 
                 if (type->category == INTRO_UNKNOWN) {
-                    parse_error(ctx, &type_tk, "Unknown type."); // TODO: token
+                    parse_error(ctx, &type_tk, "Unknown type.");
                     return 1;
                 }
                 member.type = type;
 
-                #if 0 // TODO: handle this
-                if (decl.is_nested) {
-                    struct nested_info_s info = {0};
-                    info.key = type.i_struct;
-                    info.struct_index = struct_index;
+                if (base_type->name == NULL && is_complex(base_type->category)) {
+                    NestInfo info = {0};
+                    info.key = base_type; // covers i_enum
                     info.member_index = arrlen(members);
-                    hmputs(nested_info, info);
+                    arrput(nests, info);
                 }
-                #endif
 
                 tk = next_token(o_s);
                 int error = maybe_expect_attribute(ctx, o_s, arrlen(members), &tk, &attribute_specifiers);
@@ -226,8 +228,15 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         type.category = INTRO_STRUCT;
         type.i_struct = result;
         
-        store_type(ctx, &type);
+        IntroType * stored = store_type(ctx, &type);
         arrfree(struct_type_name);
+
+        for (int i=0; i < arrlen(nests); i++) {
+            NestInfo info = nests[i];
+            info.parent = stored;
+            hmputs(ctx->nest_map, info);
+        }
+        arrfree(nests);
     }
 
     if (attribute_specifiers) {
@@ -411,12 +420,8 @@ parse_typedef(ParseContext * ctx, char ** o_s) { // TODO: store base somehow
 
     IntroType new_type = *type;
     new_type.name = name;
-    bool base_is_complex = type->category == INTRO_STRUCT
-                        || type->category == INTRO_UNION
-                        || type->category == INTRO_ENUM
-                        || type->category == INTRO_UNKNOWN;
-    bool new_type_is_indirect = new_type.category == INTRO_POINTER
-                             || new_type.category == INTRO_ARRAY;
+    bool base_is_complex = is_complex(type->category) || type->category == INTRO_UNKNOWN;
+    bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
     if (base_is_complex && !new_type_is_indirect) {
         new_type.parent = type;
     }
@@ -700,5 +705,6 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     o_info->count_types = arrlen(type_list);
     o_info->types = type_list;
     o_info->index_by_ptr_map = index_by_ptr;
+    o_info->nest_map = ctx->nest_map;
     return 0;
 }

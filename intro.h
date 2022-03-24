@@ -105,15 +105,26 @@ struct IntroEnum {
     IntroEnumValue members [];
 };
 
+// intro generator specific TODO: these should be somewhere else
+
 typedef struct {
     void * key;
     int32_t value;
 } IndexByPtrMap;
 
+typedef struct {
+    void * key;
+    IntroType * parent;
+    int member_index;
+    char * parent_member_name;
+    char * top_level_name;
+} NestInfo;
+
 typedef struct IntroInfo {
     uint32_t count_types;
     IntroType ** types;
     IndexByPtrMap * index_by_ptr_map;
+    NestInfo * nest_map;
 } IntroInfo;
 
 #endif // INTRO_H

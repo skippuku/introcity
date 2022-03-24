@@ -36,6 +36,22 @@ struct Forward {
     int i;
 } inline_declaration;
 
+typedef struct Nest {
+    char * name;
+    int32_t id;
+    struct {
+        char * name;
+        int32_t id;
+        struct {
+            int32_t age;
+        } son;
+    } son;
+    union {
+        int32_t id;
+        float speed;
+    } daughter;
+} Nest;
+
 #if 0
 typedef struct {
     char * name;
