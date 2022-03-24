@@ -25,7 +25,7 @@ generate_c_header(IntroInfo * info) {
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         const IntroType * t = info->types[type_index];
         if (t->category == INTRO_STRUCT && hmgeti(complex_type_map, t->i_struct) < 0) {
-            char * ref_name;
+            char * ref_name = NULL;
             if (!t->name) {
                 for (int t2_index=15; t2_index < info->count_types; t2_index++) {
                     if (t2_index == type_index) continue;
