@@ -35,7 +35,7 @@ strputf(char ** p_str, const char * format, ...) {
             break;
         } else {
             size_t p_cap = arrcap(*p_str);
-            arrsetcap(*p_str, p_cap ? (p_cap << 1) : 64);
+            arrsetcap(*p_str, (p_cap)? p_cap << 1 : 64);
         }
 
         va_end(args);

@@ -86,8 +86,8 @@ static void
 preprocess_message_internal(char * start_of_line, char * filename, int line, Token * p_tk, char * message, int message_type) {
     char * end_of_line = strchr(p_tk->start + p_tk->length, '\n') + 1;
     char * s = NULL;
-    const char * message_type_string = message_type == 1 ? "warning" : "error";
-    const char * color = message_type == 1 ? BOLD_YELLOW : BOLD_RED;
+    const char * message_type_string = (message_type == 1)? "warning" : "error";
+    const char * color = (message_type == 1)? BOLD_YELLOW : BOLD_RED;
     strputf(&s, "%s" "Preprocessor %s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n\n", color, message_type_string, filename, line, message);
     strput_code_segment(&s, start_of_line, end_of_line, p_tk->start, p_tk->start + p_tk->length, color);
     strputnull(s);
@@ -389,7 +389,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
             switch(arg[1]) {
             case 'D': {
                 Define new_def;
-                new_def.key = strlen(arg) == 2 ? argv[++i] : arg+2;
+                new_def.key = (strlen(arg) == 2)? argv[++i] : arg+2;
                 shputs(defines, new_def);
             } break;
 
