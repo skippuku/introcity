@@ -57,8 +57,12 @@ store_type(ParseContext * ctx, const IntroType * type) {
         (void) hmdel(ctx->type_set, *original);
         free(original);
     }
-    if (hmgeti(ctx->type_set, *stored) < 0) {
+    ptrdiff_t set_index = hmgeti(ctx->type_set, *stored);
+    if (set_index < 0) {
         hmput(ctx->type_set, *stored, stored);
+    } else {
+        free(stored);
+        stored = ctx->type_set[set_index].value;
     }
     // TODO: i am not a fan of this
     if (original
