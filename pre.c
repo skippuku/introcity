@@ -43,6 +43,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
 static int
 count_newlines_in_range(char * s, char * end, char ** o_last_line) {
     int result = 1;
+    *o_last_line = s;
     while (s < end) {
         if (*s++ == '\n') {
             *o_last_line = s;
@@ -445,7 +446,12 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
     arrput(if_depth, true);
 
     int error = preprocess_filename(&result_buffer, filename);
-    if (error) return NULL;
+    if (error) {
+        if (error == PRE_FILE_NOT_FOUND) {
+            fputs("File not found.\n", stderr);
+        }
+        return NULL;
+    }
 
     strputnull(result_buffer);
 
