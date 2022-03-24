@@ -36,7 +36,9 @@ struct Forward {
     int i;
 } inline_declaration;
 
+#if 0
 typedef struct {
     char * name;
     Forward;
 } MsExt;
+#endif

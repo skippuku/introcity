@@ -11,6 +11,7 @@ generate_c_header(IntroInfo * info) {
 
     const char * version = "v0.0";
     strputf(&s, "/* Generated with intro %s */\n\n", version);
+    strputf(&s, "#include <stddef.h>\n\n");
 
     struct {
         IntroStruct * key;
