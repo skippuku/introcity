@@ -17,14 +17,8 @@ typedef struct {
 } ParseContext;
 
 void
-parse_error(ParseContext * ctx, Token * tk, char * message) { // TODO
-    (void) ctx;
-    (void) tk;
-    if (tk) {
-        fprintf(stderr, "Error(tk: %.*s): %s\n", tk->length, tk->start, message);
-    } else {
-        fprintf(stderr, "Error: %s\n", message);
-    }
+parse_error(ParseContext * ctx, Token * tk, char * message) {
+    parse_error_internal(ctx->buffer, tk, message);
 }
 
 #include "attribute.c"
@@ -206,7 +200,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                     break;
                 } else if (tk.type == TK_COMMA) {
                 } else {
-                    parse_error(ctx, &tk, "Cannot parse symbol in member declaration. Expected ';' or ','.");
+                    parse_error(ctx, &tk, "Invalid symbol in struct member declaration.");
                     return 1;
                 }
             }

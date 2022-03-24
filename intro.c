@@ -16,7 +16,7 @@ main(int argc, char * argv []) {
     IntroInfo info = {0};
     int error = parse_preprocessed_text(preprocessed_buffer, &info);
     if (error) {
-        fprintf(stderr, "parse failed. error code: %i\n", error);
+        fprintf(stderr, "parse failed.\n");
         return error;
     }
 

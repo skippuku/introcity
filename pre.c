@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "util.c"
 #include "lexer.c"
 
@@ -18,7 +19,7 @@ static Define * defines = NULL;
 typedef struct {
     size_t offset;
     char * filename;
-    int file_offset;
+    size_t file_offset;
     int line;
 } FileLoc;
 FileLoc * file_location_lookup = NULL;
@@ -40,70 +41,8 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
 }
 
 static int
-get_line(char * begin, char * pos, char ** o_start_of_line, char ** o_filename) {
-    FileLoc * loc = NULL;
-    for (int i = arrlen(file_location_lookup) - 1; i >= 0; i--) {
-        if (pos - begin >= file_location_lookup[i].offset) {
-            loc = &file_location_lookup[i];
-            break;
-        }
-    }
-    if (loc == NULL) return -1;
-    char * s = begin + loc->offset;
-    char * last_line = s;
-    int line_num = loc->line;
-    while (s < pos) {
-        if (*s++ == '\n') {
-            last_line = s;
-            line_num++;
-        }
-    }
-    if (o_start_of_line) *o_start_of_line = last_line;
-    if (o_filename) *o_filename = loc->filename;
-    return line_num;
-}
-
-// TODO: open original file instead of buffer for parse_error
-static void
-parse_error_internal(char * buffer, Token * tk, char * message) {
-    char * start_of_line;
-    char * filename;
-    int line_num = get_line(buffer, tk->start, &start_of_line, &filename);
-    char * s = NULL;
-    if (line_num < 0) {
-        strputf(&s, BOLD_RED "Error" WHITE " (?:?): %s\n\n", message);
-        return;
-    }
-    strputf(&s, BOLD_RED "Error" WHITE " (%s:%i): %s\n\n", filename, line_num, message);
-    char * end_of_line = strchr(tk->start + tk->length, '\n') + 1;
-    strput_code_segment(&s, start_of_line, end_of_line, tk->start, tk->start + tk->length, BOLD_RED);
-    fputs(s, stderr);
-    arrfree(s);
-}
-//#define parse_error(tk,message) parse_error_internal(buffer, tk, message)
-
-static void
-preprocess_message_internal(char * start_of_line, char * filename, int line, Token * p_tk, char * message, int message_type) {
-    char * end_of_line = strchr(p_tk->start + p_tk->length, '\n') + 1;
-    char * s = NULL;
-    const char * message_type_string = (message_type == 1)? "warning" : "error";
-    const char * color = (message_type == 1)? BOLD_YELLOW : BOLD_RED;
-    strputf(&s, "%s" "Preprocessor %s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n\n", color, message_type_string, filename, line, message);
-    strput_code_segment(&s, start_of_line, end_of_line, p_tk->start, p_tk->start + p_tk->length, color);
-    strputnull(s);
-    fputs(s, stderr);
-    arrfree(s);
-}
-#define preprocess_error(tk, message)   preprocess_message_internal(last_to_be, filename, line_num, tk, message, 0)
-#define preprocess_warning(tk, message) preprocess_message_internal(last_to_be, filename, line_num, tk, message, 1)
-
-static bool * if_depth = NULL;
-static int * if_depth_prlens = NULL;
-static char * result_buffer = NULL;
-
-static int
 count_newlines_in_range(char * s, char * end, char ** o_last_line) {
-    int result = 0;
+    int result = 1;
     while (s < end) {
         if (*s++ == '\n') {
             *o_last_line = s;
@@ -112,6 +51,69 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
     }
     return result;
 }
+
+static int
+get_line(char * buffer_begin, char ** o_pos, char ** o_start_of_line, char ** o_filename) {
+    FileLoc * loc = NULL;
+    for (int i = arrlen(file_location_lookup)-1; i >= 0; i--) {
+        ptrdiff_t offset = *o_pos - buffer_begin;
+        if (offset >= file_location_lookup[i].offset) {
+            loc = &file_location_lookup[i];
+            break;
+        }
+    }
+    if (loc == NULL) return -1;
+    char * file_buffer = NULL;
+    for (int i=0; i < arrlen(file_buffers); i++) {
+        if (strcmp(loc->filename, file_buffers[i].filename) == 0) {
+            file_buffer = file_buffers[i].buffer;
+        }
+    }
+    assert(file_buffer);
+    *o_pos = file_buffer + (loc->file_offset + ((*o_pos - buffer_begin) - loc->offset));
+    char * last_line;
+    int line_num = count_newlines_in_range(file_buffer, *o_pos, &last_line);
+    *o_start_of_line = last_line;
+    *o_filename = loc->filename;
+    return line_num;
+}
+
+static void
+message_internal(char * start_of_line, char * filename, int line, char * hl_start, char * hl_end, char * message, int message_type) {
+    char * end_of_line = strchr(hl_end, '\n') + 1;
+    char * s = NULL;
+    const char * message_type_string = (message_type == 1)? "Warning" : "Error";
+    const char * color = (message_type == 1)? BOLD_YELLOW : BOLD_RED;
+    strputf(&s, "%s%s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n\n", color, message_type_string, filename, line, message);
+    strput_code_segment(&s, start_of_line, end_of_line, hl_start, hl_end, color);
+    strputnull(s);
+    fputs(s, stderr);
+    arrfree(s);
+}
+
+void
+parse_error_internal(char * buffer, const Token * tk, char * message) {
+    char * start_of_line;
+    char * filename;
+    char * hl_start = tk->start;
+    int line_num = get_line(buffer, &hl_start, &start_of_line, &filename);
+    char * hl_end = hl_start + tk->length;
+    message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, 0);
+}
+
+static void
+preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, char * message, int msg_type) {
+    char * start_of_line;
+    int line_num = count_newlines_in_range(file_buffer->buffer, tk->start, &start_of_line);
+    message_internal(start_of_line, file_buffer->filename, line_num, tk->start, tk->start + tk->length, message, msg_type);
+}
+
+#define preprocess_error(tk, message)   preprocess_message_internal(buf_for_this_file, tk, message, 0)
+#define preprocess_warning(tk, message) preprocess_message_internal(buf_for_this_file, tk, message, 1)
+
+static bool * if_depth = NULL;
+static int * if_depth_prlens = NULL;
+static char * result_buffer = NULL;
 
 static void
 ignore_section(char ** buffer, char * filename, char * file_buffer, char ** o_paste_begin, char * ignore_begin, char * end) {
@@ -127,7 +129,7 @@ ignore_section(char ** buffer, char * filename, char * file_buffer, char ** o_pa
     *o_paste_begin = end;
 }
 
-char *
+static char *
 strip_comments(char ** o_s) {
     char * content = NULL;
     bool last_was_identifier = false;
@@ -159,7 +161,7 @@ parse_expression(char * s) {
     }
 }
 
-void
+static void
 pre_skip(char ** o_s, bool elif_ok) {
     int depth = 1;
     while (1) {
@@ -208,6 +210,12 @@ pre_skip(char ** o_s, bool elif_ok) {
     }
 }
 
+enum PreError {
+    PRE_IRRELEVANT = -1,
+    PRE_NO_ERROR = 0,
+    PRE_FILE_NOT_FOUND = 1,
+};
+
 int
 preprocess_filename(char ** result_buffer, char * filename) {
     char * file_buffer = NULL;
@@ -236,7 +244,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
             arrput(file_buffers, new_buf);
             buf_for_this_file = &arrlast(file_buffers);
         } else {
-            return -1; // TODO(print_error)
+            return PRE_FILE_NOT_FOUND;
         }
     }
 
@@ -245,7 +253,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
 
     while (1) {
         char * start_of_line = s;
-        char * inc_filename = NULL;
+        Token inc_filename_tk = {0};
         Token tk = pre_next_token(&s);
 
         if (tk.type == TK_END) {
@@ -272,19 +280,18 @@ preprocess_filename(char ** result_buffer, char * filename) {
                 Token next = pre_next_token(&s);
                 if (next.type == TK_STRING) {
                     // defer this till after the last section gets pasted
-                    inc_filename = copy_and_terminate(next.start + 1, next.length - 2);
+                    inc_filename_tk = next;
                 } else if (*next.start == '<') { // TODO
                     // ignored for now
                 } else {
-                    // TODO(print_error)
-                    puts("Error: unexpected token in include directive.");
+                    preprocess_error(&next, "Error: unexpected token in include directive.");
                     return -1;
                 }
             } else if (tk_equal(&directive, "define")) {
                 // TODO: function-like macros
                 Token macro_name = pre_next_token(&s);
                 if (macro_name.type != TK_IDENTIFIER) {
-                    // TODO(print_error) Expected identifier
+                    preprocess_error(&macro_name, "Expected identifier.");
                     return -1;
                 }
 
@@ -294,9 +301,12 @@ preprocess_filename(char ** result_buffer, char * filename) {
 
                 bool is_func_like = *s == '(';
                 if (is_func_like) {
+                    Token paren_tk;
+                    paren_tk.start = s;
+                    paren_tk.length = 1;
                     s = strchr(s, ')');
                     if (s == NULL) {
-                        // TODO(print_error)
+                        preprocess_error(&paren_tk, "No closing ')'.");
                         return -1;
                     }
                     s++;
@@ -342,7 +352,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
             } else if (tk_equal(&directive, "else")) {
             } else if (tk_equal(&directive, "endif")) {
             } else if (tk_equal(&directive, "error")) {
-                preprocess_message_internal(start_of_line, filename, 0, &directive, "User error", 0); // TODO(line)
+                preprocess_error(&directive, "User error");
                 return -1;
             } else if (tk_equal(&directive, "pragma")) {
                 tk = pre_next_token(&s);
@@ -351,8 +361,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
                 }
             } else {
             unknown_directive:
-                // TODO: line number
-                preprocess_message_internal(start_of_line, filename, 0, &directive, "Unknown directive", 0); // TODO(line)
+                preprocess_error(&directive, "Unknown directive.");
                 return -1;
             }
 
@@ -362,9 +371,15 @@ preprocess_filename(char ** result_buffer, char * filename) {
 
             ignore_section(result_buffer, filename, file_buffer, &chunk_begin, start_of_line, s);
 
-            if (inc_filename) {
+            if (inc_filename_tk.type != TK_UNKNOWN) {
+                char * inc_filename = copy_and_terminate(inc_filename_tk.start + 1, inc_filename_tk.length - 2);
                 int error = preprocess_filename(result_buffer, inc_filename);
-                if (error) return error;
+                if (error) {
+                    if (error == PRE_FILE_NOT_FOUND) {
+                        preprocess_error(&inc_filename_tk, "File not found.");
+                    }
+                    return error;
+                }
             }
         }
     }
