@@ -52,6 +52,13 @@ typedef struct Nest {
     } daughter;
 } Nest;
 
+typedef struct TestAttributes {
+    uint8_t * buffer I(1, length buffer_size);
+    int32_t buffer_size;
+    uint32_t v1 I(3);
+    int h I(2, note "notes test, hello");
+} TestAttributes;
+
 #if 0
 typedef struct {
     char * name;

@@ -32,7 +32,7 @@ get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, c
         return result;
     } else {
         char * result = NULL;
-        strputf(&result, parent->i_struct->members[parent_index].name);
+        strputf(&result, "%s", parent->i_struct->members[parent_index].name);
         char * top_level_name = get_ref_name(info, parent);
         *o_top_level_name = top_level_name;
         return result;
@@ -61,6 +61,33 @@ generate_c_header(IntroInfo * info) {
 
     // forward declare type list
     strputf(&s, "extern IntroType __intro_types [%u];\n\n", info->count_types);
+
+    // attributes
+    // NOTE: maybe this should be one long list and members point into an offset into the list
+    for (int type_index = 0; type_index < info->count_types; type_index++) {
+        const IntroType * type = info->types[type_index];
+        if ((type->category == INTRO_STRUCT || type->category == INTRO_UNION) && type->parent == NULL) {
+            for (int member_index = 0; member_index < type->i_struct->count_members; member_index++) {
+                const IntroMember * m = &type->i_struct->members[member_index];
+                if (m->count_attributes > 0) {
+                    strputf(&s, "const IntroAttributeData __intro__attr_%i_%i [] = {\n", type_index, member_index);
+                    for (int attr_index = 0; attr_index < m->count_attributes; attr_index++) {
+                        const IntroAttributeData * attr = &m->attributes[attr_index];
+                        strputf(&s, "%s{%i, %i, %i},\n", tab, attr->type, attr->value_type, attr->v.i);
+                    }
+                    strputf(&s, "};\n\n");
+                }
+            }
+        }
+    }
+
+    if (note_set != NULL) {
+        strputf(&s, "const char * __intro__notes [] = {\n");
+        for (int i=0; i < arrlen(note_set); i++) {
+            strputf(&s, "%s\"%s\",\n", tab, note_set[i]);
+        }
+        strputf(&s, "};\n\n");
+    }
 
     // complex type information (enums, structs, unions)
     for (int type_index = 0; type_index < info->count_types; type_index++) {
@@ -109,7 +136,11 @@ generate_c_header(IntroInfo * info) {
                             nest->top_level_name, nest->parent_member_name, m->name,
                             nest->top_level_name, nest->parent_member_name);
                 }
-                strputf(&s, ", 0},\n");
+                if (m->count_attributes > 0) {
+                    strputf(&s, ", %u, __intro__attr_%i_%i},\n", m->count_attributes, type_index, m_index);
+                } else {
+                    strputf(&s, ", 0},\n");
+                }
             }
             strputf(&s, "}};\n\n");
         }
