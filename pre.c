@@ -1,4 +1,3 @@
-#include <assert.h>
 #include "util.c"
 #include "lexer.c"
 

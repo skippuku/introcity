@@ -1,6 +1,3 @@
-#include <string.h>
-#include <assert.h>
-
 #include "intro.h"
 #include "util.c"
 #include "lexer.c"

@@ -1,5 +1,3 @@
-#include <stdlib.h>
-#include <string.h>
 #include "intro.h"
 #include "util.c"
 
@@ -127,7 +125,6 @@ generate_c_header(IntroInfo * info) {
             for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
                 const IntroMember * m = &t->i_struct->members[m_index];
                 int32_t member_type_index = hmget(info->index_by_ptr_map, m->type);
-                // TODO: attributes
                 strputf(&s, "%s{\"%s\", &__intro_types[%i], ", tab, m->name, member_type_index);
                 if (!nest) {
                     strputf(&s, "offsetof(%s, %s)", ref_name, m->name);
