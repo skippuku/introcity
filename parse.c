@@ -222,7 +222,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         IntroType type = {0};
         type.name = struct_type_name;
-        type.category = INTRO_STRUCT;
+        type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
         type.i_struct = result;
         
         IntroType * stored = store_type(ctx, &type);
