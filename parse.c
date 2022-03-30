@@ -474,9 +474,9 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk) {
     } else {
         Token tk, ltk = first;
         if (tk_equal(&first, "unsigned")) {
-            type.category = INTRO_UNSIGNED;
+            type.category |= INTRO_UNSIGNED;
         } else if (tk_equal(&first, "signed")) {
-            type.category = INTRO_SIGNED;
+            type.category |= INTRO_SIGNED;
         }
 
         if (type.category) {
