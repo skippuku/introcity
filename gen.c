@@ -39,6 +39,7 @@ get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, c
 
 char *
 generate_c_header(IntroInfo * info) {
+    // generate info needed to get offset and sizeof for anonymous types
     for (int i=0; i < hmlen(info->nest_map); i++) {
         NestInfo * nest = &info->nest_map[i];
         nest->parent_member_name = get_parent_member_name(info, nest->parent, nest->member_index, &nest->top_level_name);
@@ -90,7 +91,7 @@ generate_c_header(IntroInfo * info) {
     // complex type information (enums, structs, unions)
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         IntroType * t = info->types[type_index];
-        if (t->category == INTRO_STRUCT && hmgeti(complex_type_map, t->i_struct) < 0) {
+        if (is_complex(t->category) && hmgeti(complex_type_map, t->i_struct) < 0) {
             const NestInfo * nest = hmgetp_null(info->nest_map, t);
             char * ref_name;
             if (!nest) {
@@ -121,25 +122,33 @@ generate_c_header(IntroInfo * info) {
 
             hmput(complex_type_map, t->i_struct, saved_name);
 
-            strputf(&s, "IntroStruct __intro_%s = {%u, %u, {\n", saved_name, t->i_struct->count_members, t->i_struct->is_union);
-            for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
-                const IntroMember * m = &t->i_struct->members[m_index];
-                int32_t member_type_index = hmget(info->index_by_ptr_map, m->type);
-                strputf(&s, "%s{\"%s\", &__intro_types[%i], ", tab, m->name, member_type_index);
+            if (t->category == INTRO_STRUCT || t->category == INTRO_UNION) {
+                strputf(&s, "IntroStruct __intro_%s = {", saved_name);
                 if (!nest) {
-                    strputf(&s, "offsetof(%s, %s)", ref_name, m->name);
+                    strputf(&s, "sizeof(%s)", ref_name);
                 } else {
-                    strputf(&s, "offsetof(%s, %s.%s) - offsetof(%s, %s)",
-                            nest->top_level_name, nest->parent_member_name, m->name,
-                            nest->top_level_name, nest->parent_member_name);
+                    strputf(&s, "sizeof(((%s*)0)->%s)", nest->top_level_name, nest->parent_member_name);
                 }
-                if (m->count_attributes > 0) {
-                    strputf(&s, ", %u, __intro__attr_%i_%i},\n", m->count_attributes, type_index, m_index);
-                } else {
-                    strputf(&s, ", 0},\n");
+                strputf(&s, ", %u, %u, {\n", t->i_struct->count_members, t->i_struct->is_union);
+                for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
+                    const IntroMember * m = &t->i_struct->members[m_index];
+                    int32_t member_type_index = hmget(info->index_by_ptr_map, m->type);
+                    strputf(&s, "%s{\"%s\", &__intro_types[%i], ", tab, m->name, member_type_index);
+                    if (!nest) {
+                        strputf(&s, "offsetof(%s, %s)", ref_name, m->name);
+                    } else {
+                        strputf(&s, "offsetof(%s, %s.%s) - offsetof(%s, %s)",
+                                nest->top_level_name, nest->parent_member_name, m->name,
+                                nest->top_level_name, nest->parent_member_name);
+                    }
+                    if (m->count_attributes > 0) {
+                        strputf(&s, ", %u, __intro__attr_%i_%i},\n", m->count_attributes, type_index, m_index);
+                    } else {
+                        strputf(&s, ", 0},\n");
+                    }
                 }
+                strputf(&s, "}};\n\n");
             }
-            strputf(&s, "}};\n\n");
         }
     }
 

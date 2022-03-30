@@ -88,6 +88,7 @@ typedef struct IntroMember {
 } IntroMember;
 
 struct IntroStruct {
+    uint32_t size;
     uint32_t count_members;
     bool is_union;
     IntroMember members [];
@@ -99,6 +100,7 @@ typedef struct IntroEnumValue {
 } IntroEnumValue;
 
 struct IntroEnum {
+    uint32_t size;
     uint32_t count_members;
     bool is_flags;
     bool is_sequential;

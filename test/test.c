@@ -267,10 +267,11 @@ intro_print_struct(const void * data, const IntroType * type, const IntroPrintOp
                         } else {
                             if (strcmp(base->name, "char") == 0) {
                                 char * str = (char *)ptr;
-                                if (strlen(str) <= 64) {
+                                const int max_string_length = 32;
+                                if (strlen(str) <= max_string_length) {
                                     printf("\"%s\"", str);
                                 } else {
-                                    printf("<concealed>");
+                                    printf("\"%*.s...\"", max_string_length - 3, str);
                                 }
                             } else {
                                 intro_print_basic_array(ptr, base, 1);
