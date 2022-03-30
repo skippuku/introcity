@@ -36,6 +36,15 @@ struct Forward {
     int i;
 } inline_declaration;
 
+typedef enum Skills {
+    SKILL_PROGRAMMER  = 0x01,
+    SKILL_WRITER      = 0x02,
+    SKILL_ARTIST      = 0x04,
+    SKILL_MUSICIAN    = 0x08,
+    SKILL_ACROBAT     = 0x10,
+    SKILL_BASEBALLBAT = 0x20,
+} Skills;
+
 typedef struct Nest {
     char * name;
     int32_t id;
@@ -44,12 +53,23 @@ typedef struct Nest {
         int32_t id;
         struct {
             int32_t age;
+            enum {
+                FRUIT_APPLE,
+                FRUIT_BANANA,
+                FRUIT_PEAR,
+                FRUIT_PEACH,
+                FRUIT_PLUM,
+                FRUIT_ME,
+                FRUIT_MAX,
+            } favorite_fruit;
         } son;
     } son;
     union {
         int32_t id;
         float speed;
     } daughter;
+
+    Skills skills;
 } Nest;
 
 typedef struct TestAttributes {

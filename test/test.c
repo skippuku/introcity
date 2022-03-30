@@ -340,6 +340,8 @@ main(int argc, char ** argv) {
         .daughter = {
             .speed = 4.53,
         },
+
+        .skills = SKILL_PROGRAMMER | SKILL_MUSICIAN | SKILL_BASEBALLBAT,
     };
 
     printf("nest = ");

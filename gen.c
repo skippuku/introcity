@@ -122,13 +122,13 @@ generate_c_header(IntroInfo * info) {
 
             hmput(complex_type_map, t->i_struct, saved_name);
 
+            strputf(&s, "%s __intro_%s = {", (t->category == INTRO_ENUM)? "IntroEnum" : "IntroStruct", saved_name);
+            if (!nest) {
+                strputf(&s, "sizeof(%s)", ref_name);
+            } else {
+                strputf(&s, "sizeof(((%s*)0)->%s)", nest->top_level_name, nest->parent_member_name);
+            }
             if (t->category == INTRO_STRUCT || t->category == INTRO_UNION) {
-                strputf(&s, "IntroStruct __intro_%s = {", saved_name);
-                if (!nest) {
-                    strputf(&s, "sizeof(%s)", ref_name);
-                } else {
-                    strputf(&s, "sizeof(((%s*)0)->%s)", nest->top_level_name, nest->parent_member_name);
-                }
                 strputf(&s, ", %u, %u, {\n", t->i_struct->count_members, t->i_struct->is_union);
                 for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
                     const IntroMember * m = &t->i_struct->members[m_index];
@@ -147,8 +147,14 @@ generate_c_header(IntroInfo * info) {
                         strputf(&s, ", 0},\n");
                     }
                 }
-                strputf(&s, "}};\n\n");
+            } else if (t->category == INTRO_ENUM) {
+                strputf(&s, ", %u, %u, %u, {\n", t->i_enum->count_members, t->i_enum->is_flags, t->i_enum->is_sequential);
+                for (int m_index = 0; m_index < t->i_enum->count_members; m_index++) {
+                    const IntroEnumValue * v = &t->i_enum->members[m_index];
+                    strputf(&s, "%s{\"%s\", %i},\n", tab, v->name, v->value);
+                }
             }
+            strputf(&s, "}};\n\n");
         }
     }
 
