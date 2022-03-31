@@ -11,7 +11,6 @@ get_ref_name(IntroInfo * info, const IntroType * t) {
                 return t2->name;
             }
         }
-        fprintf(stderr, "no way to reference anonymous struct.\n");
         return NULL;
     } else {
         return t->name;
@@ -97,6 +96,7 @@ generate_c_header(IntroInfo * info) {
             if (!nest) {
                 ref_name = get_ref_name(info, t);
             } else {
+                if (nest->top_level_name == NULL) continue;
                 ref_name = NULL;
                 strputf(&ref_name, "%s_%s", nest->top_level_name, nest->parent_member_name);
                 for (int i=0; i < arrlen(ref_name); i++) {
@@ -106,7 +106,7 @@ generate_c_header(IntroInfo * info) {
                 }
                 strputnull(ref_name);
             }
-            if (!ref_name) return NULL;
+            if (!ref_name) continue; // TODO: maybe we should warn here (this would require location information for types)
 
             char * saved_name;
             if (strchr(ref_name, ' ')) {
@@ -177,7 +177,11 @@ generate_c_header(IntroInfo * info) {
         strputf(&s, "0x%03x, ", t->category);
         if (is_complex(t->category)) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
-            strputf(&s, ".%s=&__intro_%s},\n", (t->category == INTRO_ENUM)? "i_enum" : "i_struct", saved_name);
+            if (saved_name) {
+                strputf(&s, ".%s=&__intro_%s},\n", (t->category == INTRO_ENUM)? "i_enum" : "i_struct", saved_name);
+            } else {
+                strputf(&s, "0},\n");
+            }
         } else {
             strputf(&s, "%u},\n", (t->category == INTRO_ARRAY)? t->array_size : 0);
         }

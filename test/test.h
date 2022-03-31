@@ -60,7 +60,7 @@ typedef struct Nest {
                 FRUIT_PEACH,
                 FRUIT_PLUM,
                 FRUIT_ME,
-                FRUIT_MAX,
+                FRUIT_COUNT,
             } favorite_fruit;
         } son;
     } son;
@@ -78,6 +78,25 @@ typedef struct TestAttributes {
     uint32_t v1 I(3);
     int h I(2, note "notes test, hello");
 } TestAttributes;
+
+enum {
+    ANON_UNSEEN,
+    ANON_INVISIBLE,
+};
+
+struct {
+    int v1;
+
+    struct {
+        int v1;
+    } nested;
+
+    enum {
+        GLOBAL_MAIN,
+        GLOBAL_PAUSE,
+        GLOBAL_LOADING,
+    } state;
+} global_state;
 
 #if 0
 typedef struct {
