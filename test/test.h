@@ -1,4 +1,4 @@
-//#include "basic.h" // TODO: fix
+#include "basic.h"
 
 typedef struct {
     char * name;
@@ -32,7 +32,7 @@ struct TestPtr {
 };
 
 struct Forward {
-    uint8_t buffer [4];
+    u8 buffer [4];
     int i;
 } inline_declaration;
 
@@ -47,12 +47,12 @@ typedef enum Skills {
 
 typedef struct Nest {
     char * name;
-    int32_t id;
+    s32 id;
     struct {
         char * name;
-        int32_t id;
+        s32 id;
         struct {
-            int32_t age;
+            s32 age;
             enum {
                 FRUIT_APPLE,
                 FRUIT_BANANA,
@@ -65,7 +65,7 @@ typedef struct Nest {
         } son;
     } son;
     union {
-        int32_t id;
+        s32 id;
         float speed;
     } daughter;
 
@@ -73,9 +73,9 @@ typedef struct Nest {
 } Nest;
 
 typedef struct TestAttributes {
-    uint8_t * buffer I(1, length buffer_size);
-    int32_t buffer_size;
-    uint32_t v1 I(3);
+    u8 * buffer I(1, length buffer_size);
+    s32 buffer_size;
+    u32 v1 I(3);
     int h I(2, note "notes test, hello");
 } TestAttributes;
 

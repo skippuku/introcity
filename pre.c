@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include "util.c"
 #include "lexer.c"
 
@@ -111,9 +113,23 @@ preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, ch
 #define preprocess_error(tk, message)   preprocess_message_internal(buf_for_this_file, tk, message, 0)
 #define preprocess_warning(tk, message) preprocess_message_internal(buf_for_this_file, tk, message, 1)
 
-static bool * if_depth = NULL;
-static int * if_depth_prlens = NULL;
 static char * result_buffer = NULL;
+
+static void
+dir_of(char * filepath, char ** o_dirname, char ** o_filename) {
+    char * end = strrchr(filepath, '/');
+    if (end == NULL) {
+        *o_dirname = ".";
+        *o_filename = filepath;
+    } else {
+        size_t dir_length = end - filepath;
+        char * dir = malloc(dir_length + 1);
+        memcpy(dir, filepath, dir_length);
+        dir[dir_length] = '\0';
+        *o_dirname = dir;
+        *o_filename = end + 1;
+    }
+}
 
 static void
 ignore_section(char ** buffer, char * filename, char * file_buffer, char ** o_paste_begin, char * ignore_begin, char * end) {
@@ -210,12 +226,6 @@ pre_skip(char ** o_s, bool elif_ok) {
     }
 }
 
-enum PreError {
-    PRE_IRRELEVANT = -1,
-    PRE_NO_ERROR = 0,
-    PRE_FILE_NOT_FOUND = 1,
-};
-
 int
 preprocess_filename(char ** result_buffer, char * filename) {
     char * file_buffer = NULL;
@@ -244,7 +254,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
             arrput(file_buffers, new_buf);
             buf_for_this_file = &arrlast(file_buffers);
         } else {
-            return PRE_FILE_NOT_FOUND;
+            return ERR_FILE_NOT_FOUND;
         }
     }
 
@@ -375,7 +385,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
                 char * inc_filename = copy_and_terminate(inc_filename_tk.start + 1, inc_filename_tk.length - 2);
                 int error = preprocess_filename(result_buffer, inc_filename);
                 if (error) {
-                    if (error == PRE_FILE_NOT_FOUND) {
+                    if (error == ERR_FILE_NOT_FOUND) {
                         preprocess_error(&inc_filename_tk, "File not found.");
                     }
                     return error;
@@ -388,16 +398,16 @@ preprocess_filename(char ** result_buffer, char * filename) {
 }
 
 char *
-run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
+run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     sh_new_arena(defines);
     Define intro_define;
     intro_define.key = "__INTROCITY__";
     shputs(defines, intro_define);
 
-    *o_output_filename = NULL;
+    *o_output_filepath = NULL;
 
     bool preprocess_only = false;
-    char * filename = NULL;
+    char * filepath = NULL;
     for (int i=1; i < argc; i++) {
         char * arg = argv[i];
         if (arg[0] == '-') {
@@ -413,7 +423,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
             } break;
 
             case 'o': {
-                *o_output_filename = argv[++i];
+                *o_output_filepath = argv[++i];
             } break;
 
             default: {
@@ -424,38 +434,44 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filename) {
             } break;
             }
         } else {
-            if (filename) {
+            if (filepath) {
                 fputs("Error: This program cannot currently parse more than 1 file.\n", stderr);
                 exit(1);
             } else {
-                filename = arg;
+                filepath = arg;
             }
         }
     }
 
-    if (!filename) {
+    if (!filepath) {
         fputs("No filename given.\n", stderr);
         exit(1);
     }
-    if (*o_output_filename == NULL) {
-        strputf(o_output_filename, "%s.intro", filename);
-        strputnull(*o_output_filename);
+    if (*o_output_filepath == NULL) {
+        strputf(o_output_filepath, "%s.intro", filepath);
+        strputnull(*o_output_filepath);
     }
 
-    arrput(if_depth, true);
+    char cwd [PATH_MAX];
+    getcwd(cwd, sizeof(cwd));
+    char *filename = NULL, *file_dir = NULL;
+    dir_of(filepath, &file_dir, &filename);
+    if (chdir(file_dir) != 0) {
+        fprintf(stderr, "Failed to chdir into file's directory.\n");
+        return NULL;
+    }
 
     int error = preprocess_filename(&result_buffer, filename);
     if (error) {
-        if (error == PRE_FILE_NOT_FOUND) {
+        if (error == ERR_FILE_NOT_FOUND) {
             fputs("File not found.\n", stderr);
         }
         return NULL;
     }
 
-    strputnull(result_buffer);
+    chdir(cwd);
 
-    arrfree(if_depth);
-    arrfree(if_depth_prlens);
+    strputnull(result_buffer);
 
     if (preprocess_only) {
         fputs(result_buffer, stdout);

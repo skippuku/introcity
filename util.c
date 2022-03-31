@@ -19,6 +19,12 @@
 #define shtemp(t) stbds_temp((t)-1)
 #define hmtemp(t) stbds_temp((t)-1)
 
+enum ErrorType {
+    ERR_IRRELEVANT = -1,
+    ERR_NONE = 0,
+    ERR_FILE_NOT_FOUND = 1,
+};
+
 __attribute__ ((format (printf, 2, 3)))
 static void
 strputf(char ** p_str, const char * format, ...) {
