@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdio.h> // EOF
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct Token {
     char * start;
@@ -128,7 +130,7 @@ pre_next_token(char ** o_s) {
     if (*s == '\'' || *s == '"') {
         char started_with = *s;
         while (*++s != '\0') {
-            if (*s == started_with && *(s-1) != '\\') {
+            if (*s == started_with && !(*(s-1) == '\\' && *(s-2) != '\\')) {
                 tk.type = TK_STRING;
                 tk.length = ++s - tk.start;
                 *o_s = s;
@@ -170,7 +172,7 @@ next_token(char ** o_s) {
     if (*s == '\'' || *s == '"') {
         char started_with = *s;
         while (*++s != '\0') {
-            if (*s == started_with && *(s-1) != '\\') {
+            if (*s == started_with && !(*(s-1) == '\\' && *(s-2) != '\\')) {
                 tk.type = TK_STRING;
                 tk.length = ++s - tk.start;
                 *o_s = s;
@@ -247,5 +249,4 @@ copy_and_terminate(char * str, int length) {
     result[length] = '\0';
     return result;
 }
-
 #endif

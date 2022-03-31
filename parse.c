@@ -153,7 +153,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         Token tk = next_token(o_s);
         if (tk.type == TK_SEMICOLON) {
-            if (base_type->category == INTRO_STRUCT) {
+            if (base_type->category == INTRO_STRUCT || base_type->category == INTRO_UNION) {
                 IntroStruct * s = base_type->i_struct;
                 for (int i=0; i < s->count_members; i++) {
                     arrput(members, s->members[i]);
@@ -683,7 +683,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         } else if (tk.type == TK_L_BRACE) {
             s = find_closing(tk.start);
             if (!s) {
-                // TODO(print error)
+                parse_error(ctx, &tk, "Failed to find closing '}'.");
                 return -1;
             }
             s++;

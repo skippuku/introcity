@@ -3,6 +3,10 @@ CC = gcc -std=gnu99
 default: test/db_test
 	./test/db_test
 
+test: db_intro test/db_test
+	./test/db_test
+	./db_intro intro.c -o test/intro.c.intro
+
 db_intro: intro.c intro.h lexer.c pre.c parse.c attribute.c gen.c stb_ds.h
 	$(CC) intro.c -Wall -g -fdiagnostics-color=always -o $@
 
