@@ -346,6 +346,13 @@ main(int argc, char ** argv) {
 
     printf("nest = ");
     intro_print_struct(&nest, get_type_with_name("Nest"), NULL);
+    printf("\n\n");
+
+    /*=====================*/
+
+    TestUndefined undef_test = {0};
+    printf("undef_test = ");
+    intro_print_struct(&undef_test, get_type_with_name("TestUndefined"), NULL);
     printf("\n");
 
     return 0;

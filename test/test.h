@@ -6,6 +6,10 @@ typedef struct {
     uint64_t array [8];
 } Basic;
 
+struct Undefined1;
+typedef struct Undefined2 Undefined2;
+enum UndefEnum;
+
 typedef struct Forward Forward;
 
 typedef struct {
@@ -97,6 +101,19 @@ struct {
         GLOBAL_LOADING,
     } state;
 } global_state;
+
+typedef struct {
+    struct Undefined1 * s_u1;
+    Undefined2 * u2;
+    struct Undefined2 * s_u2;
+
+    enum UndefEnum * e_;
+
+    //Undefined2 fail_0;
+    //struct Undefined1 fail_1;
+    //struct Undefined2 fail_2;
+    //enum UndefEnum faile_enum;
+} TestUndefined;
 
 #if 0
 typedef struct {

@@ -131,7 +131,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     }
 
     if (tk.type != TK_L_BRACE) {
-        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
+        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return 2;
         parse_error(ctx, &tk, "Expected '{'.");
         return -1;
     }
@@ -286,7 +286,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         tk = next_token(o_s);
     }
     if (tk.type != TK_L_BRACE) {
-        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR) return 2;
+        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return 2;
         parse_error(ctx, &tk, "Expected '{'.");
         return 1;
     }
@@ -446,7 +446,6 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk) {
     }
     strputf(&type_name, "%.*s", first.length, first.start);
 
-    bool is_nested = false;
     bool is_struct = tk_equal(&first, "struct");
     bool is_union  = tk_equal(&first, "union");
     bool is_enum   = tk_equal(&first, "enum");
@@ -463,11 +462,13 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk) {
             *o_s = after_keyword;
             Token tk = next_token(o_s);
             strputf(&type_name, " %.*s", tk.length, tk.start);
+
+            o_tk->start = first.start;
+            o_tk->type = TK_IDENTIFIER;
+            o_tk->length = tk.start - first.start + tk.length;
         } else if (error != 0) {
             return NULL;
         } else {
-            is_nested = true; // TODO: does this matter?
-            (void) is_nested;
             ptrdiff_t last_index = hmtemp(ctx->type_set);
             return ctx->type_set[last_index].value;
         }
@@ -671,8 +672,10 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
             if (tk_equal(&tk, "struct") || tk_equal(&tk, "union")) {
                 s = tk.start;
                 error = parse_struct(ctx, &s);
+                if (error == 2) error = 0;
             } else if (tk_equal(&tk, "enum")) {
                 error = parse_enum(ctx, &s);
+                if (error == 2) error = 0;
             } else if (tk_equal(&tk, "typedef")) {
                 error = parse_typedef(ctx, &s);
             }
