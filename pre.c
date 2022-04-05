@@ -95,7 +95,7 @@ message_internal(char * start_of_line, char * filename, int line, char * hl_star
 
 void
 parse_error_internal(char * buffer, const Token * tk, char * message) {
-    char * start_of_line;
+    char * start_of_line = NULL;
     char * filename = "?";
     char * hl_start = tk->start;
     int line_num = get_line(buffer, &hl_start, &start_of_line, &filename);
