@@ -13,7 +13,9 @@
 #define STB_SPRINTF_NOFLOAT
 #include "stb_sprintf.h"
 
+#ifndef LENGTH
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
+#endif
 #define strputnull(a) arrput(a,0)
 // index of last put or get
 #define shtemp(t) stbds_temp((t)-1)

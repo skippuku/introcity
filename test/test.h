@@ -3,7 +3,7 @@
 typedef struct {
     char * name;
     int32_t a, b;
-    uint64_t array [8];
+    uint8_t array [8];
 } Basic;
 
 struct Undefined1;
