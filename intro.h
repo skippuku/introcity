@@ -11,31 +11,31 @@
 typedef enum IntroCategory {
     INTRO_UNKNOWN = 0x0,
 
-    INTRO_U8  = 0x011,
-    INTRO_U16 = 0x012,
-    INTRO_U32 = 0x014,
-    INTRO_U64 = 0x018,
+    INTRO_U8  = 0x11,
+    INTRO_U16 = 0x12,
+    INTRO_U32 = 0x14,
+    INTRO_U64 = 0x18,
 
-    INTRO_S8  = 0x021,
-    INTRO_S16 = 0x022,
-    INTRO_S32 = 0x024,
-    INTRO_S64 = 0x028,
+    INTRO_S8  = 0x21,
+    INTRO_S16 = 0x22,
+    INTRO_S32 = 0x24,
+    INTRO_S64 = 0x28,
 
-    INTRO_F32 = 0x044,
-    INTRO_F64 = 0x048,
+    INTRO_F32 = 0x34,
+    INTRO_F64 = 0x38,
 
-    INTRO_ARRAY   = 0x100,
-    INTRO_POINTER = 0x200,
+    INTRO_ARRAY   = 0x40,
+    INTRO_POINTER = 0x50,
 
-    INTRO_STRUCT  = 0x400,
-    INTRO_UNION   = 0x410,
-    INTRO_ENUM    = 0x800,
+    INTRO_ENUM    = 0x60,
+    INTRO_STRUCT  = 0x70,
+    INTRO_UNION   = 0x71,
 } IntroCategory;
 
 typedef enum {
-    INTRO_UNSIGNED = 0x010,
-    INTRO_SIGNED   = 0x020,
-    INTRO_FLOATING = 0x040,
+    INTRO_UNSIGNED = 0x10,
+    INTRO_SIGNED   = 0x20,
+    INTRO_FLOATING = 0x30,
 } IntroCategoryFlags;
 
 typedef struct IntroStruct IntroStruct;

@@ -67,7 +67,7 @@ intro_is_basic(const IntroType * type) {
 static int
 intro_size(const IntroType * type) {
     if (intro_is_basic(type)) {
-        return (int) type->category & 0x00f;
+        return (int) type->category & 0x0f;
     } else {
         return 0;
     }
