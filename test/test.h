@@ -6,6 +6,13 @@ typedef struct {
     uint8_t array [8];
 } Basic;
 
+typedef struct {
+    char * name;
+    int32_t a, b, c;
+    uint8_t array [8];
+    bool has_c;
+} BasicPlus;
+
 struct Undefined1;
 typedef struct Undefined2 Undefined2;
 enum UndefEnum;

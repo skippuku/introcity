@@ -140,7 +140,7 @@ typedef struct {
     U32ByPtr * data_offset_by_ptr;
 } CityCreationContext;
 
-uint32_t
+static uint32_t
 city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
     int type_id = hmgeti(ctx->type_set, type);
     if (type_id >= 0) {
@@ -202,7 +202,7 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
 }
 
 // TODO: support ptr to ptr
-void
+static void
 city__serialize_pointer_data(CityCreationContext * ctx, const IntroType * s_type) {
     assert(s_type->category == INTRO_STRUCT);
 
@@ -286,7 +286,6 @@ city_create(void ** o_result, const void * src, const IntroType * s_type) {
     return arrlen(result);
 }
 
-#ifdef IGNORE
 static uint32_t
 next_uint(const uint8_t ** ptr, uint8_t size) {
     uint32_t result;
@@ -300,8 +299,8 @@ static int
 city__safe_copy_struct(
     void * restrict dest,
     const IntroType * restrict d_type,
-    const void * restrict src,
-    const s_type * restrict s_type
+    void * restrict src,
+    const IntroType * restrict s_type
 ) {
     const IntroStruct * d_struct = d_type->i_struct;
     const IntroStruct * s_struct = s_type->i_struct;
@@ -317,15 +316,24 @@ city__safe_copy_struct(
                     return -1;
                 }
 
-                if (intro_is_basic(dm->type->category)) {
-                    memcpy(dest + dm->offset, src + sm->offset, intro_sizeof(dm->type));
+                if (intro_is_basic(dm->type)) {
+                    memcpy(dest + dm->offset, src + sm->offset, intro_size(dm->type));
                 } else if (dm->type->category == INTRO_POINTER) {
-                    void * result_ptr = data + *(src + sm->offset);
+                    void * result_ptr = src + *(size_t *)(src + sm->offset);
                     memcpy(dest + dm->offset, &result_ptr, sizeof(void *));
+                } else if (dm->type->category == INTRO_ARRAY) {
+                    if (dm->type->parent->category != sm->type->parent->category) {
+                        city__error("array type mismatch");
+                        return -1;
+                    }
+                    size_t d_size = intro_size(dm->type);
+                    size_t s_size = intro_size(sm->type);
+                    size_t size = (d_size > s_size)? s_size : d_size;
+                    memcpy(dest + dm->offset, src + sm->offset, size);
                 } else if (dm->type->category == INTRO_STRUCT) {
                     int ret = city__safe_copy_struct(
-                        dest + dm->offset, dm->type->i_struct
-                        src + sm->offset, sm->type->i_struct
+                        dest + dm->offset, dm->type,
+                        src + sm->offset, sm->type
                     );
                     if (ret < 0) return ret;
                 } else {
@@ -339,7 +347,7 @@ city__safe_copy_struct(
 }
 
 int
-city_load(void * dest, IntroType * d_type, const void * data, int32_t data_size) {
+city_load(void * dest, IntroType * d_type, void * data, int32_t data_size) {
     const CityHeader * header = data;
     
     if (
@@ -362,32 +370,26 @@ city_load(void * dest, IntroType * d_type, const void * data, int32_t data_size)
     const uint8_t type_size   = 1 + ((header->size_info >> 4) & 0x0f);
     const uint8_t offset_size = 1 + ((header->size_info) & 0x0f) ;
 
-    const uint8_t * b = data + sizeof(*header);
-    if (b + header->count_types * (type_size + offset_size) < data + data_size) {
-        city__error("malformed");
-        return -1;
-    }
-
     struct {
         uint32_t key;
-        IntroType value;
-    } * info_by_type = NULL;
+        IntroType * value;
+    } * info_by_id = NULL;
+
+    uint8_t * src = data + header->data_ptr;
+    const uint8_t * b = data + sizeof(*header);
 
     for (int i=0; i < header->count_types; i++) {
-        uint32_t type = next_uint(&b, type_size);
-        uint32_t offset = next_uint(&b, offset_size);
+        IntroType * type = malloc(sizeof(*type));
+        memset(type, 0, sizeof(*type));
 
-        IntroType type;
-        const uint8_t * p = data + offset;
+        type->category = next_uint(&b, 1);
 
-        type.category = next_uint(&p, 1);
-
-        switch(info.category) {
+        switch(type->category) {
         case INTRO_STRUCT:
         case INTRO_UNION: {
-            uint32_t count_members = next_uint(&p, 4);
+            uint32_t count_members = next_uint(&b, 4);
 
-            if (p + count_members * (type_size + offset_size + offset_size) < data + data_size) {
+            if ((void *)b + count_members * (type_size + offset_size + offset_size) > data + data_size) {
                 city__error("malformed");
                 return -1;
             }
@@ -395,66 +397,53 @@ city_load(void * dest, IntroType * d_type, const void * data, int32_t data_size)
             IntroMember * members = NULL;
             for (int m=0; m < count_members; m++) {
                 IntroMember member;
-                member.type   = hmgetp_null(next_uint(&p, type_size));
-                member.offset = (int32_t)next_uint(&p, offset_size);
-                member.name   = (const char *)(data + next_uint(&p, offset_size));
+                member.type   = hmget(info_by_id, next_uint(&b, type_size));
+                member.offset = (int32_t)next_uint(&b, offset_size);
+                member.name   = (char *)(src + next_uint(&b, offset_size));
                 arrput(members, member);
             }
 
             IntroStruct struct_;
-            struct_.name = NULL;
             struct_.count_members = count_members;
-            struct_.is_union = info.category == INTRO_UNION;
+            struct_.is_union = type->category == INTRO_UNION;
 
             IntroStruct * result = malloc(sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
             memcpy(result, &struct_, sizeof(struct_));
             memcpy(result->members, members, sizeof(*members) * arrlen(members));
             arrfree(members);
 
-            IntroType type_info = {0};
-            type_info.category = INTRO_STRUCT;
-            type_info.i_struct = result;
-
-            hmput(info_by_type, type, type_info);
-        } break;
+            type->i_struct = result;
+        }break;
 
         case INTRO_POINTER: {
-            uint32_t to_type = next_uint(&p, type_size);
+            uint32_t parent_id = next_uint(&b, type_size);
 
-            IntroType type_info = hmget(info_by_type, to_type);
-            uint32_t * ind = malloc(type_info.indirection_level + 1);
-            ind[0] = 0;
-            for (int i=0; i < type_info.indirection_level; i++) {
-                ind[i+1] = type_info.indirection[i];
-            }
-            type_info.indirection = ind;
-            type_info.indirection_level++;
-
-            hmput(info_by_type, type, type_info);
-        } break;
+            IntroType * parent = hmget(info_by_id, parent_id);
+            type->parent = parent;
+        }break;
 
         case INTRO_ARRAY: {
-            uint32_t type = next_uint(&p, type_size);
-            uint32_t array_size = next_uint(&p, 4);
+            uint32_t parent_id = next_uint(&b, type_size);
+            uint32_t array_size = next_uint(&b, 4);
 
-            IntroType type_info = hmget(info_by_type, to_type);
-            uint32_t * ind = malloc(type_info.indirection_level + 1);
-            ind[0] = array_size;
-            for (int i=0; i < type_info.indirection_level; i++) {
-                ind[i+1] = type_info.indirection[i];
-            }
-            type_info.indirection = ind;
-            type_info.indirection_level++;
+            IntroType * parent = hmget(info_by_id, parent_id);
+            type->parent = parent;
+            type->array_size = array_size;
+        }break;
 
-            hmput(info_by_type, type, type_info);
-        } break;
-
+        default: break;
         }
+        hmput(info_by_id, i, type);
     }
 
-    const void * src = data + header->data_ptr;
-    const IntroType * s_type = &arrlast(info_by_type);
+    const IntroType * s_type = info_by_id[hmlen(info_by_id) - 1].value;
 
-    return city__safe_copy_struct(dest, d_type, src, s_type);
+    int copy_result = city__safe_copy_struct(dest, d_type, src, s_type);
+
+    for (int i=0; i < hmlen(info_by_id); i++) {
+        free(info_by_id[i].value);
+    }
+    hmfree(info_by_id);
+
+    return copy_result;
 }
-#endif
