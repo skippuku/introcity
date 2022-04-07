@@ -4,7 +4,7 @@
 #include <string.h>
 
 bool
-intro_is_basic(const IntroType * type) {
+intro_is_scalar(const IntroType * type) {
     return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
 }
 
@@ -17,7 +17,7 @@ intro_is_complex(const IntroType * type) {
 
 int
 intro_size(const IntroType * type) {
-    if (intro_is_basic(type)) {
+    if (intro_is_scalar(type)) {
         return (type->category & 0x0f);
     } else if (type->category == INTRO_POINTER) {
         return sizeof(void *);
@@ -122,9 +122,9 @@ intro_attribute_length(const void * struct_data, const IntroType * struct_type, 
 
 void
 intro_print_basic(const void * data, const IntroType * type) {
-    if (intro_is_basic(type)) {
+    if (intro_is_scalar(type)) {
         if (type->category <= INTRO_S64) {
-            int64_t value = intro_int_value(data, type);
+      j     int64_t value = intro_int_value(data, type);
             printf("%li", value);
         } else if (type->category == INTRO_F32) {
             printf("%f", *(float *)data);
@@ -181,22 +181,30 @@ intro_print_basic_array(const void * data, const IntroType * type, int length) {
 }
 
 void
-intro_print_type_name(const IntroType * type) {
+intro_sprint_type_name(char * dest, const IntroType * type) {
     while (1) {
         if (type->category == INTRO_POINTER) {
-            printf("*");
+            *dest++ = '*';
             type = type->parent;
         } else if (type->category == INTRO_ARRAY) {
-            printf("[%u]", type->array_size);
+            dest += sprintf(dest, "[%u]", type->array_size) - 1;
             type = type->parent;
         } else if (type->name) {
-            printf("%s", type->name);
+            dest += sprintf(dest, "%s", type->name) - 1;
             break;
         } else {
-            printf("<anon>");
+            sprintf(dest, "<anon>");
             break;
         }
     }
+    *dest++ = '\0';
+}
+
+void
+intro_print_type_name(const IntroType * type) {
+    char buf [1024];
+    intro_sprintf_type_name(buf, type);
+    fputs(buf, stdout);
 }
 
 typedef struct {
@@ -223,7 +231,7 @@ intro_print_struct(const void * data, const IntroType * type, const IntroPrintOp
         printf("%s: ", m->name);
         intro_print_type_name(m->type);
         printf(" = ");
-        if (intro_is_basic(m->type)) {
+        if (intro_is_scalar(m->type)) {
             intro_print_basic(m_data, m->type);
         } else {
             switch(m->type->category) {
@@ -231,7 +239,7 @@ intro_print_struct(const void * data, const IntroType * type, const IntroPrintOp
                 int depth;
                 const IntroType * parent = m->type->parent;
                 const int MAX_EXPOSED_LENGTH = 64;
-                if (intro_is_basic(parent) && m->type->array_size <= MAX_EXPOSED_LENGTH) {
+                if (intro_is_scalar(parent) && m->type->array_size <= MAX_EXPOSED_LENGTH) {
                     intro_print_basic_array(m_data, parent, m->type->array_size);
                 } else {
                     printf("<concealed>");
@@ -243,7 +251,7 @@ intro_print_struct(const void * data, const IntroType * type, const IntroPrintOp
                 if (ptr) {
                     int depth;
                     const IntroType * base = intro_base(m->type, &depth);
-                    if (depth == 1 && intro_is_basic(base)) {
+                    if (depth == 1 && intro_is_scalar(base)) {
                         int64_t length;
                         if (intro_attribute_length(data, type, m, &length)) {
                             intro_print_basic_array(ptr, base, length);

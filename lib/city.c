@@ -49,7 +49,7 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
         return type_id;
     }
 
-    if (intro_is_basic(type)) {
+    if (intro_is_scalar(type)) {
         put_uint(&ctx->info, type->category, 1);
     } else {
         switch(type->category) {
@@ -223,7 +223,7 @@ city__safe_copy_struct(
                     return -1;
                 }
 
-                if (intro_is_basic(dm->type)) {
+                if (intro_is_scalar(dm->type)) {
                     memcpy(dest + dm->offset, src + sm->offset, intro_size(dm->type));
                 } else if (dm->type->category == INTRO_POINTER) {
                     void * result_ptr = src + *(size_t *)(src + sm->offset);
