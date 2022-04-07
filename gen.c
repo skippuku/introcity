@@ -199,6 +199,8 @@ generate_c_header(IntroInfo * info) {
     }
     strputf(&s, "\n};\n");
 
+    hmfree(complex_type_map);
+
     strputnull(s);
     return s;
 }

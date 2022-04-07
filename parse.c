@@ -382,7 +382,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             strputnull(enum_type_name);
         }
 
-        IntroType type;
+        IntroType type = {0};
         type.name = enum_type_name;
         type.category = INTRO_ENUM;
         type.i_enum = result;
