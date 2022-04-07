@@ -135,8 +135,8 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
         case INTRO_V_NONE: {
             if (data.type == INTRO_ATTR_TYPE) {
                 IntroType * type = i_struct->members[member_index].type;
-                if (!(type->name && strcmp(type->name, "IntroType") == 0)) {
-                    parse_error(ctx, &tk, "Member must be of type 'IntroType' to have type attribute.");
+                if (!(type->category == INTRO_POINTER && strcmp(type->parent->name, "IntroType") == 0)) {
+                    parse_error(ctx, &tk, "Member must be of type 'IntroType *' to have type attribute.");
                     return 1;
                 }
             }

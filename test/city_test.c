@@ -41,13 +41,12 @@ main() {
     }
 
     BasicPlus obj_load = {0};
-    IntroType * obj_load_type = get_type_with_name("BasicPlus");
     size_t load_size;
     void * city_load_data = read_entire_file("test/obj.cty", &load_size);
-    city_load(&obj_load, obj_load_type, city_load_data, load_size);
+    city_load(&obj_load, get_type_with_name("BasicPlus"), city_load_data, load_size);
 
     printf("obj_load: BasicPlus = ");
-    intro_print_struct(&obj_load, obj_load_type, NULL);
+    intro_print_struct(&obj_load, obj_load.type, NULL);
     printf("\n");
 
     return 0;

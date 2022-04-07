@@ -200,7 +200,7 @@ next_uint(const uint8_t ** ptr, uint8_t size) {
 static int
 city__safe_copy_struct(
     void * restrict dest,
-    const IntroType * restrict d_type,
+    IntroType * restrict d_type,
     void * restrict src,
     const IntroType * restrict s_type
 ) {
@@ -208,6 +208,11 @@ city__safe_copy_struct(
     const IntroStruct * s_struct = s_type->i_struct;
     for (int i=0; i < d_struct->count_members; i++) {
         const IntroMember * dm = &d_struct->members[i];
+
+        if (intro_attribute_flag(dm, INTRO_ATTR_TYPE)) {
+            *(IntroType **)(dest + dm->offset) = d_type;
+            continue;
+        }
 
         for (int j=0; j < s_struct->count_members; j++) {
             const IntroMember * sm = &s_struct->members[j];

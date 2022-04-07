@@ -11,6 +11,7 @@ typedef struct {
     int32_t a, b, c;
     uint8_t array [8];
     bool has_c;
+    IntroType * type I(type);
 } BasicPlus;
 
 struct Undefined1;

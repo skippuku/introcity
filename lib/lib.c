@@ -83,6 +83,17 @@ intro_int_value(const void * data, const IntroType * type) {
 }
 
 bool
+intro_attribute_flag(const IntroMember * m, int32_t attr_type) {
+    for (int i=0; i < m->count_attributes; i++) {
+        const IntroAttributeData * attr = &m->attributes[i];
+        if (attr->type == attr_type) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
 intro_attribute_int(const IntroMember * m, int32_t attr_type, int32_t * o_int) {
     for (int i=0; i < m->count_attributes; i++) {
         const IntroAttributeData * attr = &m->attributes[i];
