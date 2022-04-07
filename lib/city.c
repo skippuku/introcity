@@ -1,91 +1,4 @@
-#include "../intro.h"
-
-bool
-intro_is_basic(const IntroType * type) {
-    return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
-}
-
-int
-intro_size(const IntroType * type) {
-    if (intro_is_basic(type)) {
-        return (type->category & 0x0f);
-    } else if (type->category == INTRO_POINTER) {
-        return sizeof(void *);
-    } else if (type->category == INTRO_ARRAY) {
-        return type->array_size * intro_size(type->parent);
-    } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
-        return type->i_struct->size;
-    } else if (type->category == INTRO_ENUM) {
-        return type->i_enum->size;
-    } else {
-        return 0;
-    }
-}
-
-int64_t
-intro_int_value(const void * data, const IntroType * type) {
-    int64_t result;
-    switch(type->category) {
-    case INTRO_U8:
-        result = *(uint8_t *)data;
-        break;
-    case INTRO_U16:
-        result = *(uint16_t *)data;
-        break;
-    case INTRO_U32:
-        result = *(uint32_t *)data;
-        break;
-    case INTRO_U64:
-        result = *(uint64_t *)data;
-        break;
-
-    case INTRO_S8:
-        result = *(int8_t *)data;
-        break;
-    case INTRO_S16:
-        result = *(int16_t *)data;
-        break;
-    case INTRO_S32:
-        result = *(int32_t *)data;
-        break;
-    case INTRO_S64:
-        result = *(int64_t *)data;
-        break;
-
-    default:
-        result = 0;
-        break;
-    }
-
-    return result;
-}
-
-bool
-intro_attribute_int(const IntroMember * m, int32_t attr_type, int32_t * o_int) {
-    for (int i=0; i < m->count_attributes; i++) {
-        const IntroAttributeData * attr = &m->attributes[i];
-        if (attr->type == attr_type) {
-            if (o_int) *o_int = attr->v.i;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool
-intro_attribute_length(const void * struct_data, const IntroType * struct_type, const IntroMember * m, int64_t * o_length) {
-    int32_t member_index;
-    const void * m_data = struct_data + m->offset;
-    if (intro_attribute_int(m, INTRO_ATTR_LENGTH, &member_index)) {
-        const IntroMember * length_member = &struct_type->i_struct->members[member_index];
-        const void * length_member_loc = struct_data + length_member->offset;
-        *o_length = intro_int_value(length_member_loc, length_member->type);
-        return true;
-    } else {
-        *o_length = 0;
-        return false;
-    }
-}
+#include "lib.c"
 
 static const int implementation_version_major = 0;
 static const int implementation_version_minor = 1;
@@ -109,17 +22,6 @@ static void
 put_uint(uint8_t ** array, uint32_t number, uint8_t bytes) {
     memcpy(arraddnptr(*array, bytes), &number, bytes);
 }
-
-#if 0
-Quad
-swipe_quad(Quad q, vec2 a, vec2 b) {
-    vec2 t_tl = {MIN(a.x, b.x), MIN(a.y, b.y)};
-    vec2 t_br = {MAX(a.x, b.x), MAX(a.y, b.y)};
-
-    Quad result = {addv2(t_tl, q.tl), addv2(t_br, q.br)};
-    return result;
-}
-#endif
 
 typedef struct {
     const IntroType * key;
