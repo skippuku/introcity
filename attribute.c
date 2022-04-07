@@ -115,6 +115,30 @@ check_id_valid(const IntroStruct * i_struct, int id) {
     return true;
 }
 
+ptrdiff_t
+store_value(ParseContext * ctx, void * value, size_t value_size) {
+    void * storage = arraddnptr(ctx->value_buffer, value_size);
+    memcpy(storage, value, value_size); // NOTE: this is only correct for LE
+    return (storage - (void *)ctx->value_buffer);
+}
+
+ptrdiff_t
+parse_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
+    if (type->category >= INTRO_U8 && type->category <= INTRO_S64) {
+        long result = strtol(*o_s, o_s, 0);
+        int size = type->category & 0x0f;
+        return store_value(ctx, &result, size);
+    } else if (type->category == INTRO_F32) {
+        float result = strtof(*o_s, o_s);
+        return store_value(ctx, &result, 4);
+    } else if (type->category == INTRO_F64) {
+        double result = strtod(*o_s, o_s);
+        return store_value(ctx, &result, 8);
+    } else {
+        return -1;
+    }
+}
+
 int
 parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int member_index, IntroAttributeData * o_result) {
     IntroAttributeData data = {0};
@@ -180,8 +204,13 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
         } break;
 
         case INTRO_V_VALUE: {
-            parse_error(ctx, &tk, "Value attributes are not currently supported.");
-            return 1;
+            IntroType * type = i_struct->members[member_index].type;
+            ptrdiff_t value_offset = parse_value(ctx, type, o_s);
+            if (value_offset < 0) {
+                parse_error(ctx, &tk, "Value attributes are not supported for this type");
+                return 1;
+            }
+            data.v.i = value_offset;
         } break;
 
         case INTRO_V_MEMBER: {
@@ -255,6 +284,19 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
                 int error = parse_attribute(ctx, &s, i_struct, member_index, &data);
                 if (error) return 1;
             }
+            arrput(attributes, data);
+        } else if (tk.type == TK_EQUAL) {
+            data.type = INTRO_ATTR_DEFAULT;
+            data.value_type = INTRO_V_VALUE;
+            // @copy from above
+            IntroType * type = i_struct->members[member_index].type;
+            ptrdiff_t value_offset = parse_value(ctx, type, &s);
+            if (value_offset < 0) {
+                parse_error(ctx, &tk, "Value attributes are not supported for this type");
+                return 1;
+            }
+            data.v.i = value_offset;
+
             arrput(attributes, data);
         } else if (tk.type == TK_R_PARENTHESIS) {
             break;

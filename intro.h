@@ -127,6 +127,7 @@ typedef struct IntroInfo {
     IntroType ** types;
     IndexByPtrMap * index_by_ptr_map;
     NestInfo * nest_map;
+    uint8_t * value_buffer;
 } IntroInfo;
 
 #endif // INTRO_H

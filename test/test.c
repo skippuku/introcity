@@ -16,6 +16,23 @@ get_type_with_name(const char * name) {
     return NULL;
 }
 
+void
+set_defaults(void * dest, const IntroType * type) {
+    for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
+        const IntroMember * m = &type->i_struct->members[m_index];
+        size_t size = intro_size(m->type);
+        int32_t offset;
+        if (intro_attribute_int(m, INTRO_ATTR_DEFAULT, &offset)) {
+            const void * value = __intro_values + offset;
+            memcpy(dest + m->offset, value, size);
+        } else if (intro_attribute_flag(m, INTRO_ATTR_TYPE)) {
+            memcpy(dest + m->offset, &type, sizeof(void *));
+        } else {
+            memset(dest + m->offset, 0, size);
+        }
+    }
+}
+
 int
 main(int argc, char ** argv) {
     printf("==== TEST OUTPUT ====\n\n");
@@ -62,6 +79,15 @@ main(int argc, char ** argv) {
     TestUndefined undef_test = {0};
     printf("undef_test = ");
     intro_print_struct(&undef_test, get_type_with_name("TestUndefined"), NULL);
+    printf("\n\n");
+
+    /*====================*/
+
+    TestDefault default_test;
+    set_defaults(&default_test, get_type_with_name("TestDefault"));
+
+    printf("default_test = ");
+    intro_print_struct(&default_test, default_test.type, NULL);
     printf("\n");
 
     return 0;

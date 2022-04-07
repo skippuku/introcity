@@ -12,6 +12,8 @@ typedef struct {
     struct{IntroType key; IntroType * value;} * type_set;
     NameSet * name_set;
     NestInfo * nest_map;
+
+    uint8_t * value_buffer;
 } ParseContext;
 
 void
@@ -706,5 +708,6 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     o_info->types = type_list;
     o_info->index_by_ptr_map = index_by_ptr;
     o_info->nest_map = ctx->nest_map;
+    o_info->value_buffer = ctx->value_buffer;
     return 0;
 }

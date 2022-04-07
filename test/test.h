@@ -123,6 +123,14 @@ typedef struct {
     //enum UndefEnum faile_enum;
 } TestUndefined;
 
+typedef struct {
+    int v_int I(default 123);
+    uint8_t v_u8 I(=1);
+    int64_t v_s64 I(=-54321);
+    float v_float I(= 3.14159);
+    IntroType * type I(type);
+} TestDefault;
+
 #if 0
 typedef struct {
     char * name;

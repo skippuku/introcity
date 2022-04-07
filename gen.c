@@ -188,6 +188,17 @@ generate_c_header(IntroInfo * info) {
     }
     strputf(&s, "};\n\n");
 
+    // values
+    strputf(&s, "unsigned char __intro_values [%I64i] = {", arrlenu(info->value_buffer));
+    for (int i=0; i < arrlen(info->value_buffer); i++) {
+        if (i % 16 == 0) {
+            strputf(&s, "\n");
+        }
+        uint8_t byte = info->value_buffer[i];
+        strputf(&s, "%hu, ", byte);
+    }
+    strputf(&s, "\n};\n");
+
     strputnull(s);
     return s;
 }
