@@ -6,6 +6,7 @@
 
 int
 main(int argc, char * argv []) {
+#if 0 // nocheckin
     char * output_filename = NULL;
     char * preprocessed_buffer = run_preprocessor(argc, argv, &output_filename);
     if (!preprocessed_buffer) {
@@ -33,4 +34,8 @@ main(int argc, char * argv []) {
     }
 
     return 0;
+#else
+    path_test();
+    return 0;
+#endif
 }

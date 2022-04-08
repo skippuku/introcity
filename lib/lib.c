@@ -124,7 +124,7 @@ void
 intro_print_basic(const void * data, const IntroType * type) {
     if (intro_is_scalar(type)) {
         if (type->category <= INTRO_S64) {
-      j     int64_t value = intro_int_value(data, type);
+            int64_t value = intro_int_value(data, type);
             printf("%li", value);
         } else if (type->category == INTRO_F32) {
             printf("%f", *(float *)data);
@@ -203,7 +203,7 @@ intro_sprint_type_name(char * dest, const IntroType * type) {
 void
 intro_print_type_name(const IntroType * type) {
     char buf [1024];
-    intro_sprintf_type_name(buf, type);
+    intro_sprint_type_name(buf, type);
     fputs(buf, stdout);
 }
 

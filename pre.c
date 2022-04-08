@@ -116,19 +116,63 @@ preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, ch
 static char * result_buffer = NULL;
 
 static void
-dir_of(char * filepath, char ** o_dirname, char ** o_filename) {
+path_normalize(char * dest) {
+    char * last_dir = NULL;
+    char * src = dest;
+    while (*src) {
+        if (*dest == '/') {
+            last_dir = dest;
+            if (memcmp(src, "/", 1)==0) {
+                src += 1;
+            } else if (memcmp(src, "./", 2)==0) {
+                src += 2;
+            } else if (memcmp(src, "../", 3)==0) {
+                src += 3;
+                dest = last_dir;
+            }
+        }
+        *dest++ = *src++;
+    }
+    *dest = '\0';
+}
+
+static void
+path_join(char * dest, char * base, char * ext) {
+    strcpy(dest, base);
+    strcat(dest, "/");
+    strcat(dest, ext);
+    path_normalize(dest);
+}
+
+static void
+path_dir(char * dest, char * filepath, char ** o_filename) {
     char * end = strrchr(filepath, '/');
     if (end == NULL) {
-        *o_dirname = ".";
+        strcpy(dest, "./");
         *o_filename = filepath;
     } else {
-        size_t dir_length = end - filepath;
-        char * dir = malloc(dir_length + 1);
-        memcpy(dir, filepath, dir_length);
-        dir[dir_length] = '\0';
-        *o_dirname = dir;
+        size_t dir_length = end - filepath + 1;
+        memcpy(dest, filepath, dir_length);
+        dest[dir_length] = '\0';
         *o_filename = end + 1;
     }
+}
+
+void
+path_test() {
+    char a [] = "lib/lib.c";
+    char b [] = "../test/test.c";
+
+    char a_dir [1024];
+    char * a_file;
+    path_dir(a_dir, a, &a_file);
+
+    char b_file [1024];
+    path_join(b_file, a_dir, b);
+
+    printf("a_dir  : %s\n", a_dir);
+    printf("a_file : %s\n", a_file);
+    printf("b_file : %s\n", b_file);
 }
 
 static void
@@ -455,7 +499,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     char cwd [PATH_MAX];
     getcwd(cwd, sizeof(cwd));
     char *filename = NULL, *file_dir = NULL;
-    dir_of(filepath, &file_dir, &filename);
+    path_dir(filepath, &file_dir, &filename);
     if (chdir(file_dir) != 0) {
         fprintf(stderr, "Failed to chdir into file's directory.\n");
         return NULL;
