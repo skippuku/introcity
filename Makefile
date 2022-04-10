@@ -27,3 +27,10 @@ city: test/db_city_test
 
 test/db_city_test: test/city_test.c test/test.h.intro lib/lib.c lib/city.c util.c
 	$(CC) test/city_test.c -g -o $@
+
+PREFIX = /usr/local
+
+install: r_intro
+	mkdir -p $(PREFIX)/bin
+	cp -f r_intro $(PREFIX)/bin/intro
+	chmod 755 $(PREFIX)/bin/intro
