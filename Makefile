@@ -18,12 +18,12 @@ r_intro: $(SRC)
 test/test.h.intro: db_intro test/test.h
 	./db_intro test/test.h
 
-test/db_test: test/test.c test/test.h.intro intro.h test/basic.h
+test/db_test: test/test.c test/test.h.intro intro.h test/basic.h lib/lib.c
 	$(CC) test/test.c -g -o $@
 
 city: test/db_city_test
 	./test/db_city_test
 	xxd -c 4 -g 1 test/obj.cty
 
-test/db_city_test: test/city_test.c test/test.h.intro lib/city.c util.c
+test/db_city_test: test/city_test.c test/test.h.intro lib/lib.c lib/city.c util.c
 	$(CC) test/city_test.c -g -o $@

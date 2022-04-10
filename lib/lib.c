@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#define STB_SPRINTF_IMPLEMENTATION
+#include "../stb_sprintf.h"
+
 bool
 intro_is_scalar(const IntroType * type) {
     return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
@@ -187,17 +190,17 @@ intro_sprint_type_name(char * dest, const IntroType * type) {
             *dest++ = '*';
             type = type->parent;
         } else if (type->category == INTRO_ARRAY) {
-            dest += sprintf(dest, "[%u]", type->array_size) - 1;
+            dest += stbsp_sprintf(dest, "[%u]", type->array_size) - 1;
             type = type->parent;
         } else if (type->name) {
-            dest += sprintf(dest, "%s", type->name) - 1;
+            dest += stbsp_sprintf(dest, "%s", type->name) - 1;
             break;
         } else {
-            sprintf(dest, "<anon>");
+            dest += stbsp_sprintf(dest, "<anon>");
             break;
         }
     }
-    *dest++ = '\0';
+    *++dest = '\0';
 }
 
 void

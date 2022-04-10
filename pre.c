@@ -117,18 +117,19 @@ static char * result_buffer = NULL;
 
 static void
 path_normalize(char * dest) {
-    char * last_dir = NULL;
+    char * last_dir = dest;
     char * src = dest;
     while (*src) {
-        if (*dest == '/') {
-            last_dir = dest;
-            if (memcmp(src, "/", 1)==0) {
-                src += 1;
-            } else if (memcmp(src, "./", 2)==0) {
+        if (*src == '/') {
+            if (memcmp(src+1, "/", 1)==0) {
                 src += 2;
-            } else if (memcmp(src, "../", 3)==0) {
-                src += 3;
+            } else if (memcmp(src+1, "./", 2)==0) {
+                src += 2;
+            } else if (memcmp(src+1, "../", 3)==0) {
+                src += 4;
                 dest = last_dir;
+            } else {
+                last_dir = dest;
             }
         }
         *dest++ = *src++;
@@ -139,7 +140,6 @@ path_normalize(char * dest) {
 static void
 path_join(char * dest, char * base, char * ext) {
     strcpy(dest, base);
-    strcat(dest, "/");
     strcat(dest, ext);
     path_normalize(dest);
 }
@@ -156,23 +156,6 @@ path_dir(char * dest, char * filepath, char ** o_filename) {
         dest[dir_length] = '\0';
         *o_filename = end + 1;
     }
-}
-
-void
-path_test() {
-    char a [] = "lib/lib.c";
-    char b [] = "../test/test.c";
-
-    char a_dir [1024];
-    char * a_file;
-    path_dir(a_dir, a, &a_file);
-
-    char b_file [1024];
-    path_join(b_file, a_dir, b);
-
-    printf("a_dir  : %s\n", a_dir);
-    printf("a_file : %s\n", a_file);
-    printf("b_file : %s\n", b_file);
 }
 
 static void
@@ -302,6 +285,11 @@ preprocess_filename(char ** result_buffer, char * filename) {
         }
     }
 
+    char file_dir [1024];
+    char * filename_nodir;
+    (void) filename_nodir;
+    path_dir(file_dir, filename, &filename_nodir);
+
     char * s = file_buffer;
     char * chunk_begin = s;
 
@@ -427,13 +415,17 @@ preprocess_filename(char ** result_buffer, char * filename) {
 
             if (inc_filename_tk.type != TK_UNKNOWN) {
                 char * inc_filename = copy_and_terminate(inc_filename_tk.start + 1, inc_filename_tk.length - 2);
-                int error = preprocess_filename(result_buffer, inc_filename);
+                char inc_filepath [1024];
+                path_join(inc_filepath, file_dir, inc_filename);
+                char * inc_filepath_stored = copy_and_terminate(inc_filepath, strlen(inc_filepath));
+                int error = preprocess_filename(result_buffer, inc_filepath_stored);
                 if (error) {
                     if (error == ERR_FILE_NOT_FOUND) {
                         preprocess_error(&inc_filename_tk, "File not found.");
                     }
                     return error;
                 }
+                free(inc_filename);
             }
         }
     }
@@ -496,24 +488,13 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         strputnull(*o_output_filepath);
     }
 
-    char cwd [PATH_MAX];
-    getcwd(cwd, sizeof(cwd));
-    char *filename = NULL, *file_dir = NULL;
-    path_dir(filepath, &file_dir, &filename);
-    if (chdir(file_dir) != 0) {
-        fprintf(stderr, "Failed to chdir into file's directory.\n");
-        return NULL;
-    }
-
-    int error = preprocess_filename(&result_buffer, filename);
+    int error = preprocess_filename(&result_buffer, filepath);
     if (error) {
         if (error == ERR_FILE_NOT_FOUND) {
             fputs("File not found.\n", stderr);
         }
         return NULL;
     }
-
-    chdir(cwd);
 
     strputnull(result_buffer);
 
