@@ -1,0 +1,40 @@
+attribute:
+    struct/union values
+    enum values
+    array values
+    string values
+    members of complex type can specify an attribute as a value: I(default default)
+    noserialize (for pointers)
+    nodisplay
+    ability to apply attributes to types
+    ability to remove an attribute
+
+parse:
+    give c int types a parent based on size and signedness
+    add way to change c int type sizes for different platforms
+    track type declaration file location?
+    functions
+    function pointers
+    handle strings next to each other
+    const flag?
+    bit fields?
+    rudimentary C++ support
+
+pre:
+    function-macros
+    expressions + defined()
+    include paths
+
+gen:
+    option to create typedefs for structs and enums
+    typeof with _Generic?
+
+city:
+
+lib:
+
+test:
+    test for failures that should happen
+
+misc:
+    use enum error codes instead of magic numbers

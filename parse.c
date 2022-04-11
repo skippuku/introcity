@@ -82,7 +82,7 @@ store_type(ParseContext * ctx, const IntroType * type) {
 }
 
 static IntroType * parse_base_type(ParseContext *, char **, Token *);
-static IntroType * parse_declaration(ParseContext *, IntroType *, char **, char **);
+static IntroType * parse_declaration(ParseContext *, IntroType *, char **, Token *);
 
 typedef struct {
     char * location;
@@ -160,11 +160,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 for (int i=0; i < s->count_members; i++) {
                     arrput(members, s->members[i]);
                 }
-                #if 0 // TODO: how should this be handled?
-                if (decl.is_nested) {
-                    (void)arrpop(structs);
-                }
-                #endif
                 continue;
             } else {
                 parse_error(ctx, &tk, "Struct member has no name or type is unknown.");
@@ -175,7 +170,9 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             while (1) {
                 IntroMember member = {0};
 
-                IntroType * type = parse_declaration(ctx, base_type, o_s, &member.name);
+                Token name_tk;
+                IntroType * type = parse_declaration(ctx, base_type, o_s, &name_tk);
+                member.name = copy_and_terminate(name_tk.start, name_tk.length);
                 if (!type) return 1;
 
                 if (type->category == INTRO_UNKNOWN) {
@@ -403,29 +400,29 @@ parse_enum(ParseContext * ctx, char ** o_s) {
 }
 
 static int
-parse_typedef(ParseContext * ctx, char ** o_s) { // TODO: store base somehow
+parse_typedef(ParseContext * ctx, char ** o_s) {
     Token type_tk = {0};
     (void) type_tk;
     IntroType * base = parse_base_type(ctx, o_s, &type_tk);
     if (!base) return 1;
 
-    char * name = NULL;
-    IntroType * type = parse_declaration(ctx, base, o_s, &name);
+    Token name_tk = {0};
+    IntroType * type = parse_declaration(ctx, base, o_s, &name_tk);
     if (!type) return 1;
-    if (name == NULL) {
-        parse_error(ctx, NULL, "typedef has no name."); // TODO: token
+    if (name_tk.start == NULL) {
+        parse_error(ctx, &type_tk, "typedef has no name.");
         return 1;
     }
+    char * name = copy_and_terminate(name_tk.start, name_tk.length);
 
     IntroType new_type = *type;
     new_type.name = name;
-    bool base_is_complex = is_complex(type->category) || type->category == INTRO_UNKNOWN;
     bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
-    if (base_is_complex && !new_type_is_indirect) {
+    if (!new_type_is_indirect) {
         new_type.parent = type;
     }
     if (shgeti(ctx->type_map, name) >= 0) {
-        parse_error(ctx, NULL, "type is redefined."); // TODO: token
+        parse_error(ctx, &name_tk, "type is redefined.");
         return 1;
     }
     store_type(ctx, &new_type);
@@ -549,7 +546,7 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk) {
 }
 
 static IntroType *
-parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, char ** o_name) {
+parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token * o_name_tk) {
     int32_t * indirection = NULL;
     int32_t * temp = NULL;
     char * paren;
@@ -572,8 +569,7 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, char *
         }
 
         if (tk.type == TK_IDENTIFIER) {
-            // TODO: leak?
-            *o_name = copy_and_terminate(tk.start, tk.length);
+            *o_name_tk = tk;
             tk = next_token(o_s);
         }
 

@@ -313,13 +313,15 @@ preprocess_filename(char ** result_buffer, char * filename) {
                 strputf(result_buffer, "%s", defines[def_index].str);
             }
         } else if (*tk.start == '#') {
-            Token directive = pre_next_token(&s); // TODO: handle comments here
+            Token directive = pre_next_token(&s);
+            while (directive.type == TK_COMMENT) directive = pre_next_token(&s);
             if (directive.type != TK_IDENTIFIER) {
                 goto unknown_directive;
             }
 
             if (tk_equal(&directive, "include")) {
                 Token next = pre_next_token(&s);
+                while (next.type == TK_COMMENT) next = pre_next_token(&s);
                 if (next.type == TK_STRING) {
                     // defer this till after the last section gets pasted
                     inc_filename_tk = next;

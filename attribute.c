@@ -29,7 +29,7 @@ parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk
         {"none",      INTRO_V_NONE},
         {"int",       INTRO_V_INT},
         {"float",     INTRO_V_FLOAT},
-        {"value",     INTRO_V_VALUE}, // TODO
+        {"value",     INTRO_V_VALUE},
         {"condition", INTRO_V_CONDITION}, // TODO
         {"member",    INTRO_V_MEMBER},
         {"string",    INTRO_V_STRING},
@@ -197,7 +197,7 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
                 parse_error(ctx, &tk, "Expected string.");
                 return 1;
             }
-            char * result = copy_and_terminate(tk.start+1, tk.length-2); // TODO: parse escape codes
+            char * result = copy_and_terminate(tk.start+1, tk.length-2);
             int32_t index = arrlen(note_set);
             arrput(note_set, result);
             data.v.i = index;
