@@ -5,21 +5,10 @@
 #include "../util.c"
 #include "../lib/city.c"
 
-static IntroType *
-get_type_with_name(const char * name) {
-    for (int i=0; i < LENGTH(__intro_types); i++) {
-        IntroType * type = &__intro_types[i];
-        if (type->name && strcmp(type->name, name) == 0) {
-            return type;
-        }
-    }
-    return NULL;
-}
-
 int
 main() {
     Basic obj_save = {0};
-    IntroType * obj_save_type = get_type_with_name("Basic");
+    IntroType * obj_save_type = intro_type_with_name("Basic");
     obj_save.name = "Steven";
     obj_save.a = 25;
     obj_save.b = -53;
@@ -43,7 +32,7 @@ main() {
     BasicPlus obj_load = {0};
     size_t load_size;
     void * city_load_data = read_entire_file("test/obj.cty", &load_size);
-    city_load(&obj_load, get_type_with_name("BasicPlus"), city_load_data, load_size);
+    city_load(&obj_load, intro_type_with_name("BasicPlus"), city_load_data, load_size);
 
     printf("obj_load: BasicPlus = ");
     intro_print_struct(&obj_load, obj_load.type, NULL);

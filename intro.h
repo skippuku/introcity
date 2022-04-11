@@ -130,4 +130,14 @@ typedef struct IntroInfo {
     uint8_t * value_buffer;
 } IntroInfo;
 
+typedef struct IntroContext {
+    IntroType * types;
+    const char ** notes;
+    uint8_t * values;
+
+    uint32_t count_types;
+    uint32_t count_notes;
+    uint32_t size_values;
+} IntroContext;
+
 #endif // INTRO_H

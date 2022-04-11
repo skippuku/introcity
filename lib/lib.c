@@ -6,6 +6,12 @@
 #define STB_SPRINTF_IMPLEMENTATION
 #include "../stb_sprintf.h"
 
+#ifndef INTRO_CTX
+#define INTRO_CTX &__intro_ctx
+#endif
+#define intro_type_with_name(name) intro_type_with_name_ctx(INTRO_CTX, name)
+#define intro_set_defaults(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
+
 bool
 intro_is_scalar(const IntroType * type) {
     return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
@@ -299,4 +305,32 @@ intro_print_struct(const void * data, const IntroType * type, const IntroPrintOp
     }
     for (int t=0; t < opt->indent; t++) fputs(tab, stdout);
     printf("}");
+}
+
+IntroType *
+intro_type_with_name_ctx(IntroContext * ctx, const char * name) {
+    for (int i=0; i < ctx->count_types; i++) {
+        IntroType * type = &ctx->types[i];
+        if (type->name && strcmp(type->name, name) == 0) {
+            return type;
+        }
+    }
+    return NULL;
+}
+
+void
+intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
+    for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
+        const IntroMember * m = &type->i_struct->members[m_index];
+        size_t size = intro_size(m->type);
+        int32_t offset;
+        if (intro_attribute_int(m, INTRO_ATTR_DEFAULT, &offset)) {
+            const void * value = ctx->values + offset;
+            memcpy(dest + m->offset, value, size);
+        } else if (intro_attribute_flag(m, INTRO_ATTR_TYPE)) {
+            memcpy(dest + m->offset, &type, sizeof(void *));
+        } else {
+            memset(dest + m->offset, 0, size);
+        }
+    }
 }

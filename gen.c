@@ -80,7 +80,7 @@ generate_c_header(IntroInfo * info) {
     }
 
     if (note_set != NULL) {
-        strputf(&s, "const char * __intro__notes [] = {\n");
+        strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(note_set));
         for (int i=0; i < arrlen(note_set); i++) {
             strputf(&s, "%s\"%s\",\n", tab, note_set[i]);
         }
@@ -189,15 +189,25 @@ generate_c_header(IntroInfo * info) {
     strputf(&s, "};\n\n");
 
     // values
-    strputf(&s, "unsigned char __intro_values [%lu] = {", arrlenu(info->value_buffer));
+    strputf(&s, "unsigned char __intro_values [%i] = {", (int)arrlen(info->value_buffer));
     for (int i=0; i < arrlen(info->value_buffer); i++) {
         if (i % 16 == 0) {
-            strputf(&s, "\n");
+            strputf(&s, "\n%s", tab);
         }
         uint8_t byte = info->value_buffer[i];
-        strputf(&s, "%hu, ", byte);
+        strputf(&s, "0x%02x, ", byte);
     }
-    strputf(&s, "\n};\n");
+    strputf(&s, "\n};\n\n");
+
+    // context
+    strputf(&s, "IntroContext __intro_ctx = {\n");
+    strputf(&s, "%s.types = __intro_types,\n", tab);
+    strputf(&s, "%s.values = __intro_values,\n", tab);
+    strputf(&s, "%s.notes = __intro_notes,\n", tab);
+    strputf(&s, "%s.count_types = %u,\n", tab, info->count_types);
+    strputf(&s, "%s.size_values = %i,\n", tab, (int)arrlenu(info->value_buffer));
+    strputf(&s, "%s.count_notes = %i,\n", tab, (int)arrlenu(note_set));
+    strputf(&s, "};\n");
 
     hmfree(complex_type_map);
 
