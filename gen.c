@@ -72,23 +72,22 @@ generate_c_header(IntroInfo * info) {
     strputf(&s, "extern IntroType __intro_types [%u];\n\n", info->count_types);
 
     // attributes
-    // TODO: this should be one long list and members point into an offset into the list
+    strputf(&s, "const IntroAttributeData __intro_attr [] = {\n");
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         const IntroType * type = info->types[type_index];
         if ((type->category == INTRO_STRUCT || type->category == INTRO_UNION) && type->parent == NULL) {
             for (int member_index = 0; member_index < type->i_struct->count_members; member_index++) {
                 const IntroMember * m = &type->i_struct->members[member_index];
                 if (m->count_attributes > 0) {
-                    strputf(&s, "const IntroAttributeData __intro__attr_%i_%i [] = {\n", type_index, member_index);
                     for (int attr_index = 0; attr_index < m->count_attributes; attr_index++) {
                         const IntroAttributeData * attr = &m->attributes[attr_index];
                         strputf(&s, "%s{%i, %i, %i},\n", tab, attr->type, attr->value_type, attr->v.i);
                     }
-                    strputf(&s, "};\n\n");
                 }
             }
         }
     }
+    strputf(&s, "};\n\n");
 
     if (note_set != NULL) {
         strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(note_set));
@@ -99,6 +98,7 @@ generate_c_header(IntroInfo * info) {
     }
 
     // complex type information (enums, structs, unions)
+    int attr_list_index = 0;
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         IntroType * t = info->types[type_index];
         if (is_complex(t->category) && hmgeti(complex_type_map, t->i_struct) < 0) {
@@ -106,25 +106,13 @@ generate_c_header(IntroInfo * info) {
             char * ref_name;
             if (!nest) {
                 ref_name = get_ref_name(info, t);
+                if (!ref_name) continue; // TODO: maybe we should warn here (this would require location information for types)
             } else {
                 if (nest->top_level_name == NULL) continue;
-                ref_name = NULL;
-                strputf(&ref_name, "%s_%s", nest->top_level_name, nest->parent_member_name);
-                for (int i=0; i < arrlen(ref_name); i++) {
-                    if (ref_name[i] == '.' || ref_name[i] == ' ') {
-                        ref_name[i] = '_';
-                    }
-                }
-                strputnull(ref_name);
             }
-            if (!ref_name) continue; // TODO: maybe we should warn here (this would require location information for types)
 
-            char * saved_name; // TODO: doesn't need to be based on actual name
-            if (strchr(ref_name, ' ')) {
-                saved_name = make_identifier_safe_name(ref_name);
-            } else {
-                saved_name = ref_name;
-            }
+            char * saved_name = malloc(8);
+            stbsp_snprintf(saved_name, 7, "%04x", type_index);
 
             hmput(complex_type_map, t->i_struct, saved_name);
 
@@ -148,7 +136,8 @@ generate_c_header(IntroInfo * info) {
                                 nest->top_level_name, nest->parent_member_name);
                     }
                     if (m->count_attributes > 0) {
-                        strputf(&s, ", %u, __intro__attr_%i_%i},\n", m->count_attributes, type_index, m_index);
+                        strputf(&s, ", %u, &__intro_attr[%i]},\n", m->count_attributes, attr_list_index);
+                        attr_list_index += m->count_attributes;
                     } else {
                         strputf(&s, ", 0},\n");
                     }
