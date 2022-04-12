@@ -2,7 +2,6 @@
 #include "test.h"
 #include "test.h.intro"
 
-#include "../util.c"
 #include "../lib/city.c"
 
 int

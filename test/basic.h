@@ -14,7 +14,9 @@ typedef int8_t   s8;
 typedef int16_t  s16;
 typedef int32_t  s32;
 typedef int64_t  s64;
-#define LENGTH(x) (sizeof(x)/sizeof(*(x)))
+#ifndef LENGTH
+# define LENGTH(x) (sizeof(x)/sizeof(*(x)))
+#endif
 
 #ifdef DEBUG
 # define db_assert(x) assert(x)

@@ -6,7 +6,7 @@ default: test/db_test
 
 test: db_intro test/db_test test/db_city_test
 	./test/db_test
-	./db_city_test
+	./test/db_city_test
 	./db_intro intro.c -o test/intro.c.intro
 
 db_intro: $(SRC)

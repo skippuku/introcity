@@ -1,10 +1,6 @@
 #include "../intro.h"
 
-#include <stdio.h>
-#include <string.h>
-
-#define STB_SPRINTF_IMPLEMENTATION
-#include "../stb_sprintf.h"
+#include "../util.c"
 
 #ifndef INTRO_CTX
 #define INTRO_CTX &__intro_ctx
