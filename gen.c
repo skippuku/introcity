@@ -36,6 +36,17 @@ get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, c
     }
 }
 
+static char *
+make_identifier_safe_name(const char * name) {
+    size_t name_len = strlen(name);
+    char * result = malloc(name_len + 1);
+    for (int i=0; i < name_len; i++) {
+        result[i] = (name[i] == ' ')? '_' : name[i];
+    }
+    result[name_len] = '\0';
+    return result;
+}
+
 char *
 generate_c_header(IntroInfo * info) {
     // generate info needed to get offset and sizeof for anonymous types
@@ -61,7 +72,7 @@ generate_c_header(IntroInfo * info) {
     strputf(&s, "extern IntroType __intro_types [%u];\n\n", info->count_types);
 
     // attributes
-    // NOTE: maybe this should be one long list and members point into an offset into the list
+    // TODO: this should be one long list and members point into an offset into the list
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         const IntroType * type = info->types[type_index];
         if ((type->category == INTRO_STRUCT || type->category == INTRO_UNION) && type->parent == NULL) {
@@ -108,14 +119,9 @@ generate_c_header(IntroInfo * info) {
             }
             if (!ref_name) continue; // TODO: maybe we should warn here (this would require location information for types)
 
-            char * saved_name;
+            char * saved_name; // TODO: doesn't need to be based on actual name
             if (strchr(ref_name, ' ')) {
-                size_t name_len = strlen(ref_name);
-                saved_name = malloc(name_len + 1);
-                for (int i=0; i < name_len; i++) {
-                    saved_name[i] = (ref_name[i] == ' ')? '_' : ref_name[i];
-                }
-                saved_name[name_len] = '\0';
+                saved_name = make_identifier_safe_name(ref_name);
             } else {
                 saved_name = ref_name;
             }
@@ -198,6 +204,23 @@ generate_c_header(IntroInfo * info) {
         strputf(&s, "0x%02x, ", byte);
     }
     strputf(&s, "\n};\n\n");
+
+    // type enum
+    strputf(&s, "enum {\n");
+    for (int type_index = 0; type_index < info->count_types; type_index++) {
+        const IntroType * t = info->types[type_index];
+        char * name;
+        if (t->name) {
+            if (strchr(t->name, ' ')) {
+                name = make_identifier_safe_name(t->name);
+            } else {
+                name = t->name;
+            }
+            strputf(&s, "%sITYPE_%s = %i,\n", tab, name, type_index);
+            if (name != t->name) free(name);
+        }
+    }
+    strputf(&s, "};\n\n");
 
     // context
     strputf(&s, "IntroContext __intro_ctx = {\n");

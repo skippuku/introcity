@@ -43,20 +43,20 @@ main(int argc, char ** argv) {
     };
 
     printf("nest = ");
-    intro_print_struct(&nest, intro_type_with_name("Nest"), NULL);
+    intro_print_struct(&nest, ITYPE(Nest), NULL);
     printf("\n\n");
 
     /*=====================*/
 
     TestUndefined undef_test = {0};
     printf("undef_test = ");
-    intro_print_struct(&undef_test, intro_type_with_name("TestUndefined"), NULL);
+    intro_print_struct(&undef_test, ITYPE(TestUndefined), NULL);
     printf("\n\n");
 
     /*====================*/
 
     TestDefault default_test;
-    intro_set_defaults(&default_test, intro_type_with_name("TestDefault"));
+    intro_set_defaults(&default_test, ITYPE(TestDefault));
 
     printf("default_test = ");
     intro_print_struct(&default_test, default_test.type, NULL);

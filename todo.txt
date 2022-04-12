@@ -10,6 +10,8 @@ attribute:
     nodisplay
     ability to apply attributes to types
     ability to remove an attribute
+    expression/condition attribute type
+    length: allow expression? ex. I(length map_width * map_height)
 
 parse:
     give c int types a parent based on size and signedness
@@ -34,9 +36,16 @@ gen:
 city:
 
 lib:
+    don't use printf?
+    single header?
 
 test:
     test for failures that should happen
+
+doc:
+    README
+    examples
+    lib reference
 
 misc:
     use enum error codes instead of magic numbers

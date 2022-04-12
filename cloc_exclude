@@ -1,0 +1,4 @@
+doc/
+test/
+stb_ds.h
+stb_sprintf.h

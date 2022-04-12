@@ -8,6 +8,8 @@
 #define I(...)
 #endif
 
+#define ITYPE(x) &__intro_types[ITYPE_##x]
+
 typedef enum IntroCategory {
     INTRO_UNKNOWN = 0x0,
 
