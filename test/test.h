@@ -12,14 +12,15 @@ typedef struct {
 
 typedef struct {
     char * name;
-    int32_t a, b, c;
+    int32_t a, c;
+    int32_t b2 I(alias b);
     uint8_t array [8];
     bool has_c;
     IntroType * type I(type);
 
     struct {
-        bool is_ok;
-        float speed;
+        bool is_ok I(= 1);
+        float speed I(= 2.3);
         double time_stamp;
         int64_t seconds_left;
         int32_t * a_pointer;

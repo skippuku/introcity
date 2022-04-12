@@ -1,5 +1,7 @@
 #include "lib.c"
 
+#define city_load(dest, dest_type, data, data_size) city_load_ctx(INTRO_CTX, dest, dest_type, data, data_size)
+
 static const int implementation_version_major = 0;
 static const int implementation_version_minor = 1;
 
@@ -199,6 +201,7 @@ next_uint(const uint8_t ** ptr, uint8_t size) {
 
 static int
 city__safe_copy_struct(
+    IntroContext * ctx,
     void * restrict dest,
     const IntroType * restrict d_type,
     void * restrict src,
@@ -214,11 +217,27 @@ city__safe_copy_struct(
             continue;
         }
 
+        const char ** aliases = NULL;
+        arrput(aliases, dm->name);
+        for (int attr_i=0; attr_i < dm->count_attributes; attr_i++) {
+            if (dm->attributes[attr_i].type == INTRO_ATTR_ALIAS) {
+                const char * alias = ctx->notes[dm->attributes[attr_i].v.i];
+                arrput(aliases, alias);
+            }
+        }
+
         bool found_match = false;
         for (int j=0; j < s_struct->count_members; j++) {
             const IntroMember * sm = &s_struct->members[j];
 
-            if (strcmp(dm->name, sm->name) == 0) {
+            bool match = false;
+            for (int ai=0; ai < arrlen(aliases); ai++) {
+                if (strcmp(aliases[ai], sm->name) == 0) {
+                    match = true;
+                    break;
+                }
+            }
+            if (match) {
                 if (dm->type->category != sm->type->category) {
                     city__error("fatal type mismatch");
                     return -1;
@@ -239,7 +258,7 @@ city__safe_copy_struct(
                     size_t size = (d_size > s_size)? s_size : d_size;
                     memcpy(dest + dm->offset, src + sm->offset, size);
                 } else if (dm->type->category == INTRO_STRUCT) {
-                    int ret = city__safe_copy_struct(
+                    int ret = city__safe_copy_struct(ctx,
                         dest + dm->offset, dm->type,
                         src + sm->offset, sm->type
                     );
@@ -252,15 +271,23 @@ city__safe_copy_struct(
             }
         }
         if (!found_match) {
-            memset(dest + dm->offset, 0, intro_size(dm->type));
+            int32_t value_offset;
+            if (intro_attribute_int(dm, INTRO_ATTR_DEFAULT, &value_offset)) {
+                memcpy(dest + dm->offset, ctx->values + value_offset, intro_size(dm->type));
+            } else if (dm->type->category == INTRO_STRUCT) {
+                intro_set_defaults_ctx(ctx, dest + dm->offset, dm->type);
+            } else {
+                memset(dest + dm->offset, 0, intro_size(dm->type));
+            }
         }
+        arrfree(aliases);
     }
 
     return 0;
 }
 
 int
-city_load(void * dest, const IntroType * d_type, void * data, int32_t data_size) {
+city_load_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, int32_t data_size) {
     const CityHeader * header = data;
     
     if (
@@ -351,7 +378,7 @@ city_load(void * dest, const IntroType * d_type, void * data, int32_t data_size)
 
     const IntroType * s_type = info_by_id[hmlen(info_by_id) - 1].value;
 
-    int copy_result = city__safe_copy_struct(dest, d_type, src, s_type);
+    int copy_result = city__safe_copy_struct(ctx, dest, d_type, src, s_type);
 
     for (int i=0; i < hmlen(info_by_id); i++) {
         free(info_by_id[i].value);

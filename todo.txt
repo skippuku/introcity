@@ -3,7 +3,6 @@ attribute:
     enum values
     array values
     string values
-    alias/aka attribute
     stb_ds attribute
     members of complex type can specify an attribute as a value: I(default default)
     noserialize (for pointers)

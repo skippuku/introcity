@@ -59,9 +59,9 @@ typedef enum IntroAttribute {
     INTRO_ATTR_ID      = -16,
     INTRO_ATTR_DEFAULT = -15,
     INTRO_ATTR_LENGTH  = -14,
-    INTRO_ATTR_SWITCH  = -13,
-    INTRO_ATTR_TYPE    = -12,
-    INTRO_ATTR_NOTE    = -11,
+    INTRO_ATTR_TYPE    = -13,
+    INTRO_ATTR_NOTE    = -12,
+    INTRO_ATTR_ALIAS   = -11,
 } IntroAttribute;
 
 typedef struct IntroAttributeData {

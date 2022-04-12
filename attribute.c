@@ -12,9 +12,9 @@ create_initial_attributes() {
         {"id",      INTRO_ATTR_ID,      INTRO_V_INT}, // NOTE: maybe this should be part of IntroMember since it is common?
         {"default", INTRO_ATTR_DEFAULT, INTRO_V_VALUE},
         {"length",  INTRO_ATTR_LENGTH,  INTRO_V_MEMBER},
-        {"switch",  INTRO_ATTR_SWITCH,  INTRO_V_CONDITION},
         {"type",    INTRO_ATTR_TYPE,    INTRO_V_NONE},
         {"note",    INTRO_ATTR_NOTE,    INTRO_V_STRING},
+        {"alias",   INTRO_ATTR_ALIAS,   INTRO_V_STRING},
     };
     // NOTE: might need to do this later:
     //sh_new_arena(attribute_map);
@@ -193,11 +193,16 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
 
         case INTRO_V_STRING: {
             tk = next_token(o_s);
-            if (tk.type != TK_STRING) {
-                parse_error(ctx, &tk, "Expected string.");
-                return 1;
+            char * result = NULL;
+            if (data.type == INTRO_ATTR_ALIAS && tk.type == TK_IDENTIFIER) {
+                result = copy_and_terminate(tk.start, tk.length);
+            } else {
+                if (tk.type != TK_STRING) {
+                    parse_error(ctx, &tk, "Expected string.");
+                    return 1;
+                }
+                result = copy_and_terminate(tk.start+1, tk.length-2);
             }
-            char * result = copy_and_terminate(tk.start+1, tk.length-2);
             int32_t index = arrlen(note_set);
             arrput(note_set, result);
             data.v.i = index;
