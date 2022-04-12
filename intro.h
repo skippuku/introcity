@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifndef __INTROCITY__
+#ifndef __INTRO__
 #define I(...)
 #endif
 

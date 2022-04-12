@@ -192,17 +192,17 @@ intro_sprint_type_name(char * dest, const IntroType * type) {
             *dest++ = '*';
             type = type->parent;
         } else if (type->category == INTRO_ARRAY) {
-            dest += stbsp_sprintf(dest, "[%u]", type->array_size) - 1;
+            dest += 1 + stbsp_sprintf(dest, "[%u]", type->array_size) - 1;
             type = type->parent;
         } else if (type->name) {
-            dest += stbsp_sprintf(dest, "%s", type->name) - 1;
+            dest += 1 + stbsp_sprintf(dest, "%s", type->name) - 1;
             break;
         } else {
-            dest += stbsp_sprintf(dest, "<anon>");
+            dest += 1 + stbsp_sprintf(dest, "<anon>");
             break;
         }
     }
-    *++dest = '\0';
+    *dest = '\0';
 }
 
 void

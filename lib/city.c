@@ -145,8 +145,8 @@ city__serialize_pointer_data(CityCreationContext * ctx, const IntroType * s_type
     }
 }
 
-int32_t // size
-city_create(void ** o_result, const void * src, const IntroType * s_type) {
+void *
+city_create(const void * src, const IntroType * s_type, size_t *o_size) {
     assert(s_type->category == INTRO_STRUCT);
     const IntroStruct * s_struct = s_type->i_struct;
 
@@ -184,8 +184,8 @@ city_create(void ** o_result, const void * src, const IntroType * s_type) {
     arrfree(ctx->data);
     hmfree(ctx->type_set);
 
-    *o_result = (void *)result;
-    return arrlen(result);
+    *o_size = arrlen(result);
+    return (void *)result;
 }
 
 static uint32_t
@@ -200,7 +200,7 @@ next_uint(const uint8_t ** ptr, uint8_t size) {
 static int
 city__safe_copy_struct(
     void * restrict dest,
-    IntroType * restrict d_type,
+    const IntroType * restrict d_type,
     void * restrict src,
     const IntroType * restrict s_type
 ) {
@@ -210,7 +210,7 @@ city__safe_copy_struct(
         const IntroMember * dm = &d_struct->members[i];
 
         if (intro_attribute_flag(dm, INTRO_ATTR_TYPE)) {
-            *(IntroType **)(dest + dm->offset) = d_type;
+            *(const IntroType **)(dest + dm->offset) = d_type;
             continue;
         }
 
@@ -254,7 +254,7 @@ city__safe_copy_struct(
 }
 
 int
-city_load(void * dest, IntroType * d_type, void * data, int32_t data_size) {
+city_load(void * dest, const IntroType * d_type, void * data, int32_t data_size) {
     const CityHeader * header = data;
     
     if (

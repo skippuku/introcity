@@ -439,7 +439,7 @@ char *
 run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     sh_new_arena(defines);
     Define intro_define;
-    intro_define.key = "__INTROCITY__";
+    intro_define.key = "__INTRO__";
     shputs(defines, intro_define);
 
     *o_output_filepath = NULL;

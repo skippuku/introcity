@@ -5,6 +5,9 @@ typedef struct {
     char * name;
     int32_t a, b;
     uint8_t array [8];
+
+    int16_t * numbers I(length count_numbers);
+    int32_t count_numbers;
 } Basic;
 
 typedef struct {
@@ -13,6 +16,9 @@ typedef struct {
     uint8_t array [8];
     bool has_c;
     IntroType * type I(type);
+
+    int16_t * numbers I(length count_numbers);
+    int32_t count_numbers;
 } BasicPlus;
 
 struct Undefined1;
