@@ -45,7 +45,7 @@ main() {
 
     dump_city("test/obj.cty", &obj_save, obj_save_type);
 
-    BasicPlus obj_load = {0};
+    BasicPlus obj_load;
     read_city("test/obj.cty", &obj_load, intro_type_with_name("BasicPlus"));
 
     printf("obj_load: BasicPlus = ");

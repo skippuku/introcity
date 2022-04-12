@@ -17,6 +17,14 @@ typedef struct {
     bool has_c;
     IntroType * type I(type);
 
+    struct {
+        bool is_ok;
+        float speed;
+        double time_stamp;
+        int64_t seconds_left;
+        int32_t * a_pointer;
+    } universe;
+
     int16_t * numbers I(length count_numbers);
     int32_t count_numbers;
 } BasicPlus;

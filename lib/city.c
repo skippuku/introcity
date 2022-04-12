@@ -214,6 +214,7 @@ city__safe_copy_struct(
             continue;
         }
 
+        bool found_match = false;
         for (int j=0; j < s_struct->count_members; j++) {
             const IntroMember * sm = &s_struct->members[j];
 
@@ -246,7 +247,12 @@ city__safe_copy_struct(
                 } else {
                     return -1;
                 }
+                found_match = true;
+                break;
             }
+        }
+        if (!found_match) {
+            memset(dest + dm->offset, 0, intro_size(dm->type));
         }
     }
 
