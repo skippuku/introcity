@@ -24,9 +24,11 @@ parse:
     rudimentary C++ support
 
 pre:
-    function-macros
+    function-like macros (C99 6.10.3)
     expressions + defined()
+    C99 6.10.2.4 : macro expansion in include directive
     include paths
+    move toward c99 compliance (6.10)
 
 gen:
     option to create typedefs for structs and enums
@@ -35,6 +37,7 @@ gen:
 city:
 
 lib:
+    Dear ImGui stuff
     don't use printf?
     single header?
 
@@ -45,6 +48,7 @@ doc:
     README
     examples
     lib reference
+    attribute reference
 
 misc:
     use enum error codes instead of magic numbers

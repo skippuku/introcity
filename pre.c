@@ -14,6 +14,8 @@ static FileBuffer * file_buffers = NULL;
 typedef struct {
     char * key;
     char * str;
+    char ** arg_list;
+    int32_t arg_count;
 } Define;
 static Define * defines = NULL;
 
@@ -194,6 +196,43 @@ strip_comments(char ** o_s) {
     return content;
 }
 
+static char *
+expand_macro(Define * macro, const char * args) {
+    (void) args;
+    char * result = NULL;
+    if (macro->str == NULL) {
+        strputnull(result);
+        return result;
+    }
+    char * s = macro->str;
+    Token tk, ltk = {0};
+    while ((tk = next_token(&s)).type != TK_END) {
+        bool skip_paste = false;
+        if (tk.type == TK_IDENTIFIER) {
+            char terminated [tk.length + 1];
+            memcpy(terminated, tk.start, tk.length);
+            terminated[tk.length] = '\0';
+            int def_index = shgeti(defines, terminated);
+            if (def_index >= 0) {
+                Define * inner_macro = &defines[def_index];
+                char * expand_inner = expand_macro(inner_macro, NULL);
+                strputf(&result, "%s", expand_inner);
+                arrfree(expand_inner);
+                skip_paste = true;
+            }
+        }
+        if (!skip_paste) {
+            strputf(&result, "%.*s", tk.length, tk.start);
+        }
+        if (ltk.start && ltk.start + ltk.length < tk.start) {
+            arrput(result, ' ');
+        }
+        ltk = tk;
+    }
+    strputnull(result);
+    return result;
+}
+
 bool
 parse_expression(char * s) {
     Token tk = next_token(&s);
@@ -310,7 +349,9 @@ preprocess_filename(char ** result_buffer, char * filename) {
             int def_index = shgeti(defines, terminated);
             if (def_index >= 0) {
                 ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
-                strputf(result_buffer, "%s", defines[def_index].str);
+                char * expanded = expand_macro(&defines[def_index], NULL);
+                strputf(result_buffer, "%s", expanded);
+                arrfree(expanded);
             }
         } else if (*tk.start == '#') {
             Token directive = pre_next_token(&s);
@@ -359,7 +400,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
                 char * macro_content = strip_comments(&s);
 
                 // create macro
-                Define def;
+                Define def = {0};
                 def.key = copy_and_terminate(macro_name.start, macro_name.length);
                 def.str = macro_content;
                 shputs(defines, def);

@@ -103,7 +103,7 @@ generate_c_header(IntroInfo * info) {
         IntroType * t = info->types[type_index];
         if (is_complex(t->category) && hmgeti(complex_type_map, t->i_struct) < 0) {
             const NestInfo * nest = hmgetp_null(info->nest_map, t);
-            char * ref_name;
+            char * ref_name = NULL;
             if (!nest) {
                 ref_name = get_ref_name(info, t);
                 if (!ref_name) continue; // TODO: maybe we should warn here (this would require location information for types)
@@ -169,7 +169,7 @@ generate_c_header(IntroInfo * info) {
         } else {
             strputf(&s, "0, ");
         }
-        strputf(&s, "0x%03x, ", t->category);
+        strputf(&s, "0x%02x, ", t->category);
         if (is_complex(t->category)) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
             if (saved_name) {
