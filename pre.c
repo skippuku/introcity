@@ -9,16 +9,16 @@ typedef struct {
     size_t buffer_size;
     bool once;
 } FileBuffer;
-static FileBuffer * file_buffers = NULL;
+static FileBuffer ** file_buffers = NULL;
 
 typedef struct {
     char * key;
-    char * str;
+    Token tk;
     char ** arg_list;
     int32_t arg_count;
     bool func_like;
     bool variadic;
-} Define;
+} Define; // TODO: rename to Macro
 static Define * defines = NULL;
 
 typedef struct {
@@ -75,8 +75,8 @@ get_line(char * buffer_begin, char ** o_pos, char ** o_start_of_line, char ** o_
     if (loc == NULL) return -1;
     char * file_buffer = NULL;
     for (int i=0; i < arrlen(file_buffers); i++) {
-        if (strcmp(loc->filename, file_buffers[i].filename) == 0) {
-            file_buffer = file_buffers[i].buffer;
+        if (strcmp(loc->filename, file_buffers[i]->filename) == 0) {
+            file_buffer = file_buffers[i]->buffer;
         }
     }
     assert(file_buffer);
@@ -183,7 +183,7 @@ ignore_section(char ** buffer, char * filename, char * file_buffer, char ** o_pa
 static char *
 strip_comments(char ** o_s) {
     char * content = NULL;
-    bool last_was_identifier = false;
+    Token ltk = {0};
     while (1) {
         Token tk = pre_next_token(o_s);
         if (tk.type == TK_NEWLINE) {
@@ -192,11 +192,11 @@ strip_comments(char ** o_s) {
         } else if (tk.type == TK_COMMENT) {
             continue;
         } else {
-            if (last_was_identifier && tk.type == TK_IDENTIFIER) {
+            if (ltk.start && ltk.start + ltk.length < tk.start) {
                 arrput(content, ' ');
             }
-            last_was_identifier = tk.type == TK_IDENTIFIER;
             strputf(&content, "%.*s", (int)(tk.length), tk.start);
+            ltk = tk;
         }
     }
     return content;
@@ -206,6 +206,7 @@ static char *
 expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
     Token * args = NULL;
     if (macro->func_like) {
+        // TODO: errors here only work at the top-level
         char ** bounds = NULL;
         char * args_start = *o_s;
         while (is_space(*args_start)) args_start++;
@@ -220,15 +221,27 @@ expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
             return NULL;
         }
         arrput(bounds, args_start);
-        for (char * s = args_start; s < args_end; s++) {
-            if (*s == ',') arrput(bounds, s);
+        bool all_space = true;
+        int depth = 1;
+        char * s = args_start + 1;
+        while (1) {
+            Token tk = pre_next_token(&s);
+            if (*tk.start == '(') depth++;
+            if (*tk.start == ')') {
+                if (--depth == 0) {
+                    break;
+                }
+            }
+            all_space = false;
+            if (depth == 1 && *tk.start == ',') arrput(bounds, tk.start);
         }
-        Token range_tk = {.start = args_start, .length = args_end - args_start};
+        if (all_space) goto expand_macro_no_args;
+        Token range_tk = {.start = args_start, .length = args_end - args_start + 1};
         if (arrlen(bounds) < macro->arg_count) {
             preprocess_error(&range_tk, "Not enough arguments.");
             return NULL;
         } else if (!macro->variadic && arrlen(bounds) > macro->arg_count) {
-            preprocess_error(&range_tk, "Too Many arguments.");
+            preprocess_error(&range_tk, "Too many arguments.");
             return NULL;
         }
         arrput(bounds, args_end);
@@ -240,17 +253,18 @@ expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
             Token arg_tk = {.start = a_start, .length = a_end + 1 - a_start};
             arrput(args, arg_tk);
         }
+    expand_macro_no_args:
         arrfree(bounds);
         *o_s = args_end + 1;
     }
     char * result = NULL;
-    if (macro->str == NULL) {
+    if (macro->tk.start == NULL) {
         strputnull(result);
         return result;
     }
-    char * s = macro->str;
+    char * s = macro->tk.start;
     Token tk, ltk = {0};
-    while ((tk = next_token(&s)).type != TK_END) {
+    while ((tk = pre_next_token(&s)).type != TK_END && tk.start < macro->tk.start + macro->tk.length) {
         if (tk.type == TK_IDENTIFIER) {
             if (macro->variadic && tk_equal(&tk, "__VA_ARGS__")) {
                 for (int arg_i=macro->arg_count; arg_i < arrlen(args); arg_i++) {
@@ -279,11 +293,13 @@ expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
                 goto expand_macro_next_token;
             }
         }
-        strputf(&result, "%.*s", tk.length, tk.start);
-    expand_macro_next_token:
-        if (ltk.start && ltk.start + ltk.length < tk.start) {
-            arrput(result, ' ');
+        if (tk.type != TK_COMMENT) {
+            strputf(&result, "%.*s", tk.length, tk.start);
         }
+    expand_macro_next_token:
+        //if (ltk.start && ltk.start + ltk.length < tk.start) {
+            arrput(result, ' ');
+        //}
         ltk = tk;
     }
     if (args) arrfree(args);
@@ -359,7 +375,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
     ctx->current_file_buffer = NULL;
     // search for buffer or create it if it doesn't exist
     for (int i=0; i < arrlen(file_buffers); i++) {
-        FileBuffer * fb = &file_buffers[i];
+        FileBuffer * fb = file_buffers[i];
         if (strcmp(filename, fb->filename) == 0) {
             if (fb->once) {
                 return 0;
@@ -372,12 +388,12 @@ preprocess_filename(char ** result_buffer, char * filename) {
     }
     if (!file_buffer) {
         if ((file_buffer = read_entire_file(filename, &file_size))) {
-            FileBuffer new_buf;
-            new_buf.filename = filename;
-            new_buf.buffer = file_buffer;
-            new_buf.buffer_size = file_size;
+            FileBuffer * new_buf = malloc(sizeof(*new_buf));
+            new_buf->filename = filename;
+            new_buf->buffer = file_buffer;
+            new_buf->buffer_size = file_size;
             arrput(file_buffers, new_buf);
-            ctx->current_file_buffer = &arrlast(file_buffers);
+            ctx->current_file_buffer = arrlast(file_buffers);
         } else {
             return ERR_FILE_NOT_FOUND;
         }
@@ -433,8 +449,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
                     return -1;
                 }
             } else if (tk_equal(&directive, "define")) {
-                char * line = strip_comments(&s);
-                char * ms = line;
+                char * ms = s;
                 Token macro_name = pre_next_token(&ms);
                 if (macro_name.type != TK_IDENTIFIER) {
                     preprocess_error(&macro_name, "Expected identifier.");
@@ -448,14 +463,15 @@ preprocess_filename(char ** result_buffer, char * filename) {
                 char ** arg_list = NULL;
                 bool is_func_like = (*ms == '(');
                 bool variadic = false;
+                // TODO: errors here do not put the line correctly
                 if (is_func_like) {
                     ms++;
                     while (1) {
-                        Token tk = next_token(&ms);
+                        Token tk = pre_next_token(&ms);
                         if (tk.type == TK_IDENTIFIER) {
                             char * arg = copy_and_terminate(tk.start, tk.length);
                             arrput(arg_list, arg);
-                        } else if (tk.type == TK_R_PARENTHESIS) {
+                        } else if (*tk.start == ')') {
                             break;
                         } else if (memcmp(tk.start, "...", 3) == 0) {
                             variadic = true;
@@ -465,10 +481,10 @@ preprocess_filename(char ** result_buffer, char * filename) {
                             return -1;
                         }
 
-                        tk = next_token(&ms);
-                        if (tk.type == TK_R_PARENTHESIS) {
+                        tk = pre_next_token(&ms);
+                        if (*tk.start == ')') {
                             break;
-                        } else if (tk.type == TK_COMMA) {
+                        } else if (*tk.start == ',') {
                             if (variadic) {
                                 preprocess_error(&tk, "You can't do that, man.");
                                 return -1;
@@ -480,12 +496,23 @@ preprocess_filename(char ** result_buffer, char * filename) {
                     }
                 }
 
-                char * macro_content = copy_and_terminate(ms, strlen(ms));
+                s = ms;
+                Token tk = pre_next_token(&s);
+                ms = tk.start;
+                while (1) {
+                    if (tk.type == TK_NEWLINE || tk.type == TK_END) {
+                        s = tk.start;
+                        if (tk.type == TK_NEWLINE) s--;
+                        break;
+                    }
+                    tk = pre_next_token(&s);
+                }
+                Token macro_content = {.start = ms, .length = s - ms};
 
                 // create macro
                 Define def = {0};
                 def.key = copy_and_terminate(macro_name.start, macro_name.length);
-                def.str = macro_content;
+                def.tk = macro_content;
                 if (is_func_like) {
                     def.arg_list = arg_list;
                     def.arg_count = arrlen(arg_list);
@@ -493,7 +520,6 @@ preprocess_filename(char ** result_buffer, char * filename) {
                     def.variadic = variadic;
                 }
                 shputs(defines, def);
-                arrfree(line);
             } else if (tk_equal(&directive, "undef")) {
                 Token def = pre_next_token(&s);
                 char * iden = copy_and_terminate(def.start, def.length);
