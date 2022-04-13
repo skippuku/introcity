@@ -17,6 +17,7 @@ typedef struct {
     char ** arg_list;
     int32_t arg_count;
     bool func_like;
+    bool variadic;
 } Define;
 static Define * defines = NULL;
 
@@ -222,6 +223,14 @@ expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
         for (char * s = args_start; s < args_end; s++) {
             if (*s == ',') arrput(bounds, s);
         }
+        Token range_tk = {.start = args_start, .length = args_end - args_start};
+        if (arrlen(bounds) < macro->arg_count) {
+            preprocess_error(&range_tk, "Not enough arguments.");
+            return NULL;
+        } else if (!macro->variadic && arrlen(bounds) > macro->arg_count) {
+            preprocess_error(&range_tk, "Too Many arguments.");
+            return NULL;
+        }
         arrput(bounds, args_end);
         for (int i=1; i < arrlen(bounds); i++) {
             char * a_start = bounds[i-1];
@@ -242,33 +251,36 @@ expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
     char * s = macro->str;
     Token tk, ltk = {0};
     while ((tk = next_token(&s)).type != TK_END) {
-        bool skip_paste = false;
         if (tk.type == TK_IDENTIFIER) {
+            if (macro->variadic && tk_equal(&tk, "__VA_ARGS__")) {
+                for (int arg_i=macro->arg_count; arg_i < arrlen(args); arg_i++) {
+                    strputf(&result, "%.*s", args[arg_i].length, args[arg_i].start);
+                    if (arg_i != arrlen(args) - 1) strputf(&result, ", ");
+                }
+                goto expand_macro_next_token;
+            }
             for (int param_i=0; param_i < macro->arg_count; param_i++) {
                 if (tk_equal(&tk, macro->arg_list[param_i])) {
                     strputf(&result, "%.*s", args[param_i].length, args[param_i].start);
-                    skip_paste = true;
+                    goto expand_macro_next_token;
                 }
             }
-            if (!skip_paste) {
-                char terminated [tk.length + 1];
-                memcpy(terminated, tk.start, tk.length);
-                terminated[tk.length] = '\0';
-                int def_index = shgeti(defines, terminated);
-                if (def_index >= 0) {
-                    Define * inner_macro = &defines[def_index];
-                    s = tk.start + tk.length;
-                    char * expand_inner = expand_macro(ctx, inner_macro, &s);
-                    if (!expand_inner) return NULL;
-                    strputf(&result, "%s", expand_inner);
-                    arrfree(expand_inner);
-                    skip_paste = true;
-                }
+            char terminated [tk.length + 1];
+            memcpy(terminated, tk.start, tk.length);
+            terminated[tk.length] = '\0';
+            int def_index = shgeti(defines, terminated);
+            if (def_index >= 0) {
+                Define * inner_macro = &defines[def_index];
+                s = tk.start + tk.length;
+                char * expand_inner = expand_macro(ctx, inner_macro, &s);
+                if (!expand_inner) return NULL;
+                strputf(&result, "%s", expand_inner);
+                arrfree(expand_inner);
+                goto expand_macro_next_token;
             }
         }
-        if (!skip_paste) {
-            strputf(&result, "%.*s", tk.length, tk.start);
-        }
+        strputf(&result, "%.*s", tk.length, tk.start);
+    expand_macro_next_token:
         if (ltk.start && ltk.start + ltk.length < tk.start) {
             arrput(result, ' ');
         }
@@ -435,6 +447,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
 
                 char ** arg_list = NULL;
                 bool is_func_like = (*ms == '(');
+                bool variadic = false;
                 if (is_func_like) {
                     ms++;
                     while (1) {
@@ -444,6 +457,9 @@ preprocess_filename(char ** result_buffer, char * filename) {
                             arrput(arg_list, arg);
                         } else if (tk.type == TK_R_PARENTHESIS) {
                             break;
+                        } else if (memcmp(tk.start, "...", 3) == 0) {
+                            variadic = true;
+                            ms += 2;
                         } else {
                             preprocess_error(&tk, "Invalid symbol.");
                             return -1;
@@ -452,7 +468,12 @@ preprocess_filename(char ** result_buffer, char * filename) {
                         tk = next_token(&ms);
                         if (tk.type == TK_R_PARENTHESIS) {
                             break;
-                        } else if (tk.type != TK_COMMA) {
+                        } else if (tk.type == TK_COMMA) {
+                            if (variadic) {
+                                preprocess_error(&tk, "You can't do that, man.");
+                                return -1;
+                            }
+                        } else {
                             preprocess_error(&tk, "Invalid symbol.");
                             return -1;
                         }
@@ -469,6 +490,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
                     def.arg_list = arg_list;
                     def.arg_count = arrlen(arg_list);
                     def.func_like = true;
+                    def.variadic = variadic;
                 }
                 shputs(defines, def);
                 arrfree(line);

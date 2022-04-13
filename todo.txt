@@ -24,7 +24,7 @@ parse:
     rudimentary C++ support
 
 pre:
-    __VA_ARGS__
+    # and ## operators
     expressions + defined()
     include paths
     move toward c99 compliance (6.10)
