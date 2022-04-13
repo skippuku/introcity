@@ -16,6 +16,7 @@ typedef struct {
     char * str;
     char ** arg_list;
     int32_t arg_count;
+    bool func_like;
 } Define;
 static Define * defines = NULL;
 
@@ -26,6 +27,10 @@ typedef struct {
     int line;
 } FileLoc;
 FileLoc * file_location_lookup = NULL;
+
+typedef struct {
+    FileBuffer * current_file_buffer;
+} PreContext;
 
 #define BOLD_RED "\e[1;31m"
 #define BOLD_YELLOW "\e[1;33m"
@@ -112,8 +117,8 @@ preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, ch
     message_internal(start_of_line, file_buffer->filename, line_num, tk->start, tk->start + tk->length, message, msg_type);
 }
 
-#define preprocess_error(tk, message)   preprocess_message_internal(buf_for_this_file, tk, message, 0)
-#define preprocess_warning(tk, message) preprocess_message_internal(buf_for_this_file, tk, message, 1)
+#define preprocess_error(tk, message)   preprocess_message_internal(ctx->current_file_buffer, tk, message, 0)
+#define preprocess_warning(tk, message) preprocess_message_internal(ctx->current_file_buffer, tk, message, 1)
 
 static char * result_buffer = NULL;
 
@@ -197,8 +202,38 @@ strip_comments(char ** o_s) {
 }
 
 static char *
-expand_macro(Define * macro, const char * args) {
-    (void) args;
+expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
+    Token * args = NULL;
+    if (macro->func_like) {
+        char ** bounds = NULL;
+        char * args_start = *o_s;
+        while (is_space(*args_start)) args_start++;
+        Token paren_tk = {.start = args_start, .length = 1};
+        if (*args_start != '(') {
+            preprocess_error(&paren_tk, "Expected '('");
+            return NULL;
+        }
+        char * args_end = find_closing(args_start);
+        if (!args_end) {
+            preprocess_error(&paren_tk, "No closing ')'");
+            return NULL;
+        }
+        arrput(bounds, args_start);
+        for (char * s = args_start; s < args_end; s++) {
+            if (*s == ',') arrput(bounds, s);
+        }
+        arrput(bounds, args_end);
+        for (int i=1; i < arrlen(bounds); i++) {
+            char * a_start = bounds[i-1];
+            while (is_space(*++a_start));
+            char * a_end = bounds[i];
+            while (is_space(*--a_end));
+            Token arg_tk = {.start = a_start, .length = a_end + 1 - a_start};
+            arrput(args, arg_tk);
+        }
+        arrfree(bounds);
+        *o_s = args_end + 1;
+    }
     char * result = NULL;
     if (macro->str == NULL) {
         strputnull(result);
@@ -209,16 +244,26 @@ expand_macro(Define * macro, const char * args) {
     while ((tk = next_token(&s)).type != TK_END) {
         bool skip_paste = false;
         if (tk.type == TK_IDENTIFIER) {
-            char terminated [tk.length + 1];
-            memcpy(terminated, tk.start, tk.length);
-            terminated[tk.length] = '\0';
-            int def_index = shgeti(defines, terminated);
-            if (def_index >= 0) {
-                Define * inner_macro = &defines[def_index];
-                char * expand_inner = expand_macro(inner_macro, NULL);
-                strputf(&result, "%s", expand_inner);
-                arrfree(expand_inner);
-                skip_paste = true;
+            for (int param_i=0; param_i < macro->arg_count; param_i++) {
+                if (tk_equal(&tk, macro->arg_list[param_i])) {
+                    strputf(&result, "%.*s", args[param_i].length, args[param_i].start);
+                    skip_paste = true;
+                }
+            }
+            if (!skip_paste) {
+                char terminated [tk.length + 1];
+                memcpy(terminated, tk.start, tk.length);
+                terminated[tk.length] = '\0';
+                int def_index = shgeti(defines, terminated);
+                if (def_index >= 0) {
+                    Define * inner_macro = &defines[def_index];
+                    s = tk.start + tk.length;
+                    char * expand_inner = expand_macro(ctx, inner_macro, &s);
+                    if (!expand_inner) return NULL;
+                    strputf(&result, "%s", expand_inner);
+                    arrfree(expand_inner);
+                    skip_paste = true;
+                }
             }
         }
         if (!skip_paste) {
@@ -229,6 +274,7 @@ expand_macro(Define * macro, const char * args) {
         }
         ltk = tk;
     }
+    if (args) arrfree(args);
     strputnull(result);
     return result;
 }
@@ -297,7 +343,8 @@ preprocess_filename(char ** result_buffer, char * filename) {
     char * file_buffer = NULL;
     size_t file_size;
 
-    FileBuffer * buf_for_this_file = NULL;
+    PreContext ctx_ = {0}, *ctx = &ctx_;
+    ctx->current_file_buffer = NULL;
     // search for buffer or create it if it doesn't exist
     for (int i=0; i < arrlen(file_buffers); i++) {
         FileBuffer * fb = &file_buffers[i];
@@ -307,7 +354,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
             }
             file_buffer = fb->buffer;
             file_size = fb->buffer_size;
-            buf_for_this_file = fb;
+            ctx->current_file_buffer = fb;
             break;
         }
     }
@@ -318,7 +365,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
             new_buf.buffer = file_buffer;
             new_buf.buffer_size = file_size;
             arrput(file_buffers, new_buf);
-            buf_for_this_file = &arrlast(file_buffers);
+            ctx->current_file_buffer = &arrlast(file_buffers);
         } else {
             return ERR_FILE_NOT_FOUND;
         }
@@ -348,8 +395,9 @@ preprocess_filename(char ** result_buffer, char * filename) {
             terminated[tk.length] = '\0';
             int def_index = shgeti(defines, terminated);
             if (def_index >= 0) {
+                char * expanded = expand_macro(ctx, &defines[def_index], &s);
+                if (!expanded) return -1;
                 ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
-                char * expanded = expand_macro(&defines[def_index], NULL);
                 strputf(result_buffer, "%s", expanded);
                 arrfree(expanded);
             }
@@ -373,8 +421,9 @@ preprocess_filename(char ** result_buffer, char * filename) {
                     return -1;
                 }
             } else if (tk_equal(&directive, "define")) {
-                // TODO: function-like macros
-                Token macro_name = pre_next_token(&s);
+                char * line = strip_comments(&s);
+                char * ms = line;
+                Token macro_name = pre_next_token(&ms);
                 if (macro_name.type != TK_IDENTIFIER) {
                     preprocess_error(&macro_name, "Expected identifier.");
                     return -1;
@@ -384,26 +433,45 @@ preprocess_filename(char ** result_buffer, char * filename) {
                     goto pre_nextline;
                 }
 
-                bool is_func_like = *s == '(';
+                char ** arg_list = NULL;
+                bool is_func_like = (*ms == '(');
                 if (is_func_like) {
-                    Token paren_tk;
-                    paren_tk.start = s;
-                    paren_tk.length = 1;
-                    s = strchr(s, ')');
-                    if (s == NULL) {
-                        preprocess_error(&paren_tk, "No closing ')'.");
-                        return -1;
+                    ms++;
+                    while (1) {
+                        Token tk = next_token(&ms);
+                        if (tk.type == TK_IDENTIFIER) {
+                            char * arg = copy_and_terminate(tk.start, tk.length);
+                            arrput(arg_list, arg);
+                        } else if (tk.type == TK_R_PARENTHESIS) {
+                            break;
+                        } else {
+                            preprocess_error(&tk, "Invalid symbol.");
+                            return -1;
+                        }
+
+                        tk = next_token(&ms);
+                        if (tk.type == TK_R_PARENTHESIS) {
+                            break;
+                        } else if (tk.type != TK_COMMA) {
+                            preprocess_error(&tk, "Invalid symbol.");
+                            return -1;
+                        }
                     }
-                    s++;
                 }
 
-                char * macro_content = strip_comments(&s);
+                char * macro_content = copy_and_terminate(ms, strlen(ms));
 
                 // create macro
                 Define def = {0};
                 def.key = copy_and_terminate(macro_name.start, macro_name.length);
                 def.str = macro_content;
+                if (is_func_like) {
+                    def.arg_list = arg_list;
+                    def.arg_count = arrlen(arg_list);
+                    def.func_like = true;
+                }
                 shputs(defines, def);
+                arrfree(line);
             } else if (tk_equal(&directive, "undef")) {
                 Token def = pre_next_token(&s);
                 char * iden = copy_and_terminate(def.start, def.length);
@@ -442,7 +510,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
             } else if (tk_equal(&directive, "pragma")) {
                 tk = pre_next_token(&s);
                 if (tk_equal(&tk, "once")) {
-                    buf_for_this_file->once = true;
+                    ctx->current_file_buffer->once = true;
                 }
             } else {
             unknown_directive:

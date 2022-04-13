@@ -24,11 +24,12 @@ parse:
     rudimentary C++ support
 
 pre:
-    function-like macros (C99 6.10.3)
+    __VA_ARGS__
     expressions + defined()
-    C99 6.10.2.4 : macro expansion in include directive
     include paths
     move toward c99 compliance (6.10)
+        C99 6.10.3
+        C99 6.10.2.4 : macro expansion in include directive
 
 gen:
     option to create typedefs for structs and enums
