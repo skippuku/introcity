@@ -114,6 +114,16 @@ parse_error_internal(char * buffer, const Token * tk, char * message) {
 static void
 preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, char * message, int msg_type) {
     char * start_of_line;
+    if (tk->start < file_buffer->buffer || tk->start >= file_buffer->buffer + file_buffer->buffer_size) {
+        for (int i=0; i < arrlen(file_buffers); i++) {
+            char * fb_start = file_buffers[i]->buffer;
+            char * fb_end = fb_start + file_buffers[i]->buffer_size;
+            if (tk->start >= fb_start && tk->start < fb_end) {
+                file_buffer = file_buffers[i];
+                break;
+            }
+        }
+    }
     int line_num = count_newlines_in_range(file_buffer->buffer, tk->start, &start_of_line);
     message_internal(start_of_line, file_buffer->filename, line_num, tk->start, tk->start + tk->length, message, msg_type);
 }
@@ -212,8 +222,7 @@ expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
         while (is_space(*args_start)) args_start++;
         Token paren_tk = {.start = args_start, .length = 1};
         if (*args_start != '(') {
-            preprocess_error(&paren_tk, "Expected '('");
-            return NULL;
+            goto expand_macro_no_args;
         }
         char * args_end = find_closing(args_start);
         if (!args_end) {
@@ -273,10 +282,12 @@ expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
                 }
                 goto expand_macro_next_token;
             }
-            for (int param_i=0; param_i < macro->arg_count; param_i++) {
-                if (tk_equal(&tk, macro->arg_list[param_i])) {
-                    strputf(&result, "%.*s", args[param_i].length, args[param_i].start);
-                    goto expand_macro_next_token;
+            if (args) {
+                for (int param_i=0; param_i < macro->arg_count; param_i++) {
+                    if (tk_equal(&tk, macro->arg_list[param_i])) {
+                        strputf(&result, "%.*s", args[param_i].length, args[param_i].start);
+                        goto expand_macro_next_token;
+                    }
                 }
             }
             char terminated [tk.length + 1];

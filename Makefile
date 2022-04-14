@@ -4,6 +4,7 @@ SRC = intro.c intro.h lexer.c pre.c parse.c attribute.c gen.c stb_ds.h stb_sprin
 default: test/db_test
 	./test/db_test
 
+.PHONY: test
 test: db_intro test/db_test test/db_city_test
 	./test/db_test
 	./test/db_city_test
