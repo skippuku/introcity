@@ -39,13 +39,20 @@ strputf(char ** p_str, const char * format, ...) {
 
         char * loc = *p_str + arrlen(*p_str);
         size_t n = arrcap(*p_str) - arrlen(*p_str);
-        size_t pn = stbsp_vsnprintf(loc, n, format, args);
+        size_t pn;
+        if (n > 0) {
+            pn = stbsp_vsnprintf(loc, n, format, args);
+        } else {
+            // NOTE: this is here due to strange behavior of stbsp when n == 0 (the byte before loc is set to 0)
+            // this might be a bug with stbsp
+            pn = 1;
+        }
         if (pn < n) {
             arrsetlen(*p_str, arrlen(*p_str) + pn);
             break;
         } else {
-            size_t p_cap = arrcap(*p_str);
-            arrsetcap(*p_str, (p_cap)? p_cap << 1 : 64);
+            size_t prev_cap = arrcap(*p_str);
+            arrsetcap(*p_str, (prev_cap)? prev_cap << 1 : 64);
         }
 
         va_end(args);

@@ -13,7 +13,7 @@ static FileBuffer ** file_buffers = NULL;
 
 typedef struct {
     char * key;
-    Token tk;
+    Token * replace_list;
     char ** arg_list;
     int32_t arg_count;
     bool func_like;
@@ -30,6 +30,7 @@ typedef struct {
 FileLoc * file_location_lookup = NULL;
 
 typedef struct {
+    ptrdiff_t * no_expand;
     FileBuffer * current_file_buffer;
 } PreContext;
 
@@ -212,110 +213,128 @@ strip_comments(char ** o_s) {
     return content;
 }
 
-static char *
-expand_macro(PreContext * ctx, Define * macro, char ** o_s) {
-    Token * args = NULL;
-    if (macro->func_like) {
-        // TODO: errors here only work at the top-level
-        char ** bounds = NULL;
-        char * args_start = *o_s;
-        while (is_space(*args_start)) args_start++;
-        Token paren_tk = {.start = args_start, .length = 1};
-        if (*args_start != '(') {
-            goto expand_macro_no_args;
+static void
+strput_tokens(char ** p_str, Token * list, size_t count) {
+    bool last_was_iden = false;
+    for (int i=0; i < count; i++) {
+        Token tk = list[i];
+        if (last_was_iden && tk.type == TK_IDENTIFIER) {
+            arrput(*p_str, ' ');
         }
-        char * args_end = find_closing(args_start);
-        if (!args_end) {
-            preprocess_error(&paren_tk, "No closing ')'");
+        strputf(p_str, "%.*s", tk.length, tk.start);
+        last_was_iden = (tk.type == TK_IDENTIFIER);
+    }
+}
+
+void
+tk_cat(Token ** p_list, Token * ext) {
+    for (int i=0; i < arrlen(ext); i++) {
+        arrput(*p_list, ext[i]);
+    }
+}
+
+static Token *
+try_expand_macro(PreContext * ctx, Token * macro_tk, size_t * o_count, char ** o_s) {
+    char terminated_tk [macro_tk->length + 1];
+    memcpy(terminated_tk, macro_tk->start, macro_tk->length);
+    terminated_tk[macro_tk->length] = '\0';
+
+    ptrdiff_t map_index = shgeti(defines, terminated_tk);
+    if (map_index < 0) {
+        return NULL;
+    }
+    for (int i=0; i < arrlen(ctx->no_expand); i++) {
+        if (map_index == ctx->no_expand[i]) {
             return NULL;
         }
-        arrput(bounds, args_start);
-        bool all_space = true;
-        int depth = 1;
-        char * s = args_start + 1;
+    }
+    Define * macro = &defines[map_index];
+    Token * replace_list = NULL;
+    Token * list = NULL;
+    bool free_replace_list = false;
+    arrpush(ctx->no_expand, map_index);
+
+    if (macro->func_like) {
+        // get arguments
+        Token ** args = NULL;
+        char * s = macro_tk->start + macro_tk->length;
+        Token open_paren = pre_next_token(&s);
+        if (!(*open_paren.start == '(')) {
+            // TODO: handle this
+        }
+        Token * arg_tks = NULL;
         while (1) {
             Token tk = pre_next_token(&s);
-            if (*tk.start == '(') depth++;
-            if (*tk.start == ')') {
-                if (--depth == 0) {
-                    break;
-                }
+            if (tk.type == TK_COMMENT || tk.type == TK_NEWLINE) {
+            } else if (*tk.start == ',') {
+                arrput(args, arg_tks);
+                arg_tks = NULL;
+            } else if (*tk.start == ')') {
+                arrput(args, arg_tks);
+                // TODO: do something with closing paren location
+                *o_s = s;
+                break;
+            } else {
+                arrput(arg_tks, tk);
             }
-            all_space = false;
-            if (depth == 1 && *tk.start == ',') arrput(bounds, tk.start);
         }
-        if (all_space) goto expand_macro_no_args;
-        Token range_tk = {.start = args_start, .length = args_end - args_start + 1};
-        if (arrlen(bounds) < macro->arg_count) {
-            preprocess_error(&range_tk, "Not enough arguments.");
-            return NULL;
-        } else if (!macro->variadic && arrlen(bounds) > macro->arg_count) {
-            preprocess_error(&range_tk, "Too many arguments.");
-            return NULL;
-        }
-        arrput(bounds, args_end);
-        for (int i=1; i < arrlen(bounds); i++) {
-            char * a_start = bounds[i-1];
-            while (is_space(*++a_start));
-            char * a_end = bounds[i];
-            while (is_space(*--a_end));
-            Token arg_tk = {.start = a_start, .length = a_end + 1 - a_start};
-            arrput(args, arg_tk);
-        }
-    expand_macro_no_args:
-        arrfree(bounds);
-        *o_s = args_end + 1;
-    }
-    char * result = NULL;
-    if (macro->tk.start == NULL) {
-        strputnull(result);
-        return result;
-    }
-    char * s = macro->tk.start;
-    Token tk, ltk = {0};
-    while ((tk = pre_next_token(&s)).type != TK_END && tk.start < macro->tk.start + macro->tk.length) {
-        if (tk.type == TK_IDENTIFIER) {
-            if (macro->variadic && tk_equal(&tk, "__VA_ARGS__")) {
-                for (int arg_i=macro->arg_count; arg_i < arrlen(args); arg_i++) {
-                    strputf(&result, "%.*s", args[arg_i].length, args[arg_i].start);
-                    if (arg_i != arrlen(args) - 1) strputf(&result, ", ");
+
+        for (int tk_i=0; tk_i < arrlen(macro->replace_list); tk_i++) {
+            Token tk = macro->replace_list[tk_i];
+            bool replaced = false;
+            if (tk.type == TK_IDENTIFIER) {
+                if (macro->variadic && tk_equal(&tk, "__VA_ARGS__")) {
+                    for (int arg_i=macro->arg_count; arg_i < arrlen(args); arg_i++) {
+                        tk_cat(&list, args[arg_i]);
+                        static const Token comma = {.start = ",", .length = 1};
+                        if (arg_i != arrlen(args) - 1) arrput(list, comma);
+                    }
+                    replaced = true;
                 }
-                goto expand_macro_next_token;
-            }
-            if (args) {
                 for (int param_i=0; param_i < macro->arg_count; param_i++) {
                     if (tk_equal(&tk, macro->arg_list[param_i])) {
-                        strputf(&result, "%.*s", args[param_i].length, args[param_i].start);
-                        goto expand_macro_next_token;
+                        tk_cat(&list, args[param_i]);
+                        replaced = true;
+                        break;
                     }
                 }
             }
-            char terminated [tk.length + 1];
-            memcpy(terminated, tk.start, tk.length);
-            terminated[tk.length] = '\0';
-            int def_index = shgeti(defines, terminated);
-            if (def_index >= 0) {
-                Define * inner_macro = &defines[def_index];
-                s = tk.start + tk.length;
-                char * expand_inner = expand_macro(ctx, inner_macro, &s);
-                if (!expand_inner) return NULL;
-                strputf(&result, "%s", expand_inner);
-                arrfree(expand_inner);
-                goto expand_macro_next_token;
+            if (!replaced) {
+                arrput(list, tk);
             }
         }
-        if (tk.type != TK_COMMENT) {
-            strputf(&result, "%.*s", tk.length, tk.start);
+
+        for (int i=0; i < arrlen(args); i++) {
+            arrfree(args[i]);
         }
-    expand_macro_next_token:
-        //if (ltk.start && ltk.start + ltk.length < tk.start) {
-            arrput(result, ' ');
-        //}
-        ltk = tk;
+        arrfree(args);
+
+        replace_list = list;
+        list = NULL;
+        free_replace_list = true;
+    } else {
+        replace_list = macro->replace_list;
     }
-    if (args) arrfree(args);
-    strputnull(result);
-    return result;
+
+    for (int tk_i=0; tk_i < arrlen(replace_list); tk_i++) {
+        Token * p_tk = &replace_list[tk_i];
+        if (p_tk->type == TK_IDENTIFIER) {
+            size_t inner_count;
+            char * s_;
+            (void) s_;
+            Token * inner_list = try_expand_macro(ctx, p_tk, &inner_count, &s_);
+            if (inner_list) {
+                tk_cat(&list, inner_list);
+                arrfree(inner_list);
+                continue;
+            }
+        }
+        arrput(list, *p_tk);
+    }
+
+    if (free_replace_list) arrfree(replace_list);
+    *o_count = arrlen(list);
+    return list;
 }
 
 bool
@@ -429,17 +448,15 @@ preprocess_filename(char ** result_buffer, char * filename) {
         } else if (tk.type == TK_COMMENT) {
             ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
         } else if (tk.type == TK_IDENTIFIER) {
-            char terminated [tk.length + 1];
-            memcpy(terminated, tk.start, tk.length);
-            terminated[tk.length] = '\0';
-            int def_index = shgeti(defines, terminated);
-            if (def_index >= 0) {
-                char * expanded = expand_macro(ctx, &defines[def_index], &s);
-                if (!expanded) return -1;
+            ctx->no_expand = NULL;
+            size_t count;
+            Token * list = try_expand_macro(ctx, &tk, &count, &s);
+            if (list) {
+                strput_tokens(result_buffer, list, count);
+                arrfree(list);
                 ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
-                strputf(result_buffer, "%s", expanded);
-                arrfree(expanded);
             }
+            arrfree(ctx->no_expand);
         } else if (*tk.start == '#') {
             Token directive = pre_next_token(&s);
             while (directive.type == TK_COMMENT) directive = pre_next_token(&s);
@@ -507,23 +524,23 @@ preprocess_filename(char ** result_buffer, char * filename) {
                     }
                 }
 
+                Token * replace_list = NULL;
                 s = ms;
-                Token tk = pre_next_token(&s);
-                ms = tk.start;
                 while (1) {
+                    Token tk = pre_next_token(&s);
                     if (tk.type == TK_NEWLINE || tk.type == TK_END) {
                         s = tk.start;
-                        if (tk.type == TK_NEWLINE) s--;
                         break;
                     }
-                    tk = pre_next_token(&s);
+                    if (tk.type != TK_COMMENT) {
+                        arrput(replace_list, tk);
+                    }
                 }
-                Token macro_content = {.start = ms, .length = s - ms};
 
                 // create macro
                 Define def = {0};
                 def.key = copy_and_terminate(macro_name.start, macro_name.length);
-                def.tk = macro_content;
+                def.replace_list = replace_list;
                 if (is_func_like) {
                     def.arg_list = arg_list;
                     def.arg_count = arrlen(arg_list);
