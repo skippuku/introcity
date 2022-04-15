@@ -257,10 +257,10 @@ try_expand_macro(PreContext * ctx, Token * macro_tk, size_t * o_count, char ** o
     if (macro->func_like) {
         // get arguments
         Token ** args = NULL;
-        char * s = macro_tk->start + macro_tk->length;
+        char * s = *o_s;
         Token open_paren = pre_next_token(&s);
         if (!(*open_paren.start == '(')) {
-            // TODO: handle this
+            return NULL;
         }
         Token * arg_tks = NULL;
         while (1) {
@@ -320,9 +320,11 @@ try_expand_macro(PreContext * ctx, Token * macro_tk, size_t * o_count, char ** o
         Token * p_tk = &replace_list[tk_i];
         if (p_tk->type == TK_IDENTIFIER) {
             size_t inner_count;
-            char * s_;
-            (void) s_;
-            Token * inner_list = try_expand_macro(ctx, p_tk, &inner_count, &s_);
+            char * ss = p_tk->start + p_tk->length;
+            Token * inner_list = try_expand_macro(ctx, p_tk, &inner_count, &ss);
+            if (ss > *o_s) {
+                *o_s = ss;
+            }
             if (inner_list) {
                 tk_cat(&list, inner_list);
                 arrfree(inner_list);
@@ -331,6 +333,8 @@ try_expand_macro(PreContext * ctx, Token * macro_tk, size_t * o_count, char ** o
         }
         arrput(list, *p_tk);
     }
+
+    (void) arrpop(ctx->no_expand);
 
     if (free_replace_list) arrfree(replace_list);
     *o_count = arrlen(list);
@@ -452,9 +456,9 @@ preprocess_filename(char ** result_buffer, char * filename) {
             size_t count;
             Token * list = try_expand_macro(ctx, &tk, &count, &s);
             if (list) {
+                ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
                 strput_tokens(result_buffer, list, count);
                 arrfree(list);
-                ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
             }
             arrfree(ctx->no_expand);
         } else if (*tk.start == '#') {
