@@ -192,7 +192,7 @@ city_create(const void * src, const IntroType * s_type, size_t *o_size) {
 
 static uint32_t
 next_uint(const uint8_t ** ptr, uint8_t size) {
-    uint32_t result;
+    uint32_t result = 0;
     //memcpy(&result + 4 - size, *ptr, size); // BE to BE
     memcpy(&result, *ptr, size); // LE to LE
     *ptr += size;
