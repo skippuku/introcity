@@ -3,6 +3,8 @@
 #include "util.c"
 #include "lexer.c"
 
+static char * filename_stdin = "__intro_output";
+
 typedef struct {
     char * filename;
     char * buffer;
@@ -320,11 +322,7 @@ try_expand_macro(PreContext * ctx, Token * macro_tk, size_t * o_count, char ** o
         Token * p_tk = &replace_list[tk_i];
         if (p_tk->type == TK_IDENTIFIER) {
             size_t inner_count;
-            char * ss = p_tk->start + p_tk->length;
-            Token * inner_list = try_expand_macro(ctx, p_tk, &inner_count, &ss);
-            if (ss > *o_s) {
-                *o_s = ss;
-            }
+            Token * inner_list = try_expand_macro(ctx, p_tk, &inner_count, o_s);
             if (inner_list) {
                 tk_cat(&list, inner_list);
                 arrfree(inner_list);
@@ -400,6 +398,23 @@ pre_skip(char ** o_s, bool elif_ok) {
     }
 }
 
+static char *
+read_stream(FILE * file) {
+    char * result = NULL;
+    fseek(file, 0, SEEK_SET);
+    const int read_size = 1024;
+    char buf [read_size];
+    while (1) {
+        int read_res = fread(&buf, 1, read_size, file);
+        memcpy(arraddnptr(result, read_res), buf, read_res);
+        if (read_res < read_size) {
+            arrput(result, '\0');
+            break;
+        }
+    }
+    return result;
+}
+
 int
 preprocess_filename(char ** result_buffer, char * filename) {
     char * file_buffer = NULL;
@@ -421,16 +436,20 @@ preprocess_filename(char ** result_buffer, char * filename) {
         }
     }
     if (!file_buffer) {
-        if ((file_buffer = read_entire_file(filename, &file_size))) {
-            FileBuffer * new_buf = malloc(sizeof(*new_buf));
-            new_buf->filename = filename;
-            new_buf->buffer = file_buffer;
-            new_buf->buffer_size = file_size;
-            arrput(file_buffers, new_buf);
-            ctx->current_file_buffer = arrlast(file_buffers);
+        if (filename == filename_stdin) {
+            file_buffer = read_stream(stdin);
         } else {
+            file_buffer = read_entire_file(filename, &file_size);
+        }
+        if (!file_buffer) {
             return ERR_FILE_NOT_FOUND;
         }
+        FileBuffer * new_buf = malloc(sizeof(*new_buf));
+        new_buf->filename = filename;
+        new_buf->buffer = file_buffer;
+        new_buf->buffer_size = file_size;
+        arrput(file_buffers, new_buf);
+        ctx->current_file_buffer = arrlast(file_buffers);
     }
 
     char file_dir [1024];
@@ -653,6 +672,13 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
                 *o_output_filepath = argv[++i];
             } break;
 
+            case 0: {
+                if (isatty(fileno(stdin))) {
+                    fprintf(stderr, "Error: Cannot use terminal as file input.\n");
+                    exit(1);
+                }
+                filepath = filename_stdin;
+            } break;
             default: {
                 fputs("Error: Unknown argument: ", stderr);
                 fputs(arg, stderr);

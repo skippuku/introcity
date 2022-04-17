@@ -24,6 +24,7 @@ parse:
     rudimentary C++ support
 
 pre:
+    process #line directives
     # and ## operators
     expressions + defined()
     include paths

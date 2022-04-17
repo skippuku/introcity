@@ -61,11 +61,11 @@ strputf(char ** p_str, const char * format, ...) {
     va_end(args_original);
 }
 
-static size_t
+static long
 fsize(FILE * file) {
     long location = ftell(file);
     fseek(file, 0, SEEK_END);
-    size_t result = ftell(file);
+    long result = ftell(file);
     fseek(file, location, SEEK_SET);
     return result;
 }
