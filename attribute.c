@@ -134,9 +134,18 @@ parse_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
     } else if (type->category == INTRO_F64) {
         double result = strtod(*o_s, o_s);
         return store_value(ctx, &result, 8);
-    } else {
-        return -1;
+    } else if (type->category == INTRO_POINTER) {
+        Token tk = next_token(o_s);
+        if (tk.type == TK_STRING) {
+            if (type->parent->category == INTRO_S8 && 0==strcmp(type->parent->name, "char")) {
+                char * str = copy_and_terminate(tk.start + 1, tk.length - 2); // TODO: parse escape codes
+                ptrdiff_t result = store_value(ctx, str, strlen(str) + 1);
+                free(str);
+                return result;
+            }
+        }
     }
+    return -1;
 }
 
 int
@@ -212,7 +221,7 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
             IntroType * type = i_struct->members[member_index].type;
             ptrdiff_t value_offset = parse_value(ctx, type, o_s);
             if (value_offset < 0) {
-                parse_error(ctx, &tk, "Value attributes are not supported for this type");
+                parse_error(ctx, &tk, "Value attributes are not supported for this type.");
                 return 1;
             }
             data.v.i = value_offset;

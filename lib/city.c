@@ -209,8 +209,8 @@ city__safe_copy_struct(
 ) {
     const IntroStruct * d_struct = d_type->i_struct;
     const IntroStruct * s_struct = s_type->i_struct;
-    for (int i=0; i < d_struct->count_members; i++) {
-        const IntroMember * dm = &d_struct->members[i];
+    for (int dm_i=0; dm_i < d_struct->count_members; dm_i++) {
+        const IntroMember * dm = &d_struct->members[dm_i];
 
         if (intro_attribute_flag(dm, INTRO_ATTR_TYPE)) {
             *(const IntroType **)(dest + dm->offset) = d_type;
@@ -271,14 +271,7 @@ city__safe_copy_struct(
             }
         }
         if (!found_match) {
-            int32_t value_offset;
-            if (intro_attribute_int(dm, INTRO_ATTR_DEFAULT, &value_offset)) {
-                memcpy(dest + dm->offset, ctx->values + value_offset, intro_size(dm->type));
-            } else if (dm->type->category == INTRO_STRUCT) {
-                intro_set_defaults_ctx(ctx, dest + dm->offset, dm->type);
-            } else {
-                memset(dest + dm->offset, 0, intro_size(dm->type));
-            }
+            intro_set_member_value_ctx(ctx, dest, d_type, dm_i, INTRO_ATTR_DEFAULT);
         }
         arrfree(aliases);
     }

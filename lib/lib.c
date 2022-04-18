@@ -315,18 +315,32 @@ intro_type_with_name_ctx(IntroContext * ctx, const char * name) {
 }
 
 void
-intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
-    for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
-        const IntroMember * m = &type->i_struct->members[m_index];
-        size_t size = intro_size(m->type);
-        int32_t offset;
-        if (intro_attribute_int(m, INTRO_ATTR_DEFAULT, &offset)) {
-            const void * value = ctx->values + offset;
-            memcpy(dest + m->offset, value, size);
-        } else if (intro_attribute_flag(m, INTRO_ATTR_TYPE)) {
-            memcpy(dest + m->offset, &type, sizeof(void *));
+intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, int member_index, int value_attribute) {
+    const IntroMember * m = &struct_type->i_struct->members[member_index];
+    size_t size = intro_size(m->type);
+    int32_t value_offset;
+    if (intro_attribute_int(m, value_attribute, &value_offset)) {
+        void * value_ptr = ctx->values + value_offset;
+        if (m->type->category == INTRO_POINTER) {
+            memcpy(dest + m->offset, &value_ptr, size);
         } else {
-            memset(dest + m->offset, 0, size);
+            memcpy(dest + m->offset, value_ptr, size);
         }
+    } else if (intro_attribute_flag(m, INTRO_ATTR_TYPE)) {
+        memcpy(dest + m->offset, &struct_type, sizeof(void *));
+    } else {
+        memset(dest + m->offset, 0, size);
     }
+}
+
+void
+intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, int value_attribute) {
+    for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
+        intro_set_member_value_ctx(ctx, dest, type, m_index, value_attribute);
+    }
+}
+
+void
+intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
+    intro_set_values_ctx(ctx, dest, type, INTRO_ATTR_DEFAULT);
 }

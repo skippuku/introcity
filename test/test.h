@@ -145,6 +145,7 @@ typedef struct {
     int64_t v_s64 I(=-54321);
     float v_float I(= 3.14159);
     IntroType * type I(type);
+    char * name I(= "Brian");
 } TestDefault;
 
 #if 0

@@ -2,7 +2,6 @@ attribute:
     struct/union values
     enum values
     array values
-    string values
     stb_ds attribute
     members of complex type can specify an attribute as a value: I(default default)
     noserialize (for pointers)
