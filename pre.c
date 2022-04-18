@@ -265,19 +265,26 @@ try_expand_macro(PreContext * ctx, Token * macro_tk, size_t * o_count, char ** o
             return NULL;
         }
         Token * arg_tks = NULL;
+        int paren_depth = 1;
         while (1) {
             Token tk = pre_next_token(&s);
             if (tk.type == TK_COMMENT || tk.type == TK_NEWLINE) {
             } else if (*tk.start == ',') {
                 arrput(args, arg_tks);
                 arg_tks = NULL;
-            } else if (*tk.start == ')') {
-                arrput(args, arg_tks);
-                // TODO: do something with closing paren location
-                *o_s = s;
-                break;
             } else {
-                arrput(arg_tks, tk);
+                if (*tk.start == '(') {
+                    paren_depth++;
+                } else if (*tk.start == ')') {
+                    paren_depth--;
+                    if (paren_depth == 0) {
+                        arrput(args, arg_tks);
+                        *o_s = s;
+                        break;
+                    }
+                } else {
+                    arrput(arg_tks, tk);
+                }
             }
         }
 
@@ -319,17 +326,17 @@ try_expand_macro(PreContext * ctx, Token * macro_tk, size_t * o_count, char ** o
     }
 
     for (int tk_i=0; tk_i < arrlen(replace_list); tk_i++) {
-        Token * p_tk = &replace_list[tk_i];
-        if (p_tk->type == TK_IDENTIFIER) {
+        Token tk = replace_list[tk_i];
+        if (tk.type == TK_IDENTIFIER) {
             size_t inner_count;
-            Token * inner_list = try_expand_macro(ctx, p_tk, &inner_count, o_s);
+            Token * inner_list = try_expand_macro(ctx, &tk, &inner_count, o_s);
             if (inner_list) {
                 tk_cat(&list, inner_list);
                 arrfree(inner_list);
                 continue;
             }
         }
-        arrput(list, *p_tk);
+        arrput(list, tk);
     }
 
     (void) arrpop(ctx->no_expand);
