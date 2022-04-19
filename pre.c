@@ -450,6 +450,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
     if (!file_buffer) {
         if (filename == filename_stdin) {
             file_buffer = read_stream(stdin);
+            file_size = arrlen(file_buffer);
         } else {
             file_buffer = read_entire_file(filename, &file_size);
         }

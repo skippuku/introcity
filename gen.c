@@ -1,4 +1,4 @@
-#include "intro.h"
+#include "lib/intro.h"
 #include "util.c"
 
 static char *
@@ -101,7 +101,7 @@ generate_c_header(IntroInfo * info) {
     int attr_list_index = 0;
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         IntroType * t = info->types[type_index];
-        if (is_complex(t->category) && hmgeti(complex_type_map, t->i_struct) < 0) {
+        if (intro_is_complex(t) && hmgeti(complex_type_map, t->i_struct) < 0) {
             const NestInfo * nest = hmgetp_null(info->nest_map, t);
             char * ref_name = NULL;
             if (!nest) {
@@ -170,7 +170,7 @@ generate_c_header(IntroInfo * info) {
             strputf(&s, "0, ");
         }
         strputf(&s, "0x%02x, ", t->category);
-        if (is_complex(t->category)) {
+        if (intro_is_complex(t)) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
             if (saved_name) {
                 strputf(&s, ".%s=&__intro_%s},\n", (t->category == INTRO_ENUM)? "i_enum" : "i_struct", saved_name);

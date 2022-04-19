@@ -1,4 +1,4 @@
-#include "intro.h"
+#include "lib/intro.h"
 #include "util.c"
 #include "pre.c"
 #include "parse.c"

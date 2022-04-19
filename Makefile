@@ -1,5 +1,5 @@
 CFLAGS += -std=gnu99
-SRC = intro.c intro.h lexer.c pre.c parse.c attribute.c gen.c stb_ds.h stb_sprintf.h
+SRC = intro.c lexer.c pre.c parse.c attribute.c gen.c
 
 default: test/db_test
 	./test/db_test
@@ -10,24 +10,32 @@ test: db_intro test/db_test test/db_city_test
 	./test/db_city_test
 	./db_intro intro.c -o test/intro.c.intro
 
-db_intro: $(SRC)
-	$(CC) $(CFLAGS) intro.c -Wall -g -fdiagnostics-color=always -o $@
+db_intro: $(SRC) db_intro_lib.o
+	$(CC) $(CFLAGS) intro.c db_intro_lib.o -Wall -g -fdiagnostics-color=always -o $@
 
-r_intro: $(SRC)
-	$(CC) $(CFLAGS) intro.c -Wall -O2 -s -o $@
+r_intro: $(SRC) r_intro_lib.o
+	$(CC) $(CFLAGS) intro.c r_intro_lib.o -Wall -O2 -s -o $@
 
-test/test.h.intro: db_intro test/test.h
+LIB_SRC = lib/lib.c lib/city.c lib/intro.h lib/types.h lib/ext/stb_ds.h lib/ext/stb_sprintf.h
+
+db_intro_lib.o: $(LIB_SRC)
+	$(CC) -g -c lib/lib.c -o $@
+
+r_intro_lib.o: $(LIB_SRC)
+	$(CC) -O2 -c lib/lib.c -o $@
+
+test/test.h.intro: db_intro test/test.h lib/types.h
 	./db_intro test/test.h
 
-test/db_test: test/test.c test/test.h.intro intro.h test/basic.h lib/lib.c
-	$(CC) test/test.c -g -o $@
+test/db_test: test/test.c test/test.h.intro test/basic.h db_intro_lib.o
+	$(CC) test/test.c db_intro_lib.o -g -o $@
 
 city: test/db_city_test
 	./test/db_city_test
 	xxd -c 16 -g 1 test/obj.cty
 
-test/db_city_test: test/city_test.c test/test.h.intro lib/lib.c lib/city.c util.c
-	$(CC) test/city_test.c -g -o $@
+test/db_city_test: test/city_test.c test/test.h.intro db_intro_lib.o
+	$(CC) test/city_test.c db_intro_lib.o -g -o $@
 
 PREFIX = /usr/local
 

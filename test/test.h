@@ -1,5 +1,5 @@
 #include ".//../test////basic.h"
-#include "../test/../intro.h"
+#include "../test/../lib/types.h"
 
 typedef struct {
     char * name;

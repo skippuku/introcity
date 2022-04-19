@@ -1,5 +1,5 @@
-#ifndef INTRO_H
-#define INTRO_H
+#ifndef INTRO_TYPES_H
+#define INTRO_TYPES_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -109,29 +109,6 @@ struct IntroEnum {
     IntroEnumValue members [];
 };
 
-// intro generator specific TODO: these should be somewhere else
-
-typedef struct {
-    void * key;
-    int32_t value;
-} IndexByPtrMap;
-
-typedef struct {
-    void * key;
-    IntroType * parent;
-    int member_index;
-    char * parent_member_name;
-    char * top_level_name;
-} NestInfo;
-
-typedef struct IntroInfo {
-    uint32_t count_types;
-    IntroType ** types;
-    IndexByPtrMap * index_by_ptr_map;
-    NestInfo * nest_map;
-    uint8_t * value_buffer;
-} IntroInfo;
-
 typedef struct IntroContext {
     IntroType * types;
     const char ** notes;
@@ -142,4 +119,4 @@ typedef struct IntroContext {
     uint32_t size_values;
 } IntroContext;
 
-#endif // INTRO_H
+#endif // INTRO_TYPES_H

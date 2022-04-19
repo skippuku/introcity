@@ -6,12 +6,8 @@
 #include <string.h>
 #include <assert.h>
 
-#define STB_DS_IMPLEMENTATION
-#include "stb_ds.h"
-
-#define STB_SPRINTF_IMPLEMENTATION
-#define STB_SPRINTF_NOFLOAT
-#include "stb_sprintf.h"
+#include "lib/ext/stb_ds.h"
+#include "lib/ext/stb_sprintf.h"
 
 #ifndef LENGTH
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
@@ -20,6 +16,27 @@
 // index of last put or get
 #define shtemp(t) stbds_temp((t)-1)
 #define hmtemp(t) stbds_temp((t)-1)
+
+typedef struct {
+    void * key;
+    int32_t value;
+} IndexByPtrMap;
+
+typedef struct {
+    void * key;
+    IntroType * parent;
+    int member_index;
+    char * parent_member_name;
+    char * top_level_name;
+} NestInfo;
+
+typedef struct IntroInfo {
+    uint32_t count_types;
+    IntroType ** types;
+    IndexByPtrMap * index_by_ptr_map;
+    NestInfo * nest_map;
+    uint8_t * value_buffer;
+} IntroInfo;
 
 enum ErrorType {
     ERR_IRRELEVANT = -1,

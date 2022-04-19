@@ -1,29 +1,25 @@
-#include "../intro.h"
+#include "intro.h"
 
-#include "../util.c"
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
 
-#ifndef INTRO_CTX
-#define INTRO_CTX &__intro_ctx
+#define STB_DS_IMPLEMENTATION
+#include "ext/stb_ds.h"
+
+#define STB_SPRINTF_IMPLEMENTATION
+#include "ext/stb_sprintf.h"
+
+#ifndef LENGTH
+#define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #endif
-#define intro_type_with_name(name) intro_type_with_name_ctx(INTRO_CTX, name)
-#define intro_set_defaults(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
+#define strputnull(a) arrput(a,0)
+// index of last put or get
+#define shtemp(t) stbds_temp((t)-1)
+#define hmtemp(t) stbds_temp((t)-1)
 
-bool
-intro_is_scalar(const IntroType * type) {
-    return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
-}
-
-bool
-intro_is_int(const IntroType * type) {
-    return (type->category >= INTRO_U8 && type->category <= INTRO_S64);
-}
-
-static bool
-intro_is_complex(const IntroType * type) {
-    return (type->category == INTRO_STRUCT
-         || type->category == INTRO_UNION
-         || type->category == INTRO_ENUM);
-}
+#include "city.c"
 
 int
 intro_size(const IntroType * type) {
@@ -144,7 +140,7 @@ intro_attribute_length(const void * struct_data, const IntroType * struct_type, 
     }
 }
 
-void
+static void
 intro_offset_pointers(void * dest, const IntroType * type, void * base) {
     if (type->category == INTRO_ARRAY) {
         if (type->parent->category == INTRO_POINTER) {
@@ -155,8 +151,6 @@ intro_offset_pointers(void * dest, const IntroType * type, void * base) {
         }
     }
 }
-
-void intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, int value_attribute);
 
 void
 intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, int member_index, int value_attribute) {
@@ -201,11 +195,6 @@ intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) 
     intro_set_values_ctx(ctx, dest, type, INTRO_ATTR_DEFAULT);
 }
 
-typedef struct IntroNameSize {
-    char * name;
-    size_t size;
-} IntroNameSize;
-
 void *
 intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * list, size_t count) {
     int32_t member_indices [count];
@@ -237,7 +226,7 @@ intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * lis
     return buffer;
 }
 
-void
+static void
 intro_print_basic(const void * data, const IntroType * type) {
     if (intro_is_scalar(type)) {
         if (type->category <= INTRO_S64) {
@@ -255,7 +244,7 @@ intro_print_basic(const void * data, const IntroType * type) {
     }
 }
 
-void
+static void
 intro_print_enum(int value, const IntroType * type) {
     const IntroEnum * i_enum = type->i_enum;
     if (i_enum->is_sequential) {
@@ -282,7 +271,7 @@ intro_print_enum(int value, const IntroType * type) {
     }
 }
 
-void
+static void
 intro_print_basic_array(const void * data, const IntroType * type, int length) {
     int elem_size = intro_size(type);
     if (elem_size) {
@@ -323,10 +312,6 @@ intro_print_type_name(const IntroType * type) {
     intro_sprint_type_name(buf, type);
     fputs(buf, stdout);
 }
-
-typedef struct {
-    int indent;
-} IntroPrintOptions;
 
 void
 intro_print_struct(const void * data, const IntroType * type, const IntroPrintOptions * opt) {

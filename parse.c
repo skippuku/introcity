@@ -1,4 +1,4 @@
-#include "intro.h"
+#include "lib/intro.h"
 #include "util.c"
 #include "lexer.c"
 
@@ -23,7 +23,7 @@ typedef struct {
     PtrStore * ptr_stores;
 } ParseContext;
 
-void
+static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
     parse_error_internal(ctx->buffer, tk, message);
 }
@@ -38,13 +38,6 @@ cache_name(ParseContext * ctx, char * name) {
         index = shtemp(ctx->name_set);
     }
     return ctx->name_set[index].key;
-}
-
-static bool
-is_complex(int category) {
-    return (category == INTRO_STRUCT
-         || category == INTRO_UNION
-         || category == INTRO_ENUM);
 }
 
 static IntroType *
@@ -73,7 +66,7 @@ store_type(ParseContext * ctx, const IntroType * type) {
         stored = ctx->type_set[set_index].value;
     }
     // TODO: i am not a fan of this
-    if (original && is_complex(type->category)) {
+    if (original && intro_is_complex(type)) {
         for (int i=15; i < hmlen(ctx->type_set); i++) {
             IntroType * t = ctx->type_set[i].value;
             if (t->parent == original) {
@@ -188,7 +181,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 }
                 member.type = type;
 
-                if (base_type->name == NULL && is_complex(base_type->category)) {
+                if (base_type->name == NULL && intro_is_complex(base_type)) {
                     NestInfo info = {0};
                     info.key = base_type; // covers i_enum
                     info.member_index = arrlen(members);

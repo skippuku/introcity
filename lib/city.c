@@ -1,7 +1,3 @@
-#include "lib.c"
-
-#define city_load(dest, dest_type, data, data_size) city_load_ctx(INTRO_CTX, dest, dest_type, data, data_size)
-
 static const int implementation_version_major = 0;
 static const int implementation_version_minor = 1;
 
@@ -148,7 +144,7 @@ city__serialize_pointer_data(CityCreationContext * ctx, const IntroType * s_type
 }
 
 void *
-city_create(const void * src, const IntroType * s_type, size_t *o_size) {
+intro_create_city(const void * src, const IntroType * s_type, size_t *o_size) {
     assert(s_type->category == INTRO_STRUCT);
     const IntroStruct * s_struct = s_type->i_struct;
 
@@ -280,7 +276,7 @@ city__safe_copy_struct(
 }
 
 int
-city_load_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, int32_t data_size) {
+intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, int32_t data_size) {
     const CityHeader * header = data;
     
     if (

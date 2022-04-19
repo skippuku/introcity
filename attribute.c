@@ -134,29 +134,6 @@ store_ptr(ParseContext * ctx, void * data, size_t size) {
     return offset;
 }
 
-// @copy from lib.c
-bool
-intro_is_scalar(const IntroType * type) {
-    return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
-}
-
-int
-intro_size(const IntroType * type) {
-    if (intro_is_scalar(type)) {
-        return (type->category & 0x0f);
-    } else if (type->category == INTRO_POINTER) {
-        return sizeof(void *);
-    } else if (type->category == INTRO_ARRAY) {
-        return type->array_size * intro_size(type->parent);
-    } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
-        return type->i_struct->size;
-    } else if (type->category == INTRO_ENUM) {
-        return type->i_enum->size;
-    } else {
-        return 0;
-    }
-}
-
 ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s);
 
 ptrdiff_t

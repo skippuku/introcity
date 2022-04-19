@@ -1,4 +1,4 @@
-#include "../lib/lib.c"
+#include "../lib/intro.h"
 
 #include "basic.h"
 

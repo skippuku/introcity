@@ -1,13 +1,13 @@
-#include "../intro.h"
+#include "../lib/intro.h"
+#include "../util.c"
+
 #include "test.h"
 #include "test.h.intro"
-
-#include "../lib/city.c"
 
 void
 dump_city(const char * filename, void * data, const IntroType * type) {
     size_t city_size;
-    void * city_data = city_create(data, type, &city_size);
+    void * city_data = intro_create_city(data, type, &city_size);
 
     int error = dump_to_file(filename, city_data, city_size);
     if (error) {
@@ -21,7 +21,7 @@ read_city(const char * filename, void * data, const IntroType * type) {
     size_t load_size;
     void * city_load_data = read_entire_file(filename, &load_size);
     assert(city_load_data != NULL);
-    city_load(data, type, city_load_data, load_size);
+    intro_load_city(data, type, city_load_data, load_size);
 }
 
 int
