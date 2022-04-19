@@ -12,6 +12,7 @@ attribute:
     length: allow expression? ex. I(length map_width * map_height)
 
 parse:
+    fix not catching pointer to undefined struct
     give c int types a parent based on size and signedness
     add way to change c int type sizes for different platforms
     track type declaration file location?

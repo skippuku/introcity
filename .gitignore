@@ -2,3 +2,5 @@ db_*
 r_*
 *.intro
 *.cty
+*.exe
+*.o

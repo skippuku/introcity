@@ -144,6 +144,7 @@ path_normalize(char * dest) {
         if (*src == '\\') *src = '/';
         src++;
     }
+    int depth = 0;
     src = dest;
     while (*src) {
         if (*src == '/') {
@@ -152,9 +153,13 @@ path_normalize(char * dest) {
             } else if (memcmp(src+1, "./", 2)==0) {
                 src += 2;
             } else if (memcmp(src+1, "../", 3)==0) {
-                src += 4;
-                dest = last_dir;
+                depth -= 1;
+                if (depth > 0) {
+                    src += 4;
+                    dest = last_dir;
+                }
             } else {
+                depth += 1;
                 last_dir = dest;
             }
         }

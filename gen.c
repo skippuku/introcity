@@ -89,13 +89,11 @@ generate_c_header(IntroInfo * info) {
     }
     strputf(&s, "};\n\n");
 
-    if (note_set != NULL) {
-        strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(note_set));
-        for (int i=0; i < arrlen(note_set); i++) {
-            strputf(&s, "%s\"%s\",\n", tab, note_set[i]);
-        }
-        strputf(&s, "};\n\n");
+    strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(note_set));
+    for (int i=0; i < arrlen(note_set); i++) {
+        strputf(&s, "%s\"%s\",\n", tab, note_set[i]);
     }
+    strputf(&s, "};\n\n");
 
     // complex type information (enums, structs, unions)
     int attr_list_index = 0;

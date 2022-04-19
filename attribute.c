@@ -115,6 +115,8 @@ check_id_valid(const IntroStruct * i_struct, int id) {
     return true;
 }
 
+// NOTE: value storing is fairly similar to some of what the city implementation does,
+// maybe some code can be resued between those two systems
 ptrdiff_t
 store_value(ParseContext * ctx, const void * value, size_t value_size) {
     void * storage = arraddnptr(ctx->value_buffer, value_size);
@@ -209,8 +211,9 @@ store_differed_ptrs(ParseContext * ctx) {
     for (int i=0; i < arrlen(ctx->ptr_stores); i++) {
         PtrStore ptr_store = ctx->ptr_stores[i];
         store_value(ctx, &ptr_store.data_size, 4);
+        size_t offset = store_value(ctx, ptr_store.data, ptr_store.data_size);
         size_t * o_offset = (size_t *)(ctx->value_buffer + ptr_store.value_offset);
-        *o_offset = store_value(ctx, ptr_store.data, ptr_store.data_size);
+        *o_offset = offset;
         free(ptr_store.data);
     }
     arrsetlen(ctx->ptr_stores, 0);
