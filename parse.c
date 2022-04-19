@@ -7,6 +7,12 @@ typedef struct {
 } NameSet;
 
 typedef struct {
+    ptrdiff_t value_offset;
+    void * data;
+    size_t data_size;
+} PtrStore;
+
+typedef struct {
     char * buffer;
     struct{char * key; IntroType * value;} * type_map;
     struct{IntroType key; IntroType * value;} * type_set;
@@ -14,6 +20,7 @@ typedef struct {
     NestInfo * nest_map;
 
     uint8_t * value_buffer;
+    PtrStore * ptr_stores;
 } ParseContext;
 
 void

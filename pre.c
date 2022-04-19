@@ -141,6 +141,11 @@ path_normalize(char * dest) {
     char * last_dir = dest;
     char * src = dest;
     while (*src) {
+        if (*src == '\\') *src = '/';
+        src++;
+    }
+    src = dest;
+    while (*src) {
         if (*src == '/') {
             if (memcmp(src+1, "/", 1)==0) {
                 src += 2;

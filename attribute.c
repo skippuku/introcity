@@ -116,11 +116,48 @@ check_id_valid(const IntroStruct * i_struct, int id) {
 }
 
 ptrdiff_t
-store_value(ParseContext * ctx, void * value, size_t value_size) {
+store_value(ParseContext * ctx, const void * value, size_t value_size) {
     void * storage = arraddnptr(ctx->value_buffer, value_size);
     memcpy(storage, value, value_size); // NOTE: this is only correct for LE
     return (storage - (void *)ctx->value_buffer);
 }
+
+ptrdiff_t
+store_ptr(ParseContext * ctx, void * data, size_t size) {
+    static const uint8_t nothing [sizeof(size_t)] = {0};
+    ptrdiff_t offset = store_value(ctx, &nothing, sizeof(size_t));
+    PtrStore ptr_store = {0};
+    ptr_store.value_offset = offset;
+    ptr_store.data = data;
+    ptr_store.data_size = size;
+    arrput(ctx->ptr_stores, ptr_store);
+    return offset;
+}
+
+// @copy from lib.c
+bool
+intro_is_scalar(const IntroType * type) {
+    return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
+}
+
+int
+intro_size(const IntroType * type) {
+    if (intro_is_scalar(type)) {
+        return (type->category & 0x0f);
+    } else if (type->category == INTRO_POINTER) {
+        return sizeof(void *);
+    } else if (type->category == INTRO_ARRAY) {
+        return type->array_size * intro_size(type->parent);
+    } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
+        return type->i_struct->size;
+    } else if (type->category == INTRO_ENUM) {
+        return type->i_enum->size;
+    } else {
+        return 0;
+    }
+}
+
+ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s);
 
 ptrdiff_t
 parse_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
@@ -139,13 +176,67 @@ parse_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
         if (tk.type == TK_STRING) {
             if (type->parent->category == INTRO_S8 && 0==strcmp(type->parent->name, "char")) {
                 char * str = copy_and_terminate(tk.start + 1, tk.length - 2); // TODO: parse escape codes
-                ptrdiff_t result = store_value(ctx, str, strlen(str) + 1);
-                free(str);
+                ptrdiff_t result = store_ptr(ctx, str, tk.length - 1);
                 return result;
             }
         }
+    } else if (type->category == INTRO_ARRAY) {
+        return parse_array_value(ctx, type, o_s);
     }
     return -1;
+}
+
+ptrdiff_t
+parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
+    Token tk = next_token(o_s);
+
+    ptrdiff_t result = arrlen(ctx->value_buffer);
+    size_t array_element_size = intro_size(type->parent);
+    int count = 0;
+
+    if (tk.type == TK_L_BRACE) {
+        while (1) {
+            tk = next_token(o_s);
+            if (tk.type == TK_COMMA) {
+                parse_error(ctx, &tk, "Invalid symbol.");
+                return -1;
+            } else if (tk.type == TK_R_BRACE) {
+                break;
+            }
+            *o_s = tk.start;
+            parse_value(ctx, type->parent, o_s);
+            count++;
+
+            tk = next_token(o_s);
+            if (tk.type == TK_COMMA) {
+            } else if (tk.type == TK_R_BRACE) {
+                break;
+            } else {
+                parse_error(ctx, &tk, "Invalid symbol.");
+                return -1;
+            }
+        }
+        int left = array_element_size * (type->array_size - count);
+        if (count < type->array_size) {
+            memset(arraddnptr(ctx->value_buffer, left), 0, left);
+        }
+    } else {
+        parse_error(ctx, &tk, "Expected '{'.");
+        return -1;
+    }
+    return result;
+}
+
+void
+store_differed_ptrs(ParseContext * ctx) {
+    for (int i=0; i < arrlen(ctx->ptr_stores); i++) {
+        PtrStore ptr_store = ctx->ptr_stores[i];
+        store_value(ctx, &ptr_store.data_size, 4);
+        size_t * o_offset = (size_t *)(ctx->value_buffer + ptr_store.value_offset);
+        *o_offset = store_value(ctx, ptr_store.data, ptr_store.data_size);
+        free(ptr_store.data);
+    }
+    arrsetlen(ctx->ptr_stores, 0);
 }
 
 int
@@ -217,11 +308,16 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
             data.v.i = index;
         } break;
 
+        // TODO: error check: member used as length can't have a value if the member it is the length of has a value
+        // TODO: error check: if multiple members use the same member for length, values can't have different lengths
+        // NOTE: the previous 2 todo's do not apply if the values are for different attributes
         case INTRO_V_VALUE: {
             IntroType * type = i_struct->members[member_index].type;
+            assert(arrlen(ctx->ptr_stores) == 0);
             ptrdiff_t value_offset = parse_value(ctx, type, o_s);
+            store_differed_ptrs(ctx);
             if (value_offset < 0) {
-                parse_error(ctx, &tk, "Value attributes are not supported for this type.");
+                parse_error(ctx, &tk, "Error parsing value attribute.");
                 return 1;
             }
             data.v.i = value_offset;
@@ -304,7 +400,9 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
             data.value_type = INTRO_V_VALUE;
             // @copy from above
             IntroType * type = i_struct->members[member_index].type;
+            assert(arrlen(ctx->ptr_stores) == 0);
             ptrdiff_t value_offset = parse_value(ctx, type, &s);
+            store_differed_ptrs(ctx);
             if (value_offset < 0) {
                 parse_error(ctx, &tk, "Value attributes are not supported for this type");
                 return 1;

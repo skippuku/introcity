@@ -146,6 +146,9 @@ typedef struct {
     float v_float I(= 3.14159);
     IntroType * type I(type);
     char * name I(= "Brian");
+
+    uint8_t numbers [8] I(= {4, 5, 8, 9, 112, 9});
+    char * words [4] I(= {"apple", "banana", "mango", "pineapple"});
 } TestDefault;
 
 #if 0

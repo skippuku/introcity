@@ -62,5 +62,9 @@ main(int argc, char ** argv) {
     intro_print_struct(&default_test, default_test.type, NULL);
     printf("\n");
 
+    for (int i=0; i < LENGTH(default_test.words); i++) {
+        printf("words[%i] = \"%s\";\n", i, default_test.words[i]);
+    }
+
     return 0;
 }

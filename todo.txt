@@ -1,7 +1,7 @@
 attribute:
     struct/union values
+    pointer array values
     enum values
-    array values
     stb_ds attribute
     members of complex type can specify an attribute as a value: I(default default)
     noserialize (for pointers)
@@ -36,6 +36,7 @@ gen:
     typeof with _Generic?
 
 city:
+    ability to use id instead of member name
 
 lib:
     Dear ImGui stuff

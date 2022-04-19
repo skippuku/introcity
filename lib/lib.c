@@ -13,6 +13,11 @@ intro_is_scalar(const IntroType * type) {
     return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
 }
 
+bool
+intro_is_int(const IntroType * type) {
+    return (type->category >= INTRO_U8 && type->category <= INTRO_S64);
+}
+
 static bool
 intro_is_complex(const IntroType * type) {
     return (type->category == INTRO_STRUCT
@@ -62,9 +67,11 @@ intro_int_value(const void * data, const IntroType * type) {
     case INTRO_U32:
         result = *(uint32_t *)data;
         break;
-    case INTRO_U64:
-        result = *(uint64_t *)data;
+    case INTRO_U64: {
+        uint64_t u_result = *(uint64_t *)data;
+        result = (u_result <= INT64_MAX)? u_result : INT64_MAX;
         break;
+    }
 
     case INTRO_S8:
         result = *(int8_t *)data;
@@ -111,6 +118,18 @@ intro_attribute_int(const IntroMember * m, int32_t attr_type, int32_t * o_int) {
 }
 
 bool
+intro_attribute_float(const IntroMember * m, int32_t attr_type, float * o_float) {
+    for (int i=0; i < m->count_attributes; i++) {
+        const IntroAttributeData * attr = &m->attributes[i];
+        if (attr->type == attr_type) {
+            if (o_float) *o_float = attr->v.f;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
 intro_attribute_length(const void * struct_data, const IntroType * struct_type, const IntroMember * m, int64_t * o_length) {
     int32_t member_index;
     const void * m_data = struct_data + m->offset;
@@ -123,6 +142,95 @@ intro_attribute_length(const void * struct_data, const IntroType * struct_type, 
         *o_length = 0;
         return false;
     }
+}
+
+void
+intro_offset_pointers(void * dest, const IntroType * type, void * base) {
+    if (type->category == INTRO_ARRAY) {
+        if (type->parent->category == INTRO_POINTER) {
+            for (int i=0; i < type->array_size; i++) {
+                void ** o_ptr = (void **)(dest + i * sizeof(void *));
+                *o_ptr += (size_t)base;
+            }
+        }
+    }
+}
+
+void
+intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, int member_index, int value_attribute) {
+    const IntroMember * m = &struct_type->i_struct->members[member_index];
+    size_t size = intro_size(m->type);
+    int32_t value_offset;
+    if (intro_attribute_int(m, value_attribute, &value_offset)) {
+        void * value_ptr = ctx->values + value_offset;
+        if (m->type->category == INTRO_POINTER) {
+            size_t data_offset = *(size_t *)value_ptr;
+            void * data = ctx->values + data_offset;
+            int32_t data_length = *(int32_t *)(data - 4);
+            memcpy(dest + m->offset, &data, sizeof(size_t));
+            int32_t length_member_index;
+            if (intro_attribute_int(m, INTRO_ATTR_LENGTH, &length_member_index)) {
+                const IntroMember * length_member = &struct_type->i_struct->members[length_member_index];
+                size_t length_member_size = intro_size(length_member->type);
+                memcpy(dest + length_member->offset, &data_length, length_member_size);
+            }
+        } else {
+            memcpy(dest + m->offset, value_ptr, size);
+            intro_offset_pointers(dest + m->offset, m->type, ctx->values);
+        }
+    } else if (intro_attribute_flag(m, INTRO_ATTR_TYPE)) {
+        memcpy(dest + m->offset, &struct_type, sizeof(void *));
+    } else {
+        memset(dest + m->offset, 0, size);
+    }
+}
+
+void
+intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, int value_attribute) {
+    for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
+        intro_set_member_value_ctx(ctx, dest, type, m_index, value_attribute);
+    }
+}
+
+void
+intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
+    intro_set_values_ctx(ctx, dest, type, INTRO_ATTR_DEFAULT);
+}
+
+typedef struct IntroNameSize {
+    char * name;
+    size_t size;
+} IntroNameSize;
+
+void *
+intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * list, size_t count) {
+    int32_t member_indices [count];
+    size_t ptr_offsets [count];
+    size_t alloc_size = 0;
+    for (int i=0; i < count; i++) {
+        for (int mi=0; mi < type->i_struct->count_members; mi++) { // NOTE: slow search
+            const IntroMember * m = &type->i_struct->members[mi];
+            if (0==strcmp(m->name, list[i].name)) {
+                assert(m->type->category == INTRO_POINTER);
+                member_indices[i] = mi;
+                ptr_offsets[i] = alloc_size;
+                alloc_size += list[i].size;
+                break;
+            }
+        }
+    }
+
+    void * buffer = malloc(alloc_size);
+    if (!buffer) return NULL;
+
+    for (int i=0; i < count; i++) {
+        int mi = member_indices[i];
+        const IntroMember * m = &type->i_struct->members[mi];
+        void ** member_loc = (void **)(dest + m->offset);
+        *member_loc = (void *)(buffer + ptr_offsets[i]);
+    }
+
+    return buffer;
 }
 
 void
@@ -312,35 +420,4 @@ intro_type_with_name_ctx(IntroContext * ctx, const char * name) {
         }
     }
     return NULL;
-}
-
-void
-intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, int member_index, int value_attribute) {
-    const IntroMember * m = &struct_type->i_struct->members[member_index];
-    size_t size = intro_size(m->type);
-    int32_t value_offset;
-    if (intro_attribute_int(m, value_attribute, &value_offset)) {
-        void * value_ptr = ctx->values + value_offset;
-        if (m->type->category == INTRO_POINTER) {
-            memcpy(dest + m->offset, &value_ptr, size);
-        } else {
-            memcpy(dest + m->offset, value_ptr, size);
-        }
-    } else if (intro_attribute_flag(m, INTRO_ATTR_TYPE)) {
-        memcpy(dest + m->offset, &struct_type, sizeof(void *));
-    } else {
-        memset(dest + m->offset, 0, size);
-    }
-}
-
-void
-intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, int value_attribute) {
-    for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
-        intro_set_member_value_ctx(ctx, dest, type, m_index, value_attribute);
-    }
-}
-
-void
-intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
-    intro_set_values_ctx(ctx, dest, type, INTRO_ATTR_DEFAULT);
 }
