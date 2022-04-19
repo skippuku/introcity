@@ -41,7 +41,7 @@ main() {
     }
 
     printf("obj_save: Basic = ");
-    intro_print_struct(&obj_save, obj_save_type, NULL);
+    intro_print(&obj_save, obj_save_type, NULL);
     printf("\n\n");
 
     dump_city("test/obj.cty", &obj_save, obj_save_type);
@@ -50,7 +50,7 @@ main() {
     read_city("test/obj.cty", &obj_load, intro_type_with_name("BasicPlus"));
 
     printf("obj_load: BasicPlus = ");
-    intro_print_struct(&obj_load, obj_load.type, NULL);
+    intro_print(&obj_load, obj_load.type, NULL);
     printf("\n");
 
     return 0;

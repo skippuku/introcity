@@ -10,6 +10,7 @@
 #define intro_set_defaults(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
 #define intro_set_values(dest, type, attribute) intro_set_values_ctx(INTRO_CTX, dest, type, attribute)
 #define intro_type_with_name(name) intro_type_with_name_ctx(INTRO_CTX, name)
+#define intro_print(data, type, opt) intro_print_ctx(INTRO_CTX, data, type, opt)
 
 #define intro_load_city(dest, dest_type, data, data_size) intro_load_city_ctx(INTRO_CTX, dest, dest_type, data, data_size)
 
@@ -56,7 +57,7 @@ void intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * t
 void * intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * list, size_t count);
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
-void intro_print_struct(const void * data, const IntroType * type, const IntroPrintOptions * opt);
+void intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt);
 IntroType * intro_type_with_name_ctx(IntroContext * ctx, const char * name);
 
 void * intro_create_city(const void * src, const IntroType * s_type, size_t *o_size);

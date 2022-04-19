@@ -22,7 +22,7 @@ main(int argc, char ** argv) {
     assert(t_obj && t_obj->category == INTRO_STRUCT);
 
     printf("obj = ");
-    intro_print_struct(&obj, t_obj, NULL);
+    intro_print(&obj, t_obj, NULL);
     printf("\n\n");
 
     /*=====================*/
@@ -43,14 +43,14 @@ main(int argc, char ** argv) {
     };
 
     printf("nest = ");
-    intro_print_struct(&nest, ITYPE(Nest), NULL);
+    intro_print(&nest, ITYPE(Nest), NULL);
     printf("\n\n");
 
     /*=====================*/
 
     TestUndefined undef_test = {0};
     printf("undef_test = ");
-    intro_print_struct(&undef_test, ITYPE(TestUndefined), NULL);
+    intro_print(&undef_test, ITYPE(TestUndefined), NULL);
     printf("\n\n");
 
     /*====================*/
@@ -59,7 +59,7 @@ main(int argc, char ** argv) {
     intro_set_defaults(&default_test, ITYPE(TestDefault));
 
     printf("default_test = ");
-    intro_print_struct(&default_test, default_test.type, NULL);
+    intro_print(&default_test, default_test.type, NULL);
     printf("\n");
 
     for (int i=0; i < LENGTH(default_test.words); i++) {

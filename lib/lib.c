@@ -227,7 +227,7 @@ intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * lis
 }
 
 static void
-intro_print_basic(const void * data, const IntroType * type) {
+intro_print_scalar(const void * data, const IntroType * type) {
     if (intro_is_scalar(type)) {
         if (type->category <= INTRO_S64) {
             int64_t value = intro_int_value(data, type);
@@ -278,7 +278,7 @@ intro_print_basic_array(const void * data, const IntroType * type, int length) {
         printf("{");
         for (int i=0; i < length; i++) {
             if (i > 0) printf(", ");
-            intro_print_basic(data + elem_size * i, type);
+            intro_print_scalar(data + elem_size * i, type);
         }
         printf("}");
     } else {
@@ -313,16 +313,13 @@ intro_print_type_name(const IntroType * type) {
     fputs(buf, stdout);
 }
 
-void
-intro_print_struct(const void * data, const IntroType * type, const IntroPrintOptions * opt) {
-    static const IntroPrintOptions opt_default = {0};
+static void
+intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt) {
     static const char * tab = "    ";
 
     if (type->category != INTRO_STRUCT && type->category != INTRO_UNION) {
         return;
     }
-
-    if (!opt) opt = &opt_default;
 
     printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
 
@@ -334,7 +331,7 @@ intro_print_struct(const void * data, const IntroType * type, const IntroPrintOp
         intro_print_type_name(m->type);
         printf(" = ");
         if (intro_is_scalar(m->type)) {
-            intro_print_basic(m_data, m->type);
+            intro_print_scalar(m_data, m->type);
         } else {
             switch(m->type->category) {
             case INTRO_ARRAY: {
@@ -382,7 +379,7 @@ intro_print_struct(const void * data, const IntroType * type, const IntroPrintOp
             case INTRO_UNION: {
                 IntroPrintOptions opt2 = *opt;
                 opt2.indent++;
-                intro_print_struct(m_data, m->type, &opt2);
+                intro_print_struct_ctx(ctx, m_data, m->type, &opt2);
             }break;
 
             case INTRO_ENUM: {
@@ -398,6 +395,31 @@ intro_print_struct(const void * data, const IntroType * type, const IntroPrintOp
     }
     for (int t=0; t < opt->indent; t++) fputs(tab, stdout);
     printf("}");
+}
+
+void
+intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt) {
+    static const IntroPrintOptions opt_default = {0};
+
+    if (!opt) {
+        opt = &opt_default;
+    }
+
+    if (intro_is_scalar(type)) {
+        intro_print_scalar(data, type);
+    } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
+        intro_print_struct_ctx(ctx, data, type, opt);
+    } else if (type->category == INTRO_ENUM) {
+        int value = *(int *)data;
+        intro_print_enum(value, type);
+    } else if (type->category == INTRO_ARRAY && intro_is_scalar(type->parent)) {
+        intro_print_basic_array(data, type, type->array_size);
+    } else if (type->category == INTRO_POINTER) {
+        void * value = *(void **)data;
+        printf("%p", value);
+    } else {
+        printf("<unknown>");
+    }
 }
 
 IntroType *
