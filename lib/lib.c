@@ -156,12 +156,16 @@ intro_offset_pointers(void * dest, const IntroType * type, void * base) {
     }
 }
 
+void intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, int value_attribute);
+
 void
 intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, int member_index, int value_attribute) {
     const IntroMember * m = &struct_type->i_struct->members[member_index];
     size_t size = intro_size(m->type);
     int32_t value_offset;
-    if (intro_attribute_int(m, value_attribute, &value_offset)) {
+    if (m->type->category == INTRO_STRUCT) {
+        intro_set_values_ctx(ctx, dest + m->offset, m->type, value_attribute);
+    } else if (intro_attribute_int(m, value_attribute, &value_offset)) {
         void * value_ptr = ctx->values + value_offset;
         if (m->type->category == INTRO_POINTER) {
             size_t data_offset = *(size_t *)value_ptr;
