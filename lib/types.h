@@ -8,7 +8,7 @@
 #define I(...)
 #endif
 
-#define ITYPE(x) &__intro_types[ITYPE_##x]
+#define ITYPE(x) (&__intro_types[ITYPE_##x])
 
 typedef enum IntroCategory {
     INTRO_UNKNOWN = 0x0,
@@ -67,7 +67,7 @@ typedef enum IntroAttribute {
 typedef struct IntroAttributeData {
     int32_t type;
     enum {
-        INTRO_V_NONE,
+        INTRO_V_FLAG,
         INTRO_V_INT,
         INTRO_V_FLOAT,
         INTRO_V_VALUE,

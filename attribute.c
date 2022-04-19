@@ -12,7 +12,7 @@ create_initial_attributes() {
         {"id",      INTRO_ATTR_ID,      INTRO_V_INT}, // NOTE: maybe this should be part of IntroMember since it is common?
         {"default", INTRO_ATTR_DEFAULT, INTRO_V_VALUE},
         {"length",  INTRO_ATTR_LENGTH,  INTRO_V_MEMBER},
-        {"type",    INTRO_ATTR_TYPE,    INTRO_V_NONE},
+        {"type",    INTRO_ATTR_TYPE,    INTRO_V_FLAG},
         {"note",    INTRO_ATTR_NOTE,    INTRO_V_STRING},
         {"alias",   INTRO_ATTR_ALIAS,   INTRO_V_STRING},
     };
@@ -26,7 +26,7 @@ create_initial_attributes() {
 int
 parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk) {
     const struct { char * key; int value_type; } value_type_lookup [] = {
-        {"none",      INTRO_V_NONE},
+        {"flag",      INTRO_V_FLAG},
         {"int",       INTRO_V_INT},
         {"float",     INTRO_V_FLOAT},
         {"value",     INTRO_V_VALUE},
@@ -47,7 +47,7 @@ parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk
         return 1;
     }
 
-    int value_type = INTRO_V_NONE;
+    int value_type = INTRO_V_FLAG;
     char * name = NULL;
     Token * name_ref = NULL;
 
@@ -233,7 +233,7 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
         data.value_type = attribute_map[map_index].value_type; // NOTE: you could just lookup the attribute's value type
 
         switch(data.value_type) {
-        case INTRO_V_NONE: {
+        case INTRO_V_FLAG: {
             if (data.type == INTRO_ATTR_TYPE) {
                 IntroType * type = i_struct->members[member_index].type;
                 if (!(type->category == INTRO_POINTER && strcmp(type->parent->name, "IntroType") == 0)) {
