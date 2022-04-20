@@ -1,8 +1,8 @@
 attribute:
+    * pointer array values
+    * enum values
     struct/union values
-    pointer array values
-    enum values
-    stb_ds attribute
+    stb_ds array attribute
     members of complex type can specify an attribute as a value: I(default default)
     noserialize (for pointers)
     nodisplay
@@ -10,9 +10,9 @@ attribute:
     ability to remove an attribute
     expression/condition attribute type
     length: allow expression? ex. I(length map_width * map_height)
+    stb_ds hash map attribute?
 
 parse:
-    fix not catching pointer to undefined struct
     give c int types a parent based on size and signedness
     add way to change c int type sizes for different platforms
     track type declaration file location?
@@ -24,7 +24,8 @@ parse:
     rudimentary C++ support
 
 pre:
-    process #line directives
+    * process #line directives
+    fix macros not rescanning
     # and ## operators
     expressions + defined()
     include paths
@@ -38,9 +39,11 @@ gen:
 
 city:
     ability to use id instead of member name
+    stbd_ds arrays (requires stb_ds attribute)
 
 lib:
-    Dear ImGui stuff
+    * Dear ImGui widget
+    IntroVariant?
     don't use printf?
     single header?
 
@@ -48,10 +51,10 @@ test:
     test for failures that should happen
 
 doc:
-    README
-    examples
-    lib reference
-    attribute reference
+    * more examples
+    * lib reference
 
 misc:
     use enum error codes instead of magic numbers
+
+* should be implemented before beta release

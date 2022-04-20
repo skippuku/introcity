@@ -81,7 +81,7 @@ store_type(ParseContext * ctx, const IntroType * type) {
     return stored;
 }
 
-static IntroType * parse_base_type(ParseContext *, char **, Token *);
+static IntroType * parse_base_type(ParseContext *, char **, Token *, bool);
 static IntroType * parse_declaration(ParseContext *, IntroType *, char **, Token *);
 
 typedef struct {
@@ -126,10 +126,21 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         return -1;
     }
 
+    char * complex_type_name = NULL;
     tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
         name_tk = tk;
         tk = next_token(o_s);
+
+        strputf(&complex_type_name, "%s %.*s",
+                (is_union)? "union" : "struct", name_tk.length, name_tk.start);
+        strputnull(complex_type_name);
+
+        if (shgeti(ctx->type_map, complex_type_name) < 0) {
+            IntroType temp_type = {0};
+            temp_type.name = complex_type_name;
+            store_type(ctx, &temp_type);
+        }
     }
 
     if (tk.type != TK_L_BRACE) {
@@ -143,7 +154,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     NestInfo * nests = NULL;
     while (1) {
         Token type_tk = {0};
-        IntroType * base_type = parse_base_type(ctx, o_s, &type_tk);
+        IntroType * base_type = parse_base_type(ctx, o_s, &type_tk, false);
         if (!base_type) {
             Token tk = next_token(o_s);
             if (tk.type == TK_R_BRACE) {
@@ -212,20 +223,13 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     arrfree(members);
 
     {
-        char * struct_type_name = NULL;
-        if (name_tk.type == TK_IDENTIFIER) {
-            strputf(&struct_type_name, "%s %.*s", 
-                    (is_union)? "union" : "struct", name_tk.length, name_tk.start);
-            strputnull(struct_type_name);
-        }
-
         IntroType type = {0};
-        type.name = struct_type_name;
+        type.name = complex_type_name;
         type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
         type.i_struct = result;
         
         IntroType * stored = store_type(ctx, &type);
-        arrfree(struct_type_name);
+        arrfree(complex_type_name);
 
         for (int i=0; i < arrlen(nests); i++) {
             NestInfo info = nests[i];
@@ -256,10 +260,20 @@ static int
 parse_enum(ParseContext * ctx, char ** o_s) {
     IntroEnum enum_ = {0};
 
+    char * complex_type_name = NULL;
     Token tk = next_token(o_s), name_tk = {0};
     if (tk.type == TK_IDENTIFIER) {
         name_tk = tk;
         tk = next_token(o_s);
+
+        strputf(&complex_type_name, "enum %.*s", name_tk.length, name_tk.start);
+        strputnull(complex_type_name);
+
+        if (shgeti(ctx->type_map, complex_type_name) < 0) {
+            IntroType temp_type = {0};
+            temp_type.name = complex_type_name;
+            store_type(ctx, &temp_type);
+        }
     }
 
     bool is_attribute = false;
@@ -373,19 +387,13 @@ parse_enum(ParseContext * ctx, char ** o_s) {
     arrfree(members);
 
     {
-        char * enum_type_name = NULL;
-        if (name_tk.type == TK_IDENTIFIER) {
-            strputf(&enum_type_name, "enum %.*s", name_tk.length, name_tk.start);
-            strputnull(enum_type_name);
-        }
-
         IntroType type = {0};
-        type.name = enum_type_name;
+        type.name = complex_type_name;
         type.category = INTRO_ENUM;
         type.i_enum = result;
 
         store_type(ctx, &type);
-        arrfree(enum_type_name);
+        arrfree(complex_type_name);
     }
 
     if (attribute_specifiers != NULL) {
@@ -403,7 +411,7 @@ static int
 parse_typedef(ParseContext * ctx, char ** o_s) {
     Token type_tk = {0};
     (void) type_tk;
-    IntroType * base = parse_base_type(ctx, o_s, &type_tk);
+    IntroType * base = parse_base_type(ctx, o_s, &type_tk, true);
     if (!base) return 1;
 
     Token name_tk = {0};
@@ -431,7 +439,7 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
 }
 
 static IntroType *
-parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk) {
+parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) {
     IntroType type = {0};
     char * type_name = NULL;
 
@@ -443,6 +451,7 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk) {
         *o_s = first.start;
         return NULL;
     }
+    *o_tk = first;
     strputf(&type_name, "%.*s", first.length, first.start);
 
     bool is_struct = tk_equal(&first, "struct");
@@ -538,10 +547,15 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk) {
         arrfree(type_name);
         return t;
     } else {
-        type.name = type_name;
-        IntroType * stored = store_type(ctx, &type);
-        arrfree(type_name);
-        return stored;
+        if (type.category || is_typedef) {
+            type.name = type_name;
+            IntroType * stored = store_type(ctx, &type);
+            arrfree(type_name);
+            return stored;
+        } else {
+            parse_error(ctx, o_tk, "Undeclared type.");
+            return NULL;
+        }
     }
 }
 
