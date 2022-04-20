@@ -72,7 +72,6 @@ typedef struct IntroAttributeData {
         INTRO_V_INT,
         INTRO_V_FLOAT,
         INTRO_V_VALUE,
-        INTRO_V_CONDITION,
         INTRO_V_MEMBER,
         INTRO_V_STRING,
     } value_type;

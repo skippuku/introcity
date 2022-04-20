@@ -13,6 +13,11 @@ typedef struct {
 } PtrStore;
 
 typedef struct {
+    int32_t member_index, attribute_type;
+    uint32_t value;
+} DifferedDefault;
+
+typedef struct {
     char * buffer;
     struct{char * key; IntroType * value;} * type_map;
     struct{IntroType key; IntroType * value;} * type_set;
@@ -21,6 +26,8 @@ typedef struct {
 
     uint8_t * value_buffer;
     PtrStore * ptr_stores;
+
+    DifferedDefault * differed_length_defaults;
 } ParseContext;
 
 static void
@@ -251,6 +258,8 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             result->members[member_index].count_attributes = count;
         }
         arrfree(attribute_specifiers);
+
+        handle_differed_defaults(ctx, result);
     }
 
     return 0;

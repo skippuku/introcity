@@ -164,14 +164,16 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
         if (m->type->category == INTRO_POINTER) {
             size_t data_offset = *(size_t *)value_ptr;
             void * data = ctx->values + data_offset;
-            int32_t data_length = *(int32_t *)(data - 4);
+            //uint32_t data_length = *(uint32_t *)(data - 4);
             memcpy(dest + m->offset, &data, sizeof(size_t));
+            /* nocheckin
             int32_t length_member_index;
             if (intro_attribute_int(m, INTRO_ATTR_LENGTH, &length_member_index)) {
                 const IntroMember * length_member = &struct_type->i_struct->members[length_member_index];
                 size_t length_member_size = intro_size(length_member->type);
                 memcpy(dest + length_member->offset, &data_length, length_member_size);
             }
+            */
         } else {
             memcpy(dest + m->offset, value_ptr, size);
             intro_offset_pointers(dest + m->offset, m->type, ctx->values);

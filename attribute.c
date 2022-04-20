@@ -30,7 +30,6 @@ parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk
         {"int",       INTRO_V_INT},
         {"float",     INTRO_V_FLOAT},
         {"value",     INTRO_V_VALUE},
-        {"condition", INTRO_V_CONDITION}, // TODO
         {"member",    INTRO_V_MEMBER},
         {"string",    INTRO_V_STRING},
     };
@@ -136,10 +135,10 @@ store_ptr(ParseContext * ctx, void * data, size_t size) {
     return offset;
 }
 
-ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s);
+ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint32_t * o_count);
 
 ptrdiff_t
-parse_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
+parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_count) {
     if (type->category >= INTRO_U8 && type->category <= INTRO_S64) {
         long result = strtol(*o_s, o_s, 0);
         int size = type->category & 0x0f;
@@ -158,20 +157,26 @@ parse_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
                 ptrdiff_t result = store_ptr(ctx, str, tk.length - 1);
                 return result;
             }
+        } else {
+            *o_s = tk.start;
+            ptrdiff_t array_value_offset = parse_array_value(ctx, type, o_s, o_count);
+            ptrdiff_t pointer_offset = store_value(ctx, &array_value_offset, sizeof(size_t));
+            return pointer_offset;
         }
     } else if (type->category == INTRO_ARRAY) {
-        return parse_array_value(ctx, type, o_s);
+        ptrdiff_t result = parse_array_value(ctx, type, o_s, NULL);
+        return result;
     }
     return -1;
 }
 
 ptrdiff_t
-parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
+parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint32_t * o_count) {
     Token tk = next_token(o_s);
 
     ptrdiff_t result = arrlen(ctx->value_buffer);
     size_t array_element_size = intro_size(type->parent);
-    int count = 0;
+    uint32_t count = 0;
 
     if (tk.type == TK_L_BRACE) {
         while (1) {
@@ -183,7 +188,7 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
                 break;
             }
             *o_s = tk.start;
-            parse_value(ctx, type->parent, o_s);
+            parse_value(ctx, type->parent, o_s, NULL);
             count++;
 
             tk = next_token(o_s);
@@ -195,10 +200,13 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
                 return -1;
             }
         }
-        int left = array_element_size * (type->array_size - count);
-        if (count < type->array_size) {
-            memset(arraddnptr(ctx->value_buffer, left), 0, left);
+        if (type->category == INTRO_ARRAY) {
+            int left = array_element_size * (type->array_size - count);
+            if (count < type->array_size) {
+                memset(arraddnptr(ctx->value_buffer, left), 0, left);
+            }
         }
+        if (o_count) *o_count = count;
     } else {
         parse_error(ctx, &tk, "Expected '{'.");
         return -1;
@@ -217,6 +225,29 @@ store_differed_ptrs(ParseContext * ctx) {
         free(ptr_store.data);
     }
     arrsetlen(ctx->ptr_stores, 0);
+}
+
+int
+handle_value_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int member_index, IntroAttributeData * data, Token * p_tk) {
+    IntroType * type = i_struct->members[member_index].type;
+    assert(arrlen(ctx->ptr_stores) == 0);
+    uint32_t length_value = 0;
+    ptrdiff_t value_offset = parse_value(ctx, type, o_s, &length_value);
+    if (value_offset < 0) {
+        parse_error(ctx, p_tk, "Error parsing value attribute.");
+        return 1;
+    }
+    if (length_value) {
+        DifferedDefault def = {
+            .member_index = member_index,
+            .attribute_type = data->type,
+            .value = length_value,
+        };
+        arrput(ctx->differed_length_defaults, def);
+    }
+    store_differed_ptrs(ctx);
+    data->v.i = value_offset;
+    return 0;
 }
 
 int
@@ -292,15 +323,7 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
         // TODO: error check: if multiple members use the same member for length, values can't have different lengths
         // NOTE: the previous 2 todo's do not apply if the values are for different attributes
         case INTRO_V_VALUE: {
-            IntroType * type = i_struct->members[member_index].type;
-            assert(arrlen(ctx->ptr_stores) == 0);
-            ptrdiff_t value_offset = parse_value(ctx, type, o_s);
-            store_differed_ptrs(ctx);
-            if (value_offset < 0) {
-                parse_error(ctx, &tk, "Error parsing value attribute.");
-                return 1;
-            }
-            data.v.i = value_offset;
+            if (handle_value_attribute(ctx, o_s, i_struct, member_index, &data, &tk)) return 1;
         } break;
 
         case INTRO_V_MEMBER: {
@@ -314,9 +337,9 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
                 if (tk_equal(&tk, i_struct->members[mi].name)) {
                     if (data.type == INTRO_ATTR_LENGTH) {
                         IntroType * type = i_struct->members[mi].type;
-                        uint32_t category_no_size = type->category & 0xff0;
+                        uint32_t category_no_size = type->category & 0xf0;
                         if (category_no_size != INTRO_SIGNED && category_no_size != INTRO_UNSIGNED) {
-                            parse_error(ctx, &tk, "Length defining member must be an integer type.");
+                            parse_error(ctx, &tk, "Length defining member must be of an integer type.");
                             return 1;
                         }
                     }
@@ -329,11 +352,6 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
                 parse_error(ctx, &tk, "No such member.");
                 return 1;
             }
-        } break;
-
-        case INTRO_V_CONDITION: {
-            parse_error(ctx, &tk, "Condition attributes are not currently supported.");
-            return 1;
         } break;
         }
     }
@@ -378,16 +396,7 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
         } else if (tk.type == TK_EQUAL) {
             data.type = INTRO_ATTR_DEFAULT;
             data.value_type = INTRO_V_VALUE;
-            // @copy from above
-            IntroType * type = i_struct->members[member_index].type;
-            assert(arrlen(ctx->ptr_stores) == 0);
-            ptrdiff_t value_offset = parse_value(ctx, type, &s);
-            store_differed_ptrs(ctx);
-            if (value_offset < 0) {
-                parse_error(ctx, &tk, "Value attributes are not supported for this type");
-                return 1;
-            }
-            data.v.i = value_offset;
+            if (handle_value_attribute(ctx, &s, i_struct, member_index, &data, &tk)) return 1;
 
             arrput(attributes, data);
         } else if (tk.type == TK_R_PARENTHESIS) {
@@ -414,4 +423,32 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
         arrfree(attributes);
     }
     return 0;
+}
+
+void
+handle_differed_defaults(ParseContext * ctx, IntroStruct * i_struct) {
+    for (int i=0; i < arrlen(ctx->differed_length_defaults); i++) {
+        DifferedDefault def = ctx->differed_length_defaults[i];
+        IntroMember * array_member = &i_struct->members[def.member_index];
+        int32_t length_member_index;
+        if (intro_attribute_int(array_member, INTRO_ATTR_LENGTH, &length_member_index)) {
+            IntroMember * member = &i_struct->members[length_member_index];
+            ptrdiff_t value_offset = store_value(ctx, &def.value, intro_size(member->type));
+            IntroAttributeData data = {
+                .type = def.attribute_type,
+                .value_type = INTRO_V_VALUE,
+                .v = {value_offset},
+            };
+
+            IntroAttributeData * new_attributes = NULL;
+            for (int a=0; a < member->count_attributes; a++) {
+                arrput(new_attributes, member->attributes[a]);
+            }
+            arrput(new_attributes, data);
+            arrfree(member->attributes);
+            member->attributes = new_attributes;
+            member->count_attributes = arrlen(new_attributes);
+        }
+    }
+    arrsetlen(ctx->differed_length_defaults, 0);
 }

@@ -149,6 +149,9 @@ typedef struct {
 
     uint8_t numbers [8] I(= {4, 5, 8, 9, 112, 9});
     char * words [4] I(= {"apple", "banana", "mango", "pineapple"});
+
+    float * speeds I(length count_speeds, default {3.4, 5.6, 1.7, 8.2, 0.002});
+    uint32_t count_speeds;
 } TestDefault;
 
 #if 0

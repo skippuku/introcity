@@ -1,5 +1,4 @@
 attribute:
-    * pointer array values
     * enum values
     struct/union values
     stb_ds array attribute
