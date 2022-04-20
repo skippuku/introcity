@@ -152,6 +152,8 @@ typedef struct {
 
     float * speeds I(length count_speeds, default {3.4, 5.6, 1.7, 8.2, 0.002});
     uint32_t count_speeds;
+
+    Skills skills I(= SKILL_MUSICIAN | SKILL_PROGRAMMER);
 } TestDefault;
 
 #if 0

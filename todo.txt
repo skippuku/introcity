@@ -1,5 +1,4 @@
 attribute:
-    * enum values
     struct/union values
     stb_ds array attribute
     members of complex type can specify an attribute as a value: I(default default)

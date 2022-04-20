@@ -166,6 +166,35 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
     } else if (type->category == INTRO_ARRAY) {
         ptrdiff_t result = parse_array_value(ctx, type, o_s, NULL);
         return result;
+    } else if (type->category == INTRO_ENUM) {
+        int result = 0;
+        Token tk = next_token(o_s);
+        while (1) {
+            if (is_digit(*tk.start)) {
+                *o_s = tk.start;
+                result = strtol(*o_s, o_s, 0);
+            } else if (tk.type == TK_IDENTIFIER) {
+                const IntroEnum * i_enum = type->i_enum;
+                for (int i=0; i < i_enum->count_members; i++) {
+                    IntroEnumValue v = i_enum->members[i];
+                    if (tk_equal(&tk, v.name)) {
+                        result |= v.value;
+                        break;
+                    }
+                }
+            } else {
+                parse_error(ctx, &tk, "Invalid symbol.");
+                return 1;
+            }
+            tk = next_token(o_s);
+            if (tk.type == TK_BAR) {
+                tk = next_token(o_s);
+            } else {
+                *o_s = tk.start;
+                break;
+            }
+        }
+        return store_value(ctx, &result, sizeof(result));
     }
     return -1;
 }

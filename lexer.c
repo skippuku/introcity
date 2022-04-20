@@ -27,6 +27,7 @@ typedef struct Token {
         TK_HASH,
         TK_HYPHEN,
         TK_BACKSLASH,
+        TK_BAR,
 
         TK_IDENTIFIER,
         TK_STRING,
@@ -202,6 +203,7 @@ next_token(char ** o_s) {
     case '#': tk.type = TK_HASH; break;
     case '-': tk.type = TK_HYPHEN; break;
     case '\\': tk.type = TK_BACKSLASH; break;
+    case '|': tk.type = TK_BAR; break;
 
     case EOF: tk.type = TK_END; break;
 
