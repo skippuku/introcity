@@ -172,17 +172,22 @@ intro_create_city(const void * src, const IntroType * s_type, size_t *o_size) {
 
     city__serialize_pointer_data(ctx, s_type);
 
-    uint8_t * result = NULL;
-    memcpy(arraddnptr(result, sizeof(header)), &header, sizeof(header));
+    size_t result_size = sizeof(header) + arrlen(ctx->info) + arrlen(ctx->data);
+    uint8_t * result = malloc(result_size);
+    uint8_t * p = result;
+    memcpy(p, &header, sizeof(header));
+    p += sizeof(header);
 
-    memcpy(arraddnptr(result, arrlen(ctx->info)), ctx->info, arrlen(ctx->info));
-    memcpy(arraddnptr(result, arrlen(ctx->data)), ctx->data, arrlen(ctx->data));
+    memcpy(p, ctx->info, arrlen(ctx->info));
+    p += arrlen(ctx->info);
+
+    memcpy(p, ctx->data, arrlen(ctx->data));
 
     arrfree(ctx->info);
     arrfree(ctx->data);
     hmfree(ctx->type_set);
 
-    *o_size = arrlen(result);
+    *o_size = result_size;
     return (void *)result;
 }
 

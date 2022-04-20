@@ -1,6 +1,7 @@
 #ifndef INTRO_TYPES_H
 #define INTRO_TYPES_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
