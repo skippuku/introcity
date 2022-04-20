@@ -138,7 +138,7 @@ static char * result_buffer = NULL;
 
 static void
 path_normalize(char * dest) {
-    char * last_dir = dest;
+    char * dest_start = dest;
     char * src = dest;
     while (*src) {
         if (*src == '\\') *src = '/';
@@ -146,22 +146,38 @@ path_normalize(char * dest) {
     }
     int depth = 0;
     src = dest;
+    bool check_next = true;
+    if (*src == '/') src++, dest++;
+    char * last_dir = dest;
     while (*src) {
-        if (*src == '/') {
-            if (memcmp(src+1, "/", 1)==0) {
-                src += 2;
-            } else if (memcmp(src+1, "./", 2)==0) {
-                src += 2;
-            } else if (memcmp(src+1, "../", 3)==0) {
-                depth -= 1;
-                if (depth > 0) {
-                    src += 4;
-                    dest = last_dir;
+        if (check_next) {
+            check_next = false;
+            while (1) {
+                if (memcmp(src, "/", 1)==0) {
+                    src += 1;
+                } else if (memcmp(src, "./", 2)==0) {
+                    src += 2;
+                } else if (memcmp(src, "../", 3)==0) {
+                    if (depth > 0) {
+                        dest = last_dir;
+                        last_dir--;
+                        while (--last_dir > dest_start && *last_dir != '/');
+                        depth -= 1;
+                    } else {
+                        depth = 0;
+                        memcpy(dest, src, 3);
+                        dest += 3;
+                    }
+                    src += 3;
+                } else {
+                    last_dir = dest;
+                    depth += 1;
+                    break;
                 }
-            } else {
-                depth += 1;
-                last_dir = dest;
             }
+        }
+        if (*src == '/') {
+            check_next = true;
         }
         *dest++ = *src++;
     }
