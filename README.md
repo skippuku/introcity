@@ -9,8 +9,7 @@ The *intro/city* project consists of tooling for automatic introspection and ser
  - **No Friction**    
     - *intro* parses your already existing C code. No need to learn a new way to define a structure type.
     - No accessors. When you load city data, it is written directly to your structure.
-    - City does not need IDs. It can use member names. If you change the name of a member, you can alias to the old name using an [attribute](./ATTRIBUTE.md#alias).
-    - The library includes a Dear ImGui widget which can allow you to inspect and edit your structures directly.
+    - City does not need IDs. It can use member names. If you change the name of a member, you can alias to the old name using an [attribute](doc/ATTRIBUTE.md#alias).
  - **Simple**    
     - The entire project is about 3000 lines of code, and most of that is for the parser. The library is only around 1000 lines (including the city implementation!).
     - The generated header is concise. It does not generate functions. The data does not even need to be initialized in any way.
@@ -18,7 +17,7 @@ The *intro/city* project consists of tooling for automatic introspection and ser
  - **Attributes**
     - Attributes provide extra information about a piece of data. They are defined with the `I` macro. They can be used for a variety of purposes, for example the `length` attribute defines a member which is the length of a buffer for serialization.
     - You can create **custom attributes** for your own purposes. This might include information for an interface such as ranges and precision, or alternative defaults for different situations.
-    - There are a variety of attribute types including *int*, *float*, *member*, *string*, and *value*. For more information, see the [documentation for attributes](./ATTRIBUTE.md).
+    - There are a variety of attribute types including *int*, *float*, *member*, *string*, and *value*. For more information, see the [documentation for attributes](doc/ATTRIBUTE.md).
 
 ## Minimal Example
 
@@ -118,10 +117,10 @@ You will probably want to use the library. The header for the library is at `lib
  - *intro/city* is not built to be safe with foreign data. Don't use these tools with data from a source you don't trust.
 
 ## Documentation
-Documentation is provided in the [doc/](./) directory. It may not always be complete, but should cover the important things. It may be useful to look at the examples in [test/](../test/) or the library source in [lib/](../lib/).    
- - [usage](./USAGE.md)
- - [library reference](./LIB.md)
- - [attribute reference](./ATTRIBUTE.md)
+Documentation is provided in the [doc/](doc/) directory. It may not always be complete, but should cover the important things. It may be useful to look at the examples in [test/](test/) or the library source in [lib/](lib/).    
+ - [usage](doc/USAGE.md)
+ - [library reference](doc/LIB.md)
+ - [attribute reference](doc/ATTRIBUTE.md)
 
 ## Credits
 *intro/city* makes heavy use of `stb_ds.h` and `stb_sprintf.h` from the [stb libraries](https://github.com/nothings/stb) provided by Sean Barrett.
