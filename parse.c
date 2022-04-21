@@ -109,7 +109,12 @@ maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk,
         spec.location = paren.start;
         spec.i = i;
         arrput(*p_attribute_specifiers, spec);
-        *o_s = find_closing(paren.start) + 1;
+        char * closing = find_closing(paren.start);
+        if (!closing) {
+            parse_error(ctx, &paren, "Missing closing ')'.");
+            return 1;
+        }
+        *o_s = closing + 1;
         *o_tk = next_token(o_s);
     }
     return 0;

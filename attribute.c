@@ -114,6 +114,60 @@ check_id_valid(const IntroStruct * i_struct, int id) {
     return true;
 }
 
+static char *
+parse_escaped_string(Token * str_tk, size_t * o_length) {
+    char * result = NULL;
+    char * src = str_tk->start + 1;
+    while (src < str_tk->start + str_tk->length - 1) {
+        if (*src == '\\') {
+            src++;
+            char c;
+            if (*src >= '0' && *src <= '9') {
+                char * end;
+                long num = strtol(src, &end, 8);
+                if (end - src > 3) return NULL;
+                src = end - 1;
+                c = (char)num;
+            } else {
+                switch(*src) {
+                case 'n':  c = '\n'; break;
+                case 't':  c = '\t'; break;
+                case '\\': c = '\\'; break;
+                case '\'': c = '\''; break;
+                case '\"': c = '\"'; break;
+                case 'b':  c = '\b'; break;
+                case 'v':  c = '\v'; break;
+                case 'r':  c = '\r'; break;
+                case 'f':  c = '\f'; break;
+                case '?':  c = '?' ; break;
+                case 'x': {
+                    char * end;
+                    src++;
+                    long num = strtol(src, &end, 16);
+                    if (end - src != 2) return NULL;
+                    src = end - 1;
+                    c = (char)num;
+                }break;
+                default: {
+                    return NULL;
+                }break;
+                }
+            }
+            arrput(result, c);
+        } else {
+            arrput(result, *src);
+        }
+        src++;
+    }
+    strputnull(result);
+
+    char * ret = malloc(arrlen(result));
+    memcpy(ret, result, arrlen(result));
+    *o_length = arrlen(result);
+    arrfree(result);
+    return ret;
+}
+
 // NOTE: value storing is fairly similar to some of what the city implementation does,
 // maybe some code can be resued between those two systems
 ptrdiff_t
@@ -153,8 +207,9 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
         Token tk = next_token(o_s);
         if (tk.type == TK_STRING) {
             if (type->parent->category == INTRO_S8 && 0==strcmp(type->parent->name, "char")) {
-                char * str = copy_and_terminate(tk.start + 1, tk.length - 2); // TODO: parse escape codes
-                ptrdiff_t result = store_ptr(ctx, str, tk.length - 1);
+                size_t length;
+                char * str = parse_escaped_string(&tk, &length);
+                ptrdiff_t result = store_ptr(ctx, str, length);
                 return result;
             }
         } else {
