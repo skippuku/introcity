@@ -49,8 +49,6 @@ test:
     test for failures that should happen
 
 doc:
-    * more examples
-    * lib reference
 
 misc:
     use enum error codes instead of magic numbers

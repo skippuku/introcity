@@ -281,7 +281,7 @@ city__safe_copy_struct(
 }
 
 int
-intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, int32_t data_size) {
+intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size) {
     const CityHeader * header = data;
     
     if (

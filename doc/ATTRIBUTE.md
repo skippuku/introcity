@@ -21,7 +21,8 @@ struct {
 ## Intro Attributes
 These are the attributes provided by *intro*.
 
-### id ([int](#int))
+### id
+**type:** [int](#int)   
 **NOTE**: Serialization using IDs is planned but not currently implemented.    
 Defines the id used for serialization. Every id in a structure must be unique. This is enforced by the parser.    
 If there is a stray integer with no attribute defined, it is assumed to be an id, for convenience.
@@ -31,9 +32,10 @@ If there is a stray integer with no attribute defined, it is assumed to be an id
     float c I(1);    // ERROR, duplicate ID
 ```
 
-### default ([value](#value))
+### default
+**type:** [value](#value)   
 **NOTE**: Some types might not support defaults. This is a work in progress.    
-Defines the default used by [intro\_set\_defaults](https://github.com/cyman-ide/introcity/doc/LIB.md#intro_set_defaults) or [intro\_load\_city](https://github.com/cyman-ide/introcity/doc/LIB.md#intro_load_city) when no value is present in the city file.    
+Defines the default used by [intro\_set\_defaults][intro_set_defaults] or [intro\_load\_city][intro_load_city] when no value is present in the city file.    
 You can also use an equal sign `=` instead of the word default, for convenience.
 
 ```C
@@ -42,15 +44,17 @@ You can also use an equal sign `=` instead of the word default, for convenience.
     uint8_t arr [4] I(= {1, 2, 3, 4});
 ```
 
-### length ([member](#member))
-Defines a sibling member which will be used to determine the length of a buffer during serialization in [intro\_create\_city](https://github.com/cyman-ide/introcity/doc/LIB.md#intro_create_city).
+### length
+**type:** [member](#member)   
+Defines a sibling member which will be used to determine the length of a buffer during serialization in [intro\_create\_city][intro_create_city].
 ```C
     Tile * tiles I(length count_tiles);
     int count_tiles;
 ```
 
-### alias ([string](#string))
-Defines a name which will be treated like a match by [intro\_load\_city](https://github.com/cyman-ide/introcity/doc/LIB.md#intro_load_city).    
+### alias
+**type:** [string](#string)   
+Defines a name which will be treated like a match by [intro\_load\_city][intro_load_city].    
 Use this if you are using member names for serialization and you change a name.    
 While this attribute is of type *string*, quotation marks `"` can be omitted for convenience.
 ```C
@@ -58,7 +62,8 @@ While this attribute is of type *string*, quotation marks `"` can be omitted for
     float speed I(alias velocity);
 ```
 
-### type ([flag](#flag))
+### type
+**type:** [flag](#flag)   
 Marks the member to be set to the type of the structure it is within during `intro_set_defaults` or `intro_load_city`.    
 Can only be applied to a member of type `IntroType *`.
 ```C
@@ -68,8 +73,9 @@ typedef struct {
 } Entity;
 ```
 
-### note ([string](#string))
-Defines a note that will be displayed by [intro\_imgui\_edit]() when the mouse is hovered over the member.
+### note
+**type:** [string](#string)    
+Defines a note that will be displayed by [intro\_imgui\_edit](doc/LIB.md#intro_imgui_edit) when the mouse is hovered over the member.
 
 ## Custom Attributes
 Attributes can be extended with custom attributes. These are defined by creating an `enum` with `I(attribute)` placed before the opening brace. New attributes are defined in this enumeration by placing an `I` macro after the name of the value which includes the attribute type followed by the name of the attribute being defined. The attribute type can be omitted for flag attributes.
@@ -105,4 +111,7 @@ Attribute is defined as a value of the type of the member it is applied to.
 ### flag
 Attribute is defined with no data.
 
-## Intro Attributes
+
+[intro_set_defaults]: ./LIB.md#intro_set_defaults
+[intro_load_city]:    ./LIB.md#intro_load_city
+[intro_create_city]:  ./LIB.md#intro_create_city

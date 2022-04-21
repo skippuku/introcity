@@ -54,13 +54,13 @@ bool intro_attribute_length(const void * struct_data, const IntroType * struct_t
 void intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, int member_index, int value_attribute);
 void intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, int value_attribute);
 void intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type);
-void * intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * list, size_t count);
+void * intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * list, size_t count); // i have never tested this, don't use it lol
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
 void intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt);
 IntroType * intro_type_with_name_ctx(IntroContext * ctx, const char * name);
 
 void * intro_create_city(const void * src, const IntroType * s_type, size_t *o_size);
-int intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, int32_t data_size);
+int intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size);
 
 #endif // INTRO_H
