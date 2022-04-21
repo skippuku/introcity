@@ -1,8 +1,8 @@
 extern "C" {
-#include "../lib/lib.c"
+#include "intro.h"
 }
 
-#include "imgui.h"
+#include <imgui.h>
 
 int
 intro_imgui_scalar_type(const IntroType * type) {
@@ -21,24 +21,24 @@ intro_imgui_scalar_type(const IntroType * type) {
     }
 }
 
-void
-intro_imgui__edit_struct_children(void * src, const IntroType * s_type) {
-    for (int m_index=0; m_index < s_type->i_struct; m_index++) {
+static void
+intro_imgui__edit_struct_children(IntroContext * ctx, void * src, const IntroType * s_type) {
+    for (int m_index=0; m_index < s_type->i_struct->count_members; m_index++) {
         const IntroMember * m = &s_type->i_struct->members[m_index];
-        void * member_data = src + m->offset;
+        void * member_data = (uint8_t *)src + m->offset;
         int tree_flags = ImGuiTreeNodeFlags_SpanFullWidth;
         if (!(m->type->category == INTRO_STRUCT || m->type->category == INTRO_UNION)) {
             tree_flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | ImGuiTreeNodeFlags_NoTreePushOnOpen;
         }
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        bool is_open = ImGui::TreeNodeEx(m->name, | ImGuiTreeNodeFlags_SpanFullWidth);
+        bool is_open = ImGui::TreeNodeEx(m->name, ImGuiTreeNodeFlags_SpanFullWidth);
 
         int32_t note_index;
         if (intro_attribute_int(m, INTRO_ATTR_NOTE, &note_index)) {
             ImGui::TextDisabled("(?)");
             if (ImGui::IsItemHovered()) {
-                const char * note = __intro_notes[note_index];
+                const char * note = ctx->notes[note_index];
                 ImGui::BeginTooltip();
                 ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
                 ImGui::TextUnformatted(note);
@@ -49,26 +49,26 @@ intro_imgui__edit_struct_children(void * src, const IntroType * s_type) {
 
         ImGui::TableNextColumn();
         char type_buf [1024];
-        intro_sprintf_type_name(type_buf, m->type);
+        intro_sprint_type_name(type_buf, m->type);
         ImGui::Text("%s", type_buf);
 
         ImGui::TableNextColumn();
         if (m->type->category == INTRO_STRUCT || m->type->category == INTRO_UNION) {
             ImGui::TextDisabled("vvv");
             if (is_open) {
-                intro_imgui__edit_struct_children(member_data, m->type, m->name);
+                intro_imgui__edit_struct_children(ctx, member_data, m->type);
                 ImGui::TreePop();
             }
         } else if (strcmp(m->type->name, "bool") == 0) {
             ImGui::Checkbox(NULL, (bool *)member_data);
         } else if (intro_is_scalar(m->type)) {
-            ImGui::DragScalar(NULL, intro_imgui_scalar_type(type), member_data, NULL, NULL);
+            ImGui::DragScalar(NULL, intro_imgui_scalar_type(m->type), member_data);
         } else if (m->type->category == INTRO_ENUM) {
             if (m->type->i_enum->is_flags) {
                 int * flags_ptr = (int *)member_data;
                 for (int e=0; e < m->type->i_enum->count_members; e++) {
                     IntroEnumValue v = m->type->i_enum->members[e];
-                    ImGui::CheckboxFlags(v.name, &flags_ptr, v.value);
+                    ImGui::CheckboxFlags(v.name, flags_ptr, v.value);
                 }
             } else {
                 int current_value = *(int *)member_data;
@@ -106,8 +106,8 @@ intro_imgui__edit_struct_children(void * src, const IntroType * s_type) {
 }
 
 void
-intro_imgui_edit(void * src, const IntroType * s_type, const char * name) {
-    if (type->category == INTRO_STRUCT) {
+intro_imgui_edit_ctx(IntroContext * ctx, void * src, const IntroType * s_type, const char * name) {
+    if (s_type->category == INTRO_STRUCT) {
         static ImGuiTableFlags flags = ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_NoBordersInBody;
         if (ImGui::BeginTable(name, 3, flags)) {
             ImGui::TableSetupColumn("name");
@@ -117,18 +117,18 @@ intro_imgui_edit(void * src, const IntroType * s_type, const char * name) {
 
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            bool is_open = ImGui::TreeNodeEx(m->name, | ImGuiTreeNodeFlags_SpanFullWidth);
+            bool is_open = ImGui::TreeNodeEx(name, ImGuiTreeNodeFlags_SpanFullWidth);
 
             ImGui::TableNextColumn();
             char type_buf [1024];
-            intro_sprintf_type_name(type_buf, m->type);
+            intro_sprint_type_name(type_buf, s_type);
             ImGui::Text("%s", type_buf);
 
             ImGui::TableNextColumn();
             ImGui::TextDisabled("vvv");
 
             if (is_open) {
-                intro_imgui_edit__struct(src, s_type, (name)? name : "struct");
+                intro_imgui__edit_struct_children(ctx, src, s_type);
                 ImGui::TreePop();
             }
 

@@ -59,7 +59,7 @@ generate_c_header(IntroInfo * info) {
 
     const char * tab = "    ";
 
-    const char * version = "v0.0";
+    const char * version = "v0.0"; // TODO: change this to git hash
     strputf(&s, "/* Generated with intro %s */\n\n", version);
     strputf(&s, "#include <stddef.h>\n\n");
 

@@ -63,4 +63,7 @@ IntroType * intro_type_with_name_ctx(IntroContext * ctx, const char * name);
 void * intro_create_city(const void * src, const IntroType * s_type, size_t *o_size);
 int intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size);
 
+#define intro_imgui_edit(data, data_type, name) intro_imgui_edit_ctx(INTRO_CTX, data, data_type, name)
+void intro_imgui_edit_ctx(IntroContext * ctx, void * data, const IntroType * data_type, const char * name);
+
 #endif // INTRO_H
