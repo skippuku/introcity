@@ -27,7 +27,7 @@ typedef struct {
     IntroType * parent;
     int member_index;
     char * parent_member_name;
-    char * top_level_name;
+    const char * top_level_name;
 } NestInfo;
 
 typedef struct IntroInfo {

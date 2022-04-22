@@ -1,7 +1,7 @@
 #include "lib/intro.h"
 #include "util.c"
 
-static char *
+static const char *
 get_ref_name(IntroInfo * info, const IntroType * t) {
     if (!t->name) {
         for (int t2_index=15; t2_index < info->count_types; t2_index++) {
@@ -18,7 +18,7 @@ get_ref_name(IntroInfo * info, const IntroType * t) {
 }
 
 static char *
-get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, char ** o_top_level_name) {
+get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, const char ** o_top_level_name) {
     NestInfo * nest = hmgetp_null(info->nest_map, parent);
     if (nest) {
         IntroType * grand_parent = nest->parent;
@@ -30,7 +30,7 @@ get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, c
     } else {
         char * result = NULL;
         strputf(&result, "%s", parent->i_struct->members[parent_index].name);
-        char * top_level_name = get_ref_name(info, parent);
+        const char * top_level_name = get_ref_name(info, parent);
         *o_top_level_name = top_level_name;
         return result;
     }
@@ -45,6 +45,47 @@ make_identifier_safe_name(const char * name) {
     }
     result[name_len] = '\0';
     return result;
+}
+
+static const char *
+category_str(int category) {
+    switch(category) {
+    default:
+    case INTRO_UNKNOWN: return "INTRO_UNKNOWN";
+
+    case INTRO_U8: return "INTRO_U8";
+    case INTRO_U16: return "INTRO_U16";
+    case INTRO_U32: return "INTRO_U32";
+    case INTRO_U64: return "INTRO_U64";
+
+    case INTRO_S8: return "INTRO_S8";
+    case INTRO_S16: return "INTRO_S16";
+    case INTRO_S32: return "INTRO_S32";
+    case INTRO_S64: return "INTRO_S64";
+
+    case INTRO_F32: return "INTRO_F32";
+    case INTRO_F64: return "INTRO_F64";
+
+    case INTRO_ARRAY: return "INTRO_ARRAY";
+    case INTRO_POINTER: return "INTRO_POINTER";
+
+    case INTRO_ENUM: return "INTRO_ENUM";
+    case INTRO_STRUCT: return "INTRO_STRUCT";
+    case INTRO_UNION: return "INTRO_UNION";
+    }
+}
+
+static const char *
+attr_value_str(int attr_value) {
+    switch(attr_value) {
+    default:
+    case INTRO_V_FLAG: return "INTRO_V_FLAG";
+    case INTRO_V_INT: return "INTRO_V_INT";
+    case INTRO_V_FLOAT: return "INTRO_V_FLOAT";
+    case INTRO_V_VALUE: return "INTRO_V_VALUE";
+    case INTRO_V_MEMBER: return "INTRO_V_MEMBER";
+    case INTRO_V_STRING: return "INTRO_V_STRING";
+    }
 }
 
 char *
@@ -81,7 +122,7 @@ generate_c_header(IntroInfo * info) {
                 if (m->count_attributes > 0) {
                     for (int attr_index = 0; attr_index < m->count_attributes; attr_index++) {
                         const IntroAttributeData * attr = &m->attributes[attr_index];
-                        strputf(&s, "%s{%i, %i, %i},\n", tab, attr->type, attr->value_type, attr->v.i);
+                        strputf(&s, "%s{%i, %s, %i},\n", tab, attr->type, attr_value_str(attr->value_type), attr->v.i);
                     }
                 }
             }
@@ -101,7 +142,7 @@ generate_c_header(IntroInfo * info) {
         IntroType * t = info->types[type_index];
         if (intro_is_complex(t) && hmgeti(complex_type_map, t->i_struct) < 0) {
             const NestInfo * nest = hmgetp_null(info->nest_map, t);
-            char * ref_name = NULL;
+            const char * ref_name = NULL;
             if (!nest) {
                 ref_name = get_ref_name(info, t);
                 if (!ref_name) continue; // TODO: maybe we should warn here (this would require location information for types)
@@ -167,7 +208,7 @@ generate_c_header(IntroInfo * info) {
         } else {
             strputf(&s, "0, ");
         }
-        strputf(&s, "0x%02x, ", t->category);
+        strputf(&s, "%s, ", category_str(t->category));
         if (intro_is_complex(t)) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
             if (saved_name) {
@@ -196,7 +237,7 @@ generate_c_header(IntroInfo * info) {
     strputf(&s, "enum {\n");
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         const IntroType * t = info->types[type_index];
-        char * name;
+        const char * name;
         if (t->name) {
             if (strchr(t->name, ' ')) {
                 name = make_identifier_safe_name(t->name);
@@ -204,7 +245,7 @@ generate_c_header(IntroInfo * info) {
                 name = t->name;
             }
             strputf(&s, "%sITYPE_%s = %i,\n", tab, name, type_index);
-            if (name != t->name) free(name);
+            if (name != t->name) free((void *)name);
         }
     }
     strputf(&s, "};\n\n");
@@ -212,11 +253,11 @@ generate_c_header(IntroInfo * info) {
     // context
     strputf(&s, "IntroContext __intro_ctx = {\n");
     strputf(&s, "%s.types = __intro_types,\n", tab);
-    strputf(&s, "%s.values = __intro_values,\n", tab);
     strputf(&s, "%s.notes = __intro_notes,\n", tab);
+    strputf(&s, "%s.values = __intro_values,\n", tab);
     strputf(&s, "%s.count_types = %u,\n", tab, info->count_types);
-    strputf(&s, "%s.size_values = %i,\n", tab, (int)arrlenu(info->value_buffer));
     strputf(&s, "%s.count_notes = %i,\n", tab, (int)arrlenu(note_set));
+    strputf(&s, "%s.size_values = %i,\n", tab, (int)arrlenu(info->value_buffer));
     strputf(&s, "};\n");
 
     hmfree(complex_type_map);

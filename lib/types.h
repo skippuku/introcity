@@ -46,7 +46,7 @@ typedef struct IntroEnum IntroEnum;
 typedef struct IntroType IntroType;
 
 struct IntroType {
-    char * name;
+    const char * name;
     IntroType * parent;
     IntroCategory category;
     union {
@@ -65,16 +65,18 @@ typedef enum IntroAttribute {
     INTRO_ATTR_ALIAS   = -11,
 } IntroAttribute;
 
+typedef enum IntroAttributeValueType {
+    INTRO_V_FLAG,
+    INTRO_V_INT,
+    INTRO_V_FLOAT,
+    INTRO_V_VALUE,
+    INTRO_V_MEMBER,
+    INTRO_V_STRING,
+} IntroAttributeValueType;
+
 typedef struct IntroAttributeData {
     int32_t type;
-    enum {
-        INTRO_V_FLAG,
-        INTRO_V_INT,
-        INTRO_V_FLOAT,
-        INTRO_V_VALUE,
-        INTRO_V_MEMBER,
-        INTRO_V_STRING,
-    } value_type;
+    IntroAttributeValueType value_type;
     union {
         int32_t i;
         float f;
@@ -82,7 +84,7 @@ typedef struct IntroAttributeData {
 } IntroAttributeData;
 
 typedef struct IntroMember {
-    char * name;
+    const char * name;
     IntroType * type;
     uint32_t offset;
     uint32_t count_attributes;
@@ -97,7 +99,7 @@ struct IntroStruct {
 };
 
 typedef struct IntroEnumValue {
-    char * name;
+    const char * name;
     int32_t value;
 } IntroEnumValue;
 

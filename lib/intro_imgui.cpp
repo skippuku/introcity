@@ -23,19 +23,21 @@ intro_imgui_scalar_type(const IntroType * type) {
 
 static void
 intro_imgui__edit_struct_children(IntroContext * ctx, void * src, const IntroType * s_type) {
-    for (int m_index=0; m_index < s_type->i_struct->count_members; m_index++) {
+    for (uint32_t m_index=0; m_index < s_type->i_struct->count_members; m_index++) {
         const IntroMember * m = &s_type->i_struct->members[m_index];
         void * member_data = (uint8_t *)src + m->offset;
         int tree_flags = ImGuiTreeNodeFlags_SpanFullWidth;
         if (!(m->type->category == INTRO_STRUCT || m->type->category == INTRO_UNION)) {
             tree_flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | ImGuiTreeNodeFlags_NoTreePushOnOpen;
         }
+        ImGui::PushID(m_index);
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        bool is_open = ImGui::TreeNodeEx(m->name, ImGuiTreeNodeFlags_SpanFullWidth);
+        bool is_open = ImGui::TreeNodeEx(m->name, tree_flags);
 
         int32_t note_index;
         if (intro_attribute_int(m, INTRO_ATTR_NOTE, &note_index)) {
+            ImGui::SameLine();
             ImGui::TextDisabled("(?)");
             if (ImGui::IsItemHovered()) {
                 const char * note = ctx->notes[note_index];
@@ -53,28 +55,29 @@ intro_imgui__edit_struct_children(IntroContext * ctx, void * src, const IntroTyp
         ImGui::Text("%s", type_buf);
 
         ImGui::TableNextColumn();
+        ImGui::PushItemWidth(-1);
         if (m->type->category == INTRO_STRUCT || m->type->category == INTRO_UNION) {
-            ImGui::TextDisabled("vvv");
+            ImGui::TextDisabled("---");
             if (is_open) {
                 intro_imgui__edit_struct_children(ctx, member_data, m->type);
                 ImGui::TreePop();
             }
         } else if (strcmp(m->type->name, "bool") == 0) {
-            ImGui::Checkbox(NULL, (bool *)member_data);
+            ImGui::Checkbox("##", (bool *)member_data);
         } else if (intro_is_scalar(m->type)) {
-            ImGui::DragScalar(NULL, intro_imgui_scalar_type(m->type), member_data);
+            ImGui::DragScalar("##", intro_imgui_scalar_type(m->type), member_data);
         } else if (m->type->category == INTRO_ENUM) {
             if (m->type->i_enum->is_flags) {
                 int * flags_ptr = (int *)member_data;
-                for (int e=0; e < m->type->i_enum->count_members; e++) {
+                for (uint32_t e=0; e < m->type->i_enum->count_members; e++) {
                     IntroEnumValue v = m->type->i_enum->members[e];
                     ImGui::CheckboxFlags(v.name, flags_ptr, v.value);
                 }
             } else {
                 int current_value = *(int *)member_data;
                 bool found_match = false;
-                int current_index;
-                for (int e=0; e < m->type->i_enum->count_members; e++) {
+                uint32_t current_index;
+                for (uint32_t e=0; e < m->type->i_enum->count_members; e++) {
                     IntroEnumValue v = m->type->i_enum->members[e];
                     if (v.value == current_value) {
                         current_index = e;
@@ -85,8 +88,8 @@ intro_imgui__edit_struct_children(IntroContext * ctx, void * src, const IntroTyp
                     ImGui::InputInt(NULL, (int *)member_data);
                 } else {
                     const char * preview = m->type->i_enum->members[current_index].name;
-                    if (ImGui::BeginCombo(NULL, preview)) {
-                        for (int e=0; e < m->type->i_enum->count_members; e++) {
+                    if (ImGui::BeginCombo("##", preview)) {
+                        for (uint32_t e=0; e < m->type->i_enum->count_members; e++) {
                             IntroEnumValue v = m->type->i_enum->members[e];
                             bool is_selected = (e == current_index);
                             if (ImGui::Selectable(v.name, is_selected)) {
@@ -102,6 +105,8 @@ intro_imgui__edit_struct_children(IntroContext * ctx, void * src, const IntroTyp
                 }
             }
         }
+        ImGui::PopItemWidth();
+        ImGui::PopID();
     }
 }
 
@@ -125,7 +130,7 @@ intro_imgui_edit_ctx(IntroContext * ctx, void * src, const IntroType * s_type, c
             ImGui::Text("%s", type_buf);
 
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("vvv");
+            ImGui::TextDisabled("---");
 
             if (is_open) {
                 intro_imgui__edit_struct_children(ctx, src, s_type);

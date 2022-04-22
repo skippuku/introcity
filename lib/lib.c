@@ -128,7 +128,6 @@ intro_attribute_float(const IntroMember * m, int32_t attr_type, float * o_float)
 bool
 intro_attribute_length(const void * struct_data, const IntroType * struct_type, const IntroMember * m, int64_t * o_length) {
     int32_t member_index;
-    const void * m_data = struct_data + m->offset;
     if (intro_attribute_int(m, INTRO_ATTR_LENGTH, &member_index)) {
         const IntroMember * length_member = &struct_type->i_struct->members[member_index];
         const void * length_member_loc = struct_data + length_member->offset;
@@ -337,7 +336,6 @@ intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * 
         } else {
             switch(m->type->category) {
             case INTRO_ARRAY: {
-                int depth;
                 const IntroType * parent = m->type->parent;
                 const int MAX_EXPOSED_LENGTH = 64;
                 if (intro_is_scalar(parent) && m->type->array_size <= MAX_EXPOSED_LENGTH) {
