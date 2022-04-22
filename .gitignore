@@ -4,3 +4,4 @@ r_*
 *.cty
 *.exe
 *.o
+test/interactive_test

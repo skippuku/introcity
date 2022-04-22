@@ -1,6 +1,6 @@
 #include <unistd.h>
 
-#include "util.c"
+#include "util.h"
 #include "lexer.c"
 
 static char * filename_stdin = "__intro_output";
@@ -473,7 +473,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
             file_buffer = read_stream(stdin);
             file_size = arrlen(file_buffer);
         } else {
-            file_buffer = read_entire_file(filename, &file_size);
+            file_buffer = intro_read_file(filename, &file_size);
         }
         if (!file_buffer) {
             return ERR_FILE_NOT_FOUND;

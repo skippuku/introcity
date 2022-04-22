@@ -1,5 +1,5 @@
 #include "lib/intro.h"
-#include "util.c"
+#include "util.h"
 #include "lexer.c"
 
 typedef struct {

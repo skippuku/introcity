@@ -1,28 +1,7 @@
 #include "../lib/intro.h"
-#include "../util.c"
 
 #include "test.h"
 #include "test.h.intro"
-
-void
-dump_city(const char * filename, void * data, const IntroType * type) {
-    size_t city_size;
-    void * city_data = intro_create_city(data, type, &city_size);
-
-    int error = dump_to_file(filename, city_data, city_size);
-    if (error) {
-        printf("error writing to file: %s\n", filename);
-        exit(1);
-    }
-}
-
-void
-read_city(const char * filename, void * data, const IntroType * type) {
-    size_t load_size;
-    void * city_load_data = read_entire_file(filename, &load_size);
-    assert(city_load_data != NULL);
-    intro_load_city(data, type, city_load_data, load_size);
-}
 
 int
 main() {
@@ -44,10 +23,10 @@ main() {
     intro_print(&obj_save, obj_save_type, NULL);
     printf("\n\n");
 
-    dump_city("test/obj.cty", &obj_save, obj_save_type);
+    intro_create_city_file("test/obj.cty", &obj_save, obj_save_type);
 
     BasicPlus obj_load;
-    read_city("test/obj.cty", &obj_load, intro_type_with_name("BasicPlus"));
+    intro_load_city_file(&obj_load, ITYPE(BasicPlus), "test/obj.cty");
 
     printf("obj_load: BasicPlus = ");
     intro_print(&obj_load, obj_load.type, NULL);

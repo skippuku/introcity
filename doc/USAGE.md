@@ -58,7 +58,7 @@ Many functions in the library require extra information provided by `__intro_ctx
 `INTRO_CTX` is another macro that simply expands to `&__intro_ctx`.
 
 ## Using Type Information
-`ITYPE` expands to a pointer to a `IntroType` structure. The layout of this structure is as follows: ([lib/types.h](../lib/types.h))
+`ITYPE` expands to a pointer to a `IntroType` structure. The layout of this structure is as follows: ([lib/intro.h](../lib/intro.h))
 ```C
 struct IntroType {
     char * name;

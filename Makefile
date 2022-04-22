@@ -1,5 +1,5 @@
 CFLAGS += -std=gnu99 -Wall
-SRC = intro.c lexer.c pre.c parse.c attribute.c gen.c
+SRC = intro.c lexer.c pre.c parse.c attribute.c gen.c util.h
 DIAG_COLOR = -fdiagnostics-color=always 
 
 default: test/db_test
@@ -17,18 +17,18 @@ db_intro: $(SRC) db_intro_lib.o
 r_intro: $(SRC) r_intro_lib.o
 	$(CC) $(CFLAGS) $(DIAG_COLOR) intro.c r_intro_lib.o -O2 -s -o $@
 
-LIB_SRC = lib/lib.c lib/city.c lib/intro.h lib/types.h lib/ext/stb_ds.h lib/ext/stb_sprintf.h
+LIB_SRC = lib/introlib.c lib/intro.h lib/ext/stb_ds.h lib/ext/stb_sprintf.h
 
 db_intro_lib.o: $(LIB_SRC)
-	$(CC) $(CFLAGS) -g -c lib/lib.c -o $@
+	$(CC) $(CFLAGS) -g -c lib/introlib.c -o $@
 
 r_intro_lib.o: $(LIB_SRC)
-	$(CC) $(CFLAGS) -O2 -c lib/lib.c -o $@
+	$(CC) $(CFLAGS) -O2 -c lib/introlib.c -o $@
 
 db_intro_imgui.o: $(LIB_SRC) lib/intro_imgui.cpp
 	$(CXX) $(DIAG_COLOR) -std=c++11 -Wall -c -g -I../modules/imgui/ lib/intro_imgui.cpp -o $@
 
-test/test.h.intro: db_intro test/test.h lib/types.h
+test/test.h.intro: db_intro test/test.h lib/intro.h
 	./db_intro test/test.h
 
 test/db_test: test/test.c test/test.h.intro test/basic.h db_intro_lib.o

@@ -39,11 +39,8 @@ int
 main() {
     SaveData save;
 
-    size_t last_file_data_length;
-    void * last_file_data = read_entire_file("save.cty", &last_file_data_length);
-    if (last_file_data) {
-        intro_load_city(&save, ITYPE(SaveData), last_file_data, last_file_data_length);
-    } else {
+    void * city_data_handle = intro_load_city_file(&save, ITYPE(SaveData), "save.cty");
+    if (!city_data_handle) {
         intro_set_defaults(&save, ITYPE(SaveData));
     }
 
@@ -59,12 +56,9 @@ main() {
     save.message = new_message;
     save.demo++;
 
-    size_t new_file_data_length;
-    void * new_file_data = intro_create_city(&save, ITYPE(SaveData), &new_file_data_length);
-    dump_to_file("save.cty", new_file_data, new_file_data_length);
+    intro_create_city_file("save.cty", &save, ITYPE(SaveData));
 
-    free(new_file_data);
-    free(last_file_data);
+    if (city_data_handle) free(city_data_handle);
     return 0;
 }
 ```
@@ -105,9 +99,9 @@ data_types.h.intro: data_types.h
     intro data_types.h -o data_types.h.intro
 ```
 
-the `*.intro` file must be included *after* all of the types are declared. `lib/types.h` or `lib/intro.h` (which includes types.h) must be included before the `*.intro` file.   
-
-You will probably want to use the library. The header for the library is at `lib/intro.h`. The source is at `lib/lib.c`. You can compile it with something like `cc -c lib/lib.c -o introlib.o`.    
+`lib/intro.h` must be included *before* your types are declared, and the `*.intro` file must be included *after* all of the types are declared.   
+  
+You will probably want to use the library. The source is at `lib/introlib.c`. You can compile it with something like `cc -c lib/introlib.c`.    
 
 ## Disclaimers
 

@@ -1,5 +1,5 @@
 #include "lib/intro.h"
-#include "util.c"
+#include "util.h"
 #include "pre.c"
 #include "parse.c"
 #include "gen.c"
@@ -26,7 +26,7 @@ main(int argc, char * argv []) {
         return -2;
     }
 
-    error = dump_to_file(output_filename, header, strlen(header));
+    error = intro_dump_file(output_filename, header, strlen(header));
     if (error) {
         fprintf(stderr, "failed to write to file '%s'.\n", output_filename);
         return error;

@@ -1,5 +1,5 @@
-#ifndef UTIL_C
-#define UTIL_C
+#ifndef UTIL_H
+#define UTIL_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,41 +76,6 @@ strputf(char ** p_str, const char * format, ...) {
     }
 
     va_end(args_original);
-}
-
-static long
-fsize(FILE * file) {
-    long location = ftell(file);
-    fseek(file, 0, SEEK_END);
-    long result = ftell(file);
-    fseek(file, location, SEEK_SET);
-    return result;
-}
-
-static char *
-read_entire_file(const char * filename, size_t * o_size) {
-    FILE * file = fopen(filename, "rb");
-    if (!file) return NULL;
-    size_t file_size = fsize(file);
-    char * buffer = malloc(file_size + 1);
-    if (fread(buffer, file_size, 1, file) != 1) {
-        fclose(file);
-        free(buffer);
-        return NULL;
-    }
-    fclose(file);
-    buffer[file_size] = '\0';
-    if (o_size) *o_size = file_size;
-    return buffer;
-}
-
-static int
-dump_to_file(const char * filename, void * data, size_t data_size) {
-    FILE * file = fopen(filename, "wb");
-    if (!file) return -1;
-    int res = fwrite(data, data_size, 1, file);
-    fclose(file);
-    return (res == 1)? 0 : -1;
 }
 
 #endif

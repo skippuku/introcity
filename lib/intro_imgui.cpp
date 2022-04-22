@@ -62,10 +62,12 @@ intro_imgui__edit_struct_children(IntroContext * ctx, void * src, const IntroTyp
                 intro_imgui__edit_struct_children(ctx, member_data, m->type);
                 ImGui::TreePop();
             }
-        } else if (strcmp(m->type->name, "bool") == 0) {
-            ImGui::Checkbox("##", (bool *)member_data);
         } else if (intro_is_scalar(m->type)) {
-            ImGui::DragScalar("##", intro_imgui_scalar_type(m->type), member_data);
+            if (m->type->name && strcmp(m->type->name, "bool") == 0) {
+                ImGui::Checkbox("##", (bool *)member_data);
+            } else {
+                ImGui::DragScalar("##", intro_imgui_scalar_type(m->type), member_data);
+            }
         } else if (m->type->category == INTRO_ENUM) {
             if (m->type->i_enum->is_flags) {
                 int * flags_ptr = (int *)member_data;
@@ -104,6 +106,8 @@ intro_imgui__edit_struct_children(IntroContext * ctx, void * src, const IntroTyp
                     *(int *)member_data = m->type->i_enum->members[current_index].value;
                 }
             }
+        } else {
+            ImGui::TextDisabled("<unimplemented>");
         }
         ImGui::PopItemWidth();
         ImGui::PopID();

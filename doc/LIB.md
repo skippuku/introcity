@@ -33,6 +33,18 @@ void * city_data = read_entire_file("obj.cty", &city_size);
 int error = intro_load_city(&obj, ITYPE(Object), city_data, city_size);
 ```
 
+### `intro_create_city_file`
+```C
+bool intro_create_city_file(const char * filename, void * src, const IntroType * src_type);
+```
+Convenience function that creates city data and writes it to a file. Returns false on failure and true on sucess.
+
+### `intro_load_city_file`
+```C
+void * intro_load_city_file(void * dest, const IntroType * dest_type, const char * filename);
+```
+Convenience function that loads city data from a file. Returns a pointer to the data that should be freed when the object pointed to by `dest` is no longer in use. Returns `NULL` on failure.
+
 # type information
 
 ### `intro_is_scalar`

@@ -1,8 +1,8 @@
-#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../lib/intro.h"
-#include "../util.c"
 
 typedef int32_t s32;
 typedef struct {
@@ -18,11 +18,8 @@ int
 main() {
     SaveData save;
 
-    size_t last_file_data_length;
-    void * last_file_data = read_entire_file("save.cty", &last_file_data_length);
-    if (last_file_data) {
-        intro_load_city(&save, ITYPE(SaveData), last_file_data, last_file_data_length);
-    } else {
+    void * city_data_handle = intro_load_city_file(&save, ITYPE(SaveData), "save.cty");
+    if (!city_data_handle) {
         intro_set_defaults(&save, ITYPE(SaveData));
     }
 
@@ -38,12 +35,8 @@ main() {
     save.message = new_message;
     save.demo++;
 
-    size_t new_file_data_length;
-    void * new_file_data = intro_create_city(&save, ITYPE(SaveData), &new_file_data_length);
-    dump_to_file("save.cty", new_file_data, new_file_data_length);
+    intro_create_city_file("save.cty", &save, ITYPE(SaveData));
 
-    free(new_file_data);
-    free(last_file_data);
-
+    if (city_data_handle) free(city_data_handle);
     return 0;
 }
