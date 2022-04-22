@@ -508,7 +508,7 @@ intro_create_city_file(const char * filename, void * src, const IntroType * src_
 
 static void
 city__error(const char * msg) {
-    fprintf(stderr, "error: %s\n", msg);
+    fprintf(stderr, "CITY error: %s\n", msg);
 }
 
 static void
@@ -560,6 +560,7 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
         }break;
 
         case INTRO_ENUM: {
+            put_uint(&ctx->info, type->category, 1);
             put_uint(&ctx->info, type->i_enum->size, 1);
         }break;
 
@@ -735,11 +736,18 @@ city__safe_copy_struct(
             }
             if (match) {
                 if (dm->type->category != sm->type->category) {
-                    city__error("fatal type mismatch");
+                    char from [128];
+                    char to [128];
+                    char msg [512];
+                    intro_sprint_type_name(from, sm->type);
+                    intro_sprint_type_name(to,   dm->type);
+                    stbsp_sprintf(msg, "type mismatch. from: %s to: %s", from, to);
+                    city__error(msg);
                     return -1;
                 }
 
-                if (intro_is_scalar(dm->type)) {
+                if (intro_is_scalar(dm->type) || dm->type->category == INTRO_ENUM) {
+                    // TODO: should we test against enum names if things get moved around?
                     memcpy(dest + dm->offset, src + sm->offset, intro_size(dm->type));
                 } else if (dm->type->category == INTRO_POINTER) {
                     void * result_ptr = src + *(size_t *)(src + sm->offset);
@@ -860,6 +868,16 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
             type->array_size = array_size;
         }break;
 
+        case INTRO_ENUM: {
+            uint32_t size = next_uint(&b, 1);
+
+            IntroEnum * i_enum = calloc(sizeof(*i_enum), 1);
+            memset(i_enum, 0, sizeof(*i_enum));
+            i_enum->size = size;
+
+            type->i_enum = i_enum;
+        }break;
+
         default: break;
         }
         hmput(info_by_id, i, type);
@@ -870,6 +888,9 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
     int copy_result = city__safe_copy_struct(ctx, dest, d_type, src, s_type);
 
     for (int i=0; i < hmlen(info_by_id); i++) {
+        if (intro_is_complex(info_by_id[i].value)) {
+            free(info_by_id[i].value->i_struct);
+        }
         free(info_by_id[i].value);
     }
     hmfree(info_by_id);

@@ -1,6 +1,14 @@
 #include ".//../test////basic.h"
 #include "../test/../lib/intro.h"
 
+enum Wood {
+    WOOD_PINE,
+    WOOD_ASH,
+    WOOD_BIRCH,
+    WOOD_CHERRY,
+    WOOD_MAHOGANY,
+};
+
 typedef struct {
     char * name;
     int32_t a, b;
@@ -8,6 +16,12 @@ typedef struct {
 
     int16_t * numbers I(length count_numbers);
     int32_t count_numbers;
+
+    enum Wood wood_type;
+
+    struct {
+        int a, b;
+    } stuff;
 } Basic;
 
 typedef struct {
@@ -19,12 +33,19 @@ typedef struct {
     IntroType * type I(type);
 
     struct {
+        int a, b, c;
+        float scale I(= 10.0);
+    } stuff;
+
+    struct {
         bool is_ok I(= 1);
         float speed I(= 2.3);
         double time_stamp;
         int64_t seconds_left;
         int32_t * a_pointer;
     } universe;
+
+    enum Wood wood_type;
 
     int16_t * numbers I(length count_numbers);
     int32_t count_numbers;

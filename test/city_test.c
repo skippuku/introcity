@@ -18,6 +18,9 @@ main() {
     for (int i=0; i < obj_save.count_numbers; i++) {
         obj_save.numbers[i] = (rand() % 1000);
     }
+    obj_save.wood_type = WOOD_CHERRY;
+    obj_save.stuff.a = 95;
+    obj_save.stuff.b = -95;
 
     printf("obj_save: Basic = ");
     intro_print(&obj_save, obj_save_type, NULL);
