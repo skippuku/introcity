@@ -1,6 +1,7 @@
 CFLAGS += -std=gnu99 -Wall
 SRC = intro.c lexer.c pre.c parse.c attribute.c gen.c util.h
-DIAG_COLOR = -fdiagnostics-color=always 
+GIT_VERSION = $(shell git describe --abbrev=6 --tags --dirty --always)
+CFLAGS += -DVERSION=\"$(GIT_VERSION)\" -fdiagnostics-color=always
 
 default: test/db_test
 	./test/db_test
