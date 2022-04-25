@@ -209,6 +209,10 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
             if (type->parent->category == INTRO_S8 && 0==strcmp(type->parent->name, "char")) {
                 size_t length;
                 char * str = parse_escaped_string(&tk, &length);
+                if (!str) {
+                    parse_error(ctx, &tk, "Invalid string.");
+                    return -1;
+                }
                 ptrdiff_t result = store_ptr(ctx, str, length);
                 return result;
             }
@@ -239,7 +243,7 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
                 }
             } else {
                 parse_error(ctx, &tk, "Invalid symbol.");
-                return 1;
+                return -1;
             }
             tk = next_token(o_s);
             if (tk.type == TK_BAR) {

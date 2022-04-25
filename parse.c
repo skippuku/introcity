@@ -3,7 +3,7 @@
 #include "lexer.c"
 
 typedef struct {
-    char * key;
+    const char * key;
 } NameSet;
 
 typedef struct {
@@ -19,6 +19,7 @@ typedef struct {
 
 typedef struct {
     char * buffer;
+    NameSet * ignore_typedefs;
     struct{char * key; IntroType * value;} * type_map;
     struct{IntroType key; IntroType * value;} * type_set;
     NameSet * name_set;
@@ -37,7 +38,7 @@ parse_error(ParseContext * ctx, Token * tk, char * message) {
 
 #include "attribute.c"
 
-static char *
+static const char *
 cache_name(ParseContext * ctx, char * name) {
     ptrdiff_t index = shgeti(ctx->name_set, name);
     if (index < 0) {
@@ -436,6 +437,9 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
         return 1;
     }
     char * name = copy_and_terminate(name_tk.start, name_tk.length);
+    if (shgeti(ctx->ignore_typedefs, name) >= 0) {
+        return 0;
+    }
 
     IntroType new_type = *type;
     new_type.name = name;
@@ -517,6 +521,8 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
             } else if (tk_equal(&tk2, "double")) {
                 parse_error(ctx, &tk2, "long double is not supported.");
                 return NULL;
+            } else {
+                *o_s = tk2.start;
             }
             type.category |= 0x08;
             can_be_followed_by_int = true;
@@ -683,6 +689,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);
+        shputs(ctx->ignore_typedefs, (NameSet){known_types[i].name});
     }
 
     create_initial_attributes();

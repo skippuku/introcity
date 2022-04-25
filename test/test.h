@@ -72,6 +72,10 @@ typedef struct {
     unsigned u;
     unsigned int ui;
     unsigned long long int v1, *v2, v3[3], *v4[4], *(v5[5]), (*v6)[6];
+
+    unsigned long int uli;
+    signed long int sli;
+    signed long long int slli;
 } TestInt;
 
 struct TestPtr {

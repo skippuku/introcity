@@ -521,7 +521,9 @@ preprocess_filename(char ** result_buffer, char * filename) {
                 goto unknown_directive;
             }
 
-            if (tk_equal(&directive, "include")) {
+            if (is_digit(*directive.start) || tk_equal(&directive, "line")) {
+                // TODO
+            } else if (tk_equal(&directive, "include")) {
                 Token next = pre_next_token(&s);
                 while (next.type == TK_COMMENT) next = pre_next_token(&s);
                 if (next.type == TK_STRING) {

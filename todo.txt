@@ -22,7 +22,6 @@ parse:
     rudimentary C++ support
 
 pre:
-    * process #line directives
     fix macros not rescanning
     # and ## operators
     expressions + defined()
@@ -40,7 +39,6 @@ city:
     stbd_ds arrays (requires stb_ds attribute)
 
 lib:
-    * Dear ImGui widget
     IntroVariant?
     don't use printf?
     single header?
@@ -52,5 +50,3 @@ doc:
 
 misc:
     use enum error codes instead of magic numbers
-
-* should be implemented before beta release

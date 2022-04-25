@@ -28,13 +28,6 @@ typedef MyStruct {
 #endif
 ```
 
-### Note about Preprocessing
-*intro* utilizes a custom preprocessor. This was done to make it simple to use. It is currently lacking some features and may cause problems. If you need to use a different preprocessor, you can do something like the following:
-```sh
-gcc -E file.h | intro - -o file.h.intro
-```
-A stray hyphen `-` will cause *intro* to treat stdin as its file input, not unlike gcc.
-
 ## Parser Output
 The generated header makes use of C99 struct initialization, so your compiler must support that. The `__intro` namespace is used to avoid any naming conflicts. The parts of this file you need to be aware of are `__intro_types`, `__intro_ctx`, and the `ITYPE_` enum definitions. These are used implicitly by the library with macros.
 
