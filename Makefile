@@ -1,50 +1,59 @@
-CFLAGS += -std=gnu99 -Wall
-SRC = intro.c lexer.c pre.c parse.c attribute.c gen.c util.h
-GIT_VERSION = $(shell git describe --abbrev=6 --tags --dirty --always)
-CFLAGS += -DVERSION=\"$(GIT_VERSION)\" -fdiagnostics-color=always
+IMGUI_INCLUDE = -I../modules/imgui/
+EXE = intro
 
-default: test/db_test
-	./test/db_test
+GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
 
-.PHONY: test
-test: db_intro test/db_test test/db_city_test
-	./test/db_test
-	./test/db_city_test
-	./db_intro intro.c -o test/intro.c.intro
+CFLAGS += -Wall -DVERSION=\"$(GIT_VERSION)\" -fdiagnostics-color=always
+CXXFLAGS += $(CFLAGS) -std=c++11 $(IMGUI_INCLUDE)
+CFLAGS += -std=gnu99
 
-db_intro: $(SRC) db_intro_lib.o
-	$(CC) $(CFLAGS) $(DIAG_COLOR) intro.c db_intro_lib.o -g -o $@
+SRC = intro.c lib/introlib.c lib/intro_imgui.cpp
 
-r_intro: $(SRC) r_intro_lib.o
-	$(CC) $(CFLAGS) $(DIAG_COLOR) intro.c r_intro_lib.o -O2 -s -o $@
+.PHONY: release debug test install clean cleanall
 
-LIB_SRC = lib/introlib.c lib/intro.h lib/ext/stb_ds.h lib/ext/stb_sprintf.h
+all: debug
 
-db_intro_lib.o: $(LIB_SRC)
-	$(CC) $(CFLAGS) -g -c lib/introlib.c -o $@
+release: CFLAGS += -O2
+release: LDFLAGS += -s
+release: $(EXE)
 
-r_intro_lib.o: $(LIB_SRC)
-	$(CC) $(CFLAGS) -O2 -c lib/introlib.c -o $@
+debug: CFLAGS += -g
+debug: $(EXE)
 
-db_intro_imgui.o: $(LIB_SRC) lib/intro_imgui.cpp
-	$(CXX) $(DIAG_COLOR) -std=c++11 -Wall -c -g -I../modules/imgui/ lib/intro_imgui.cpp -o $@
-
-test/test.h.intro: db_intro test/test.h lib/intro.h
-	./db_intro test/test.h
-
-test/db_test: test/test.c test/test.h.intro test/basic.h db_intro_lib.o
-	$(CC) test/test.c db_intro_lib.o -g -o $@
-
-city: test/db_city_test
-	./test/db_city_test
-	xxd -c 16 -g 1 test/obj.cty
-
-test/db_city_test: test/city_test.c test/test.h.intro db_intro_lib.o
-	$(CC) test/city_test.c db_intro_lib.o -g -o $@
+$(EXE): %: %.o lib/introlib.o
+	$(CC) $(LDFLAGS) -o $@ $^
 
 PREFIX = /usr/local
 
-install: r_intro
+test:
+	@$(MAKE) --directory=test/ run
+
+install: release
 	mkdir -p $(PREFIX)/bin
-	cp -f r_intro $(PREFIX)/bin/intro
+	cp -f $(EXE) $(PREFIX)/bin/intro
 	chmod 755 $(PREFIX)/bin/intro
+
+clean:
+	rm -f lib/*.o *.o *.d
+
+cleanall:
+	@$(MAKE) --directory=test/ clean
+	rm -f $(EXE)
+	@$(MAKE) clean
+
+define \n
+
+
+endef
+
+SRC_C = $(filter %.c,$(SRC))
+SRC_CPP = $(filter %.cpp,$(SRC))
+
+deps.d:
+	> deps.d
+	$(foreach f,$(SRC_C),$(CC) -MM -MT '$(f:.c=.o) deps.d' $(f) >> deps.d$(\n))
+	$(foreach f,$(SRC_CPP),$(CC) -MM -MT '$(f:.cpp=.o) deps.d' $(f) >> deps.d$(\n))
+
+ifneq ($(MAKECMDGOALS),clean)
+include deps.d
+endif

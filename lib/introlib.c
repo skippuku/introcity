@@ -156,27 +156,18 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
     int32_t value_offset;
     if (m->type->category == INTRO_STRUCT) {
         intro_set_values_ctx(ctx, dest + m->offset, m->type, value_attribute);
+    } else if (intro_attribute_flag(m, INTRO_ATTR_TYPE)) {
+        memcpy(dest + m->offset, &struct_type, sizeof(void *));
     } else if (intro_attribute_int(m, value_attribute, &value_offset)) {
         void * value_ptr = ctx->values + value_offset;
         if (m->type->category == INTRO_POINTER) {
             size_t data_offset = *(size_t *)value_ptr;
             void * data = ctx->values + data_offset;
-            //uint32_t data_length = *(uint32_t *)(data - 4);
             memcpy(dest + m->offset, &data, sizeof(size_t));
-            /* nocheckin
-            int32_t length_member_index;
-            if (intro_attribute_int(m, INTRO_ATTR_LENGTH, &length_member_index)) {
-                const IntroMember * length_member = &struct_type->i_struct->members[length_member_index];
-                size_t length_member_size = intro_size(length_member->type);
-                memcpy(dest + length_member->offset, &data_length, length_member_size);
-            }
-            */
         } else {
             memcpy(dest + m->offset, value_ptr, size);
             intro_offset_pointers(dest + m->offset, m->type, ctx->values);
         }
-    } else if (intro_attribute_flag(m, INTRO_ATTR_TYPE)) {
-        memcpy(dest + m->offset, &struct_type, sizeof(void *));
     } else {
         memset(dest + m->offset, 0, size);
     }
@@ -230,7 +221,7 @@ intro_print_scalar(const void * data, const IntroType * type) {
     if (intro_is_scalar(type)) {
         if (type->category <= INTRO_S64) {
             int64_t value = intro_int_value(data, type);
-            printf("%li", value);
+            printf("%lli", (long long int)value);
         } else if (type->category == INTRO_F32) {
             printf("%f", *(float *)data);
         } else if (type->category == INTRO_F64) {

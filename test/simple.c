@@ -7,8 +7,6 @@
 
 int
 main(int argc, char ** argv) {
-    printf("==== TEST OUTPUT ====\n\n");
-
     TestAttributes obj = {0};
     obj.buffer_size = 8;
     obj.buffer = malloc(obj.buffer_size * sizeof(*obj.buffer));

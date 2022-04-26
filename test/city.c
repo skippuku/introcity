@@ -26,14 +26,18 @@ main() {
     intro_print(&obj_save, obj_save_type, NULL);
     printf("\n\n");
 
-    intro_create_city_file("test/obj.cty", &obj_save, obj_save_type);
+    bool create_success = intro_create_city_file("obj.cty", &obj_save, obj_save_type);
+    assert(create_success);
 
     BasicPlus obj_load;
-    intro_load_city_file(&obj_load, ITYPE(BasicPlus), "test/obj.cty");
+    void * city_data_handle = intro_load_city_file(&obj_load, ITYPE(BasicPlus), "obj.cty");
+    assert(city_data_handle != NULL);
 
     printf("obj_load: BasicPlus = ");
     intro_print(&obj_load, obj_load.type, NULL);
     printf("\n");
+
+    free(city_data_handle);
 
     return 0;
 }
