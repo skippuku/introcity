@@ -1,6 +1,7 @@
 INTROLIB = ../lib/introlib.o
 INTRO_PARSE = ../intro
-CFLAGS = -g
+CFLAGS := -g
+CFLAGS += -I../lib
 SRC = $(wildcard *.c)
 INTERACTIVE = interactive_test
 EXE = $(SRC:%.c=db_%)
@@ -28,11 +29,11 @@ $(EXE): db_%: %.o $(INTROLIB)
 	$(CC) $^ -o $@
 
 clean:
-	rm -f *.intro *.o *.d $(EXE:%:db_%)
+	rm -f *.intro *.o *.d $(EXE:%=db_%)
 
 deps.d:
 	> deps.d
-	$(foreach f,$(SRC),$(CC) -MM -MG -MT '$(f:.c=.o) deps.d' $(f) >> deps.d$(\n))
+	$(foreach f,$(SRC),$(CC) $(CFLAGS) -MM -MG -MT '$(f:.c=.o) deps.d' $(f) >> deps.d$(\n))
 
 ifneq ($(MAKECMDGOALS),clean)
 include deps.d

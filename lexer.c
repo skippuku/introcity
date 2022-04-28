@@ -18,6 +18,8 @@ typedef struct Token {
         TK_R_BRACKET,
         TK_L_BRACE,
         TK_R_BRACE,
+        TK_L_ANGLE,
+        TK_R_ANGLE,
         TK_EQUAL,
         TK_COLON,
         TK_SEMICOLON,
@@ -194,6 +196,9 @@ next_token(char ** o_s) {
     case '(': tk.type = TK_L_PARENTHESIS; break;
     case ')': tk.type = TK_R_PARENTHESIS; break;
 
+    case '<': tk.type = TK_L_ANGLE; break;
+    case '>': tk.type = TK_R_ANGLE; break;
+
     case '=': tk.type = TK_EQUAL; break;
     case ':': tk.type = TK_COLON; break;
     case ';': tk.type = TK_SEMICOLON; break;
@@ -222,6 +227,7 @@ find_closing(char * s) {
     case '{': c = '}'; break;
     case '[': c = ']'; break;
     case '(': c = ')'; break;
+    case '<': c = '>'; break;
     default: return NULL;
     }
     s++;

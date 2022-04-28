@@ -221,7 +221,7 @@ intro_print_scalar(const void * data, const IntroType * type) {
     if (intro_is_scalar(type)) {
         if (type->category <= INTRO_S64) {
             int64_t value = intro_int_value(data, type);
-            printf("%lli", (long long int)value);
+            printf("%li", (long int)value);
         } else if (type->category == INTRO_F32) {
             printf("%f", *(float *)data);
         } else if (type->category == INTRO_F64) {

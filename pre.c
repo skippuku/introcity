@@ -36,6 +36,8 @@ typedef struct {
     FileBuffer * current_file_buffer;
 } PreContext;
 
+const char ** include_paths = NULL;
+
 #define BOLD_RED "\e[1;31m"
 #define BOLD_YELLOW "\e[1;33m"
 #define CYAN "\e[0;36m"
@@ -185,8 +187,9 @@ path_normalize(char * dest) {
 }
 
 static void
-path_join(char * dest, char * base, char * ext) {
+path_join(char * dest, const char * base, const char * ext) {
     strcpy(dest, base);
+    strcat(dest, "/");
     strcat(dest, ext);
     path_normalize(dest);
 }
@@ -496,7 +499,11 @@ preprocess_filename(char ** result_buffer, char * filename) {
 
     while (1) {
         char * start_of_line = s;
-        Token inc_filename_tk = {0};
+        struct {
+            bool exists;
+            bool is_quote;
+            Token tk;
+        } inc_file = {0};
         Token tk = pre_next_token(&s);
 
         if (tk.type == TK_END) {
@@ -526,13 +533,21 @@ preprocess_filename(char ** result_buffer, char * filename) {
             } else if (tk_equal(&directive, "include")) {
                 Token next = pre_next_token(&s);
                 while (next.type == TK_COMMENT) next = pre_next_token(&s);
+                // expansion is deferred until after the last section gets pasted
+                inc_file.exists = true;
                 if (next.type == TK_STRING) {
-                    // defer this till after the last section gets pasted
-                    inc_filename_tk = next;
-                } else if (*next.start == '<') { // TODO
-                    // ignored for now
+                    inc_file.is_quote = true;
+                    inc_file.tk = next;
+                } else if (*next.start == '<') {
+                    char * tk_end = find_closing(next.start);
+                    if (!tk_end) {
+                        preprocess_error(&next, "No closing '>'.");
+                        return -1;
+                    }
+                    inc_file.tk.start = next.start;
+                    inc_file.tk.length = tk_end - next.start + 1;
                 } else {
-                    preprocess_error(&next, "Error: unexpected token in include directive.");
+                    preprocess_error(&next, "Unexpected token in include directive.");
                     return -1;
                 }
             } else if (tk_equal(&directive, "define")) {
@@ -659,18 +674,29 @@ preprocess_filename(char ** result_buffer, char * filename) {
 
             ignore_section(result_buffer, filename, file_buffer, &chunk_begin, start_of_line, s);
 
-            if (inc_filename_tk.type != TK_UNKNOWN) {
-                char * inc_filename = copy_and_terminate(inc_filename_tk.start + 1, inc_filename_tk.length - 2);
+            if (inc_file.exists) {
+                char * inc_filename = copy_and_terminate(inc_file.tk.start + 1, inc_file.tk.length - 2);
                 char inc_filepath [1024];
-                path_join(inc_filepath, file_dir, inc_filename);
+                if (inc_file.is_quote) {
+                    path_join(inc_filepath, file_dir, inc_filename);
+                    if (access(inc_filepath, F_OK) == 0) {
+                        goto include_matched_file;
+                    }
+                }
+                for (int i=0; i < arrlen(include_paths); i++) {
+                    const char * include_path = include_paths[i];
+                    path_join(inc_filepath, include_path, inc_filename);
+                    if (access(inc_filepath, F_OK) == 0) {
+                        goto include_matched_file;
+                    }
+                }
+                preprocess_error(&inc_file.tk, "File not found.");
+                return -1;
+
+            include_matched_file: ;
                 char * inc_filepath_stored = copy_and_terminate(inc_filepath, strlen(inc_filepath));
                 int error = preprocess_filename(result_buffer, inc_filepath_stored);
-                if (error) {
-                    if (error == ERR_FILE_NOT_FOUND) {
-                        preprocess_error(&inc_filename_tk, "File not found.");
-                    }
-                    return error;
-                }
+                if (error) return -1;
                 free(inc_filename);
             }
         }
@@ -698,7 +724,12 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
                 Define new_def;
                 new_def.key = (strlen(arg) == 2)? argv[++i] : arg+2;
                 shputs(defines, new_def);
-            } break;
+            }break;
+
+            case 'I': {
+                const char * new_path = (strlen(arg) == 2)? argv[++i] : arg+2;
+                arrput(include_paths, new_path);
+            }break;
 
             case 'E': {
                 preprocess_only = true;
@@ -706,7 +737,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
 
             case 'o': {
                 *o_output_filepath = argv[++i];
-            } break;
+            }break;
 
             case 0: {
                 if (isatty(fileno(stdin))) {
@@ -714,13 +745,13 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
                     exit(1);
                 }
                 filepath = filename_stdin;
-            } break;
+            }break;
             default: {
                 fputs("Error: Unknown argument: ", stderr);
                 fputs(arg, stderr);
                 fputs("\n", stderr);
                 exit(1);
-            } break;
+            }break;
             }
         } else {
             if (filepath) {

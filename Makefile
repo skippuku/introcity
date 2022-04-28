@@ -3,7 +3,7 @@ EXE = intro
 
 GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
 
-CFLAGS += -Wall -DVERSION=\"$(GIT_VERSION)\" -fdiagnostics-color=always
+CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"' -fdiagnostics-color=always
 CXXFLAGS += $(CFLAGS) -std=c++11 $(IMGUI_INCLUDE)
 CFLAGS += -std=gnu99
 
@@ -25,7 +25,7 @@ $(EXE): %: %.o lib/introlib.o
 
 PREFIX = /usr/local
 
-test:
+test: debug
 	@$(MAKE) --directory=test/ run
 
 install: release
