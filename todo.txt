@@ -1,4 +1,6 @@
 attribute:
+    as_enum for when you want an integer to be treated like an enum
+        type attribute value type
     struct/union values
     stb_ds array attribute
     members of complex type can specify an attribute as a value: I(default default)
@@ -22,6 +24,8 @@ parse:
     rudimentary C++ support
 
 pre:
+    parse #line directives
+    create #line directives?
     fix macros not rescanning
     # and ## operators
     expressions + defined()
@@ -29,6 +33,7 @@ pre:
     move toward c99 compliance (6.10)
         C99 6.10.3
         C99 6.10.2.4 : macro expansion in include directive
+    internal: use context instead of globals
 
 gen:
     option to create typedefs for structs and enums
@@ -39,14 +44,17 @@ city:
     stbd_ds arrays (requires stb_ds attribute)
 
 lib:
+    accurate type display
     IntroVariant?
     don't use printf?
     single header?
 
 test:
     test for failures that should happen
+    should tests and examples be separate things?
 
 doc:
 
 misc:
     use enum error codes instead of magic numbers
+    parse program options and pass only relevant ones to sub-processes

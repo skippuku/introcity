@@ -33,7 +33,12 @@ typedef struct {
 
 static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
-    parse_error_internal(ctx->buffer, tk, message);
+    parse_msg_internal(ctx->buffer, tk, message, 0);
+}
+
+static void
+parse_warning(ParseContext * ctx, Token * tk, char * message) {
+    parse_msg_internal(ctx->buffer, tk, message, 1);
 }
 
 #include "attribute.c"
@@ -205,10 +210,15 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 }
                 member.type = type;
 
-                if (base_type->name == NULL && intro_is_complex(base_type)) {
+                if (base_type->name == NULL) {
                     NestInfo info = {0};
-                    info.key = base_type; // covers i_enum
+                    info.key = base_type;
                     info.member_index = arrlen(members);
+                    IntroType * tt = type;
+                    while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
+                        tt = tt->parent;
+                        info.indirection_level++;
+                    }
                     arrput(nests, info);
                 }
 
@@ -448,8 +458,7 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
         new_type.parent = type;
     }
     if (shgeti(ctx->type_map, name) >= 0) {
-        parse_error(ctx, &name_tk, "type is redefined.");
-        return 1;
+        parse_warning(ctx, &name_tk, "type is redefined.");
     }
     store_type(ctx, &new_type);
 
@@ -519,8 +528,9 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
                 strputf(&type_name, " long");
                 tk = tk2;
             } else if (tk_equal(&tk2, "double")) {
-                parse_error(ctx, &tk2, "long double is not supported.");
-                return NULL;
+                parse_warning(ctx, &tk2, "long double is not supported by intro.");
+                type.category = INTRO_F128;
+                tk = tk2;
             } else {
                 *o_s = tk2.start;
             }
@@ -609,25 +619,29 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token 
 
         arrsetlen(temp, 0);
         while (tk.type == TK_L_BRACKET) {
-            tk = next_token(o_s);
-            if (tk.type == TK_IDENTIFIER) {
-                long num = strtol(tk.start, NULL, 0);
-                if (num <= 0) {
+            char * closing_bracket = find_closing(tk.start);
+            long num;
+            if (closing_bracket == tk.start + 1) {
+                num = 0;
+            } else {
+                char * range_begin = tk.start + 1;
+                char * range_end = closing_bracket;
+                char * num_parse_end = range_begin;
+                num = strtol(range_begin, &num_parse_end, 0);
+                if (num < 0) {
                     parse_error(ctx, &tk, "Invalid array size.");
                     return NULL;
                 }
-                arrput(temp, (uint32_t)num);
-                tk = next_token(o_s);
-                if (tk.type != TK_R_BRACKET) {
-                    parse_error(ctx, &tk, "Invalid symbol. Expected closing bracket ']'.");
-                    return NULL;
+                if (num_parse_end < range_end) {
+                    Token expr_tk = {0};
+                    expr_tk.start = tk.start;
+                    expr_tk.length = range_end - tk.start + 1;
+                    parse_warning(ctx, &expr_tk, "Unable to evaluate array size."); // TODO
+                    num = 0;
                 }
-            } else if (tk.type == TK_R_BRACKET) {
-                arrput(temp, 0);
-            } else {
-                parse_error(ctx, &tk, "Invalid symbol. Expected array size or closing bracket ']'.");
-                return NULL;
             }
+            arrput(temp, num);
+            *o_s = closing_bracket + 1;
             tk = next_token(o_s);
         }
 
@@ -642,8 +656,26 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token 
     } while ((*o_s = paren) != NULL);
 
     arrfree(temp);
-    
+
     IntroType * last_type = base_type;
+    *o_s = end;
+    tk = next_token(o_s);
+    if (tk.type == TK_L_PARENTHESIS) {
+        end = find_closing(tk.start);
+        if (!end) {
+            parse_error(ctx, &tk, "Failed to find closing ')'");
+            return NULL;
+        }
+        end += 1;
+
+        // make function type TODO: arguments
+        IntroType func = {0};
+        func.parent = base_type;
+        func.category = INTRO_FUNCTION;
+
+        last_type = store_type(ctx, &func);
+    }
+    
     for (int i=0; i < arrlen(indirection); i++) {
         int32_t it = indirection[i];
         IntroType new_type = {0};
@@ -685,7 +717,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"_Bool",    NULL, INTRO_U8 },
         {"size_t",   NULL, INTRO_U64}, // TODO
         {"ptrdiff_t",NULL, INTRO_S64},
-        {"bool",     NULL, INTRO_U8 },
+        {"bool",     NULL, INTRO_U8 }, // TODO: remove
     };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);

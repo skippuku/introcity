@@ -26,6 +26,7 @@ typedef enum IntroCategory {
 
     INTRO_F32 = 0x34,
     INTRO_F64 = 0x38,
+    INTRO_F128 = 0x3f,
 
     INTRO_ARRAY   = 0x40,
     INTRO_POINTER = 0x50,
@@ -33,6 +34,8 @@ typedef enum IntroCategory {
     INTRO_ENUM    = 0x60,
     INTRO_STRUCT  = 0x70,
     INTRO_UNION   = 0x71,
+
+    INTRO_FUNCTION = 0x80,
 } IntroCategory;
 
 typedef enum {

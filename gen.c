@@ -17,19 +17,27 @@ get_ref_name(IntroInfo * info, const IntroType * t) {
     }
 }
 
+// TODO: rename parent to container (grand_parent -> meta_container) since parent already means something to types
+// TODO: just pass the nest
 static char *
-get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, const char ** o_top_level_name) {
+get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, int indirection_level, const char ** o_top_level_name) {
     NestInfo * nest = hmgetp_null(info->nest_map, parent);
     if (nest) {
         IntroType * grand_parent = nest->parent;
         int grand_parent_index = nest->member_index;
 
-        char * result = get_parent_member_name(info, grand_parent, grand_parent_index, o_top_level_name);
+        char * result = get_parent_member_name(info, grand_parent, grand_parent_index, nest->indirection_level, o_top_level_name);
         strputf(&result, ".%s", parent->i_struct->members[parent_index].name);
+
         return result;
     } else {
         char * result = NULL;
         strputf(&result, "%s", parent->i_struct->members[parent_index].name);
+
+        for (int i=0; i < indirection_level; i++) {
+            strputf(&result, "[0]");
+        }
+
         const char * top_level_name = get_ref_name(info, parent);
         *o_top_level_name = top_level_name;
         return result;
@@ -93,7 +101,7 @@ generate_c_header(IntroInfo * info) {
     // generate info needed to get offset and sizeof for anonymous types
     for (int i=0; i < hmlen(info->nest_map); i++) {
         NestInfo * nest = &info->nest_map[i];
-        nest->parent_member_name = get_parent_member_name(info, nest->parent, nest->member_index, &nest->top_level_name);
+        nest->parent_member_name = get_parent_member_name(info, nest->parent, nest->member_index, nest->indirection_level, &nest->top_level_name);
     }
 
     char * s = NULL;
@@ -216,7 +224,11 @@ generate_c_header(IntroInfo * info) {
                 strputf(&s, "0},\n");
             }
         } else {
-            strputf(&s, "%u},\n", (t->category == INTRO_ARRAY)? t->array_size : 0);
+            if (t->category == INTRO_ARRAY) {
+                strputf(&s, "%u},\n", t->array_size);
+            } else {
+                strputf(&s, "0},\n");
+            }
         }
     }
     strputf(&s, "};\n\n");

@@ -1,3 +1,4 @@
+// TODO: move these into ParseContext
 static struct attribute_map_s {
     char * key;
     int32_t type;

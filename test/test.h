@@ -183,6 +183,14 @@ typedef struct {
     Skills skills I(= SKILL_MUSICIAN | SKILL_PROGRAMMER);
 } TestDefault;
 
+typedef struct {
+    int strange_array [sizeof(int) * 4]; // length evaluated to 0 and emits warning for now
+    struct {
+        char a, b;
+        short u;
+    } anon_struct_array [4];
+} Dumb;
+
 #if 0
 typedef struct {
     char * name;

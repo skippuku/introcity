@@ -1,9 +1,9 @@
-INTROLIB = ../lib/introlib.o
-INTRO_PARSE = ../intro
+INTROLIB := ../lib/introlib.o
+INTRO_PARSE := ../intro
 CFLAGS := -g
 CFLAGS += -I../lib
 SRC = $(wildcard *.c)
-INTERACTIVE = interactive_test
+INTERACTIVE := interactive_test
 EXE = $(SRC:%.c=db_%)
 TESTS = $(filter-out db_$(INTERACTIVE),$(EXE))
 
@@ -23,13 +23,13 @@ run: $(TESTS)
 	@echo "All tests were successful."
 
 %.intro: % $(INTRO_PARSE)
-	$(INTRO_PARSE) $<
+	$(CPP) $< $(CFLAGS) -D__INTRO__ | $(INTRO_PARSE) - -o $@
 
 $(EXE): db_%: %.o $(INTROLIB)
 	$(CC) $^ -o $@
 
 clean:
-	rm -f *.intro *.o *.d $(EXE:%=db_%)
+	rm -f *.intro *.o *.d $(EXE)
 
 deps.d:
 	> deps.d

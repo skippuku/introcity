@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "lib/intro.h"
 #include "lib/ext/stb_ds.h"
 #include "lib/ext/stb_sprintf.h"
 
@@ -26,6 +27,7 @@ typedef struct {
     void * key;
     IntroType * parent;
     int member_index;
+    int indirection_level;
     char * parent_member_name;
     const char * top_level_name;
 } NestInfo;

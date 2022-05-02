@@ -3,7 +3,7 @@
 #include "util.h"
 #include "lexer.c"
 
-static char * filename_stdin = "__intro_output";
+static char * filename_stdin = "__stdin__";
 
 typedef struct {
     char * filename;
@@ -107,13 +107,13 @@ message_internal(char * start_of_line, char * filename, int line, char * hl_star
 }
 
 void
-parse_error_internal(char * buffer, const Token * tk, char * message) {
+parse_msg_internal(char * buffer, const Token * tk, char * message, int message_type) {
     char * start_of_line = NULL;
     char * filename = "?";
     char * hl_start = tk->start;
     int line_num = get_line(buffer, &hl_start, &start_of_line, &filename);
     char * hl_end = hl_start + tk->length;
-    message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, 0);
+    message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, message_type);
 }
 
 static void
@@ -246,6 +246,7 @@ strip_comments(char ** o_s) {
 
 static void
 strput_tokens(char ** p_str, Token * list, size_t count) {
+    if (!list) return;
     bool last_was_iden = false;
     for (int i=0; i < count; i++) {
         Token tk = list[i];
@@ -298,7 +299,7 @@ try_expand_macro(PreContext * ctx, Token * macro_tk, size_t * o_count, char ** o
         while (1) {
             Token tk = pre_next_token(&s);
             if (tk.type == TK_COMMENT || tk.type == TK_NEWLINE) {
-            } else if (*tk.start == ',') {
+            } else if (*tk.start == ',' && paren_depth == 1) {
                 arrput(args, arg_tks);
                 arg_tks = NULL;
             } else {
@@ -451,44 +452,10 @@ read_stream(FILE * file) {
     return result;
 }
 
+int preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename);
+
 int
-preprocess_filename(char ** result_buffer, char * filename) {
-    char * file_buffer = NULL;
-    size_t file_size;
-
-    PreContext ctx_ = {0}, *ctx = &ctx_;
-    ctx->current_file_buffer = NULL;
-    // search for buffer or create it if it doesn't exist
-    for (int i=0; i < arrlen(file_buffers); i++) {
-        FileBuffer * fb = file_buffers[i];
-        if (strcmp(filename, fb->filename) == 0) {
-            if (fb->once) {
-                return 0;
-            }
-            file_buffer = fb->buffer;
-            file_size = fb->buffer_size;
-            ctx->current_file_buffer = fb;
-            break;
-        }
-    }
-    if (!file_buffer) {
-        if (filename == filename_stdin) {
-            file_buffer = read_stream(stdin);
-            file_size = arrlen(file_buffer);
-        } else {
-            file_buffer = intro_read_file(filename, &file_size);
-        }
-        if (!file_buffer) {
-            return ERR_FILE_NOT_FOUND;
-        }
-        FileBuffer * new_buf = malloc(sizeof(*new_buf));
-        new_buf->filename = filename;
-        new_buf->buffer = file_buffer;
-        new_buf->buffer_size = file_size;
-        arrput(file_buffers, new_buf);
-        ctx->current_file_buffer = arrlast(file_buffers);
-    }
-
+preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, char * filename) {
     char file_dir [1024];
     char * filename_nodir;
     (void) filename_nodir;
@@ -513,12 +480,14 @@ preprocess_filename(char ** result_buffer, char * filename) {
             ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
         } else if (tk.type == TK_IDENTIFIER) {
             ctx->no_expand = NULL;
-            size_t count;
+            size_t count = SIZE_MAX;
             Token * list = try_expand_macro(ctx, &tk, &count, &s);
-            if (list) {
+            if (count != SIZE_MAX) {
                 ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
-                strput_tokens(result_buffer, list, count);
-                arrfree(list);
+                if (list && count > 0) {
+                    strput_tokens(result_buffer, list, count);
+                    arrfree(list);
+                }
             }
             arrfree(ctx->no_expand);
         } else if (*tk.start == '#') {
@@ -695,7 +664,7 @@ preprocess_filename(char ** result_buffer, char * filename) {
 
             include_matched_file: ;
                 char * inc_filepath_stored = copy_and_terminate(inc_filepath, strlen(inc_filepath));
-                int error = preprocess_filename(result_buffer, inc_filepath_stored);
+                int error = preprocess_filename(ctx, result_buffer, inc_filepath_stored);
                 if (error) return -1;
                 free(inc_filename);
             }
@@ -705,12 +674,57 @@ preprocess_filename(char ** result_buffer, char * filename) {
     return 0;
 }
 
+int
+preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
+    char * file_buffer = NULL;
+    size_t file_size;
+
+    // search for buffer or create it if it doesn't exist
+    for (int i=0; i < arrlen(file_buffers); i++) {
+        FileBuffer * fb = file_buffers[i];
+        if (strcmp(filename, fb->filename) == 0) {
+            if (fb->once) {
+                return 0;
+            }
+            file_buffer = fb->buffer;
+            file_size = fb->buffer_size;
+            ctx->current_file_buffer = fb;
+            break;
+        }
+    }
+    if (!file_buffer) {
+        if (filename == filename_stdin) {
+            file_buffer = read_stream(stdin);
+            file_size = arrlen(file_buffer);
+        } else {
+            file_buffer = intro_read_file(filename, &file_size);
+        }
+        if (!file_buffer) {
+            return ERR_FILE_NOT_FOUND;
+        }
+        FileBuffer * new_buf = malloc(sizeof(*new_buf));
+        new_buf->filename = filename;
+        new_buf->buffer = file_buffer;
+        new_buf->buffer_size = file_size;
+        arrput(file_buffers, new_buf);
+        ctx->current_file_buffer = arrlast(file_buffers);
+    }
+
+    return preprocess_buffer(ctx, result_buffer, file_buffer, filename);
+}
+
+static char intro_defs [] =
+"#define __INTRO__ 1\n"
+"#define __attribute__(x) \n"
+"#define __extension__ \n"
+;
+
 char *
 run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     sh_new_arena(defines);
-    Define intro_define;
-    intro_define.key = "__INTRO__";
-    shputs(defines, intro_define);
+
+    PreContext ctx_ = {0}, *ctx = &ctx_;
+    preprocess_buffer(ctx, &result_buffer, intro_defs, "__intro_defs");
 
     *o_output_filepath = NULL;
 
@@ -772,7 +786,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         strputnull(*o_output_filepath);
     }
 
-    int error = preprocess_filename(&result_buffer, filepath);
+    int error = preprocess_filename(ctx, &result_buffer, filepath);
     if (error) {
         if (error == ERR_FILE_NOT_FOUND) {
             fputs("File not found.\n", stderr);
