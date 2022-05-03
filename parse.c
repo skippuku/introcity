@@ -435,29 +435,43 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
     IntroType * base = parse_base_type(ctx, o_s, &type_tk, true);
     if (!base) return 1;
 
-    Token name_tk = {0};
-    IntroType * type = parse_declaration(ctx, base, o_s, &name_tk);
-    if (!type) return 1;
-    if (name_tk.start == NULL) {
-        parse_error(ctx, &type_tk, "typedef has no name.");
-        return 1;
-    }
-    char * name = copy_and_terminate(name_tk.start, name_tk.length);
-    if (shgeti(ctx->ignore_typedefs, name) >= 0) {
-        return 0;
-    }
+    while (1) {
+        Token name_tk = {0};
+        IntroType * type = parse_declaration(ctx, base, o_s, &name_tk);
+        if (!type) return 1;
+        if (name_tk.start == NULL) {
+            parse_error(ctx, &type_tk, "typedef has no name.");
+            return 1;
+        }
+        char * name = copy_and_terminate(name_tk.start, name_tk.length);
+        if (shgeti(ctx->ignore_typedefs, name) >= 0) {
+            return 0;
+        }
 
-    IntroType new_type = *type;
-    new_type.name = name;
-    bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
-    if (!new_type_is_indirect) {
-        new_type.parent = type;
+        IntroType new_type = *type;
+        new_type.name = name;
+        bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
+        if (!new_type_is_indirect) {
+            new_type.parent = type;
+        }
+        if (shgeti(ctx->type_map, name) >= 0) {
+            // TODO: uncomment once function pointers parse correctly
+            //parse_warning(ctx, &name_tk, "type is redefined.");
+        }
+        store_type(ctx, &new_type);
+
+        Token tk = next_token(o_s);
+        if (tk.type == TK_SEMICOLON) {
+            break;
+        } else if (tk.type == TK_COMMA) {
+        } else {
+            parse_error(ctx, &tk, "Expected ',' or ';'.");
+            fprintf(stderr, "name: %.*s\n", name_tk.length, name_tk.start);
+            fprintf(stderr, "Got : %.*s\n", tk.length, tk.start);
+            fprintf(stderr, "base name: %s\n", base->name);
+            return 1;
+        }
     }
-    if (shgeti(ctx->type_map, name) >= 0) {
-        // TODO: uncomment once function poitners parse correctly
-        //parse_warning(ctx, &name_tk, "type is redefined.");
-    }
-    store_type(ctx, &new_type);
 
     return 0;
 }
@@ -525,8 +539,7 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
                 strputf(&type_name, " long");
                 tk = tk2;
             } else if (tk_equal(&tk2, "double")) {
-                parse_warning(ctx, &tk2, "long double is not supported by intro.");
-                type.category = INTRO_F128;
+                type.category = INTRO_F128; // TODO
                 tk = tk2;
             } else {
                 *o_s = tk2.start;
