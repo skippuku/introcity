@@ -4,8 +4,22 @@
 #include "parse.c"
 #include "gen.c"
 
+#ifdef _WIN32
+  #include <windows.h>
+  #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+  #endif
+#endif
+
 int
 main(int argc, char * argv []) {
+#ifdef _WIN32
+    HANDLE con = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode = 0;
+    GetConsoleMode(con, &mode);
+    mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(con, mode);
+#endif
     char * output_filename = NULL;
     char * preprocessed_buffer = run_preprocessor(argc, argv, &output_filename);
     if (!preprocessed_buffer) {
