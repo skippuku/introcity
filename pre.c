@@ -1,4 +1,4 @@
-#include <unistd.h>
+#include <sys/unistd.h>
 
 #include "util.h"
 #include "lexer.c"
@@ -34,6 +34,18 @@ FileLoc * file_location_lookup = NULL;
 typedef struct {
     ptrdiff_t * no_expand;
     FileBuffer * current_file_buffer;
+    struct {
+        bool enabled;
+        bool D;
+        bool G;
+        bool no_sys;
+        char * custom_target;
+    } m_options;
+    bool minimal_parse;
+    NameSet * dependency_set;
+    int sys_header_first;
+    int sys_header_last;
+    bool is_sys_header;
 } PreContext;
 
 const char ** include_paths = NULL;
@@ -139,7 +151,7 @@ preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, ch
 static char * result_buffer = NULL;
 
 static void
-path_normalize(char * dest) {
+path_normalize(char * dest) { // TODO: bug with 4 .. in a row
     char * dest_start = dest;
     char * src = dest;
     while (*src) {
@@ -198,13 +210,13 @@ static void
 path_dir(char * dest, char * filepath, char ** o_filename) {
     char * end = strrchr(filepath, '/');
     if (end == NULL) {
-        strcpy(dest, "./");
-        *o_filename = filepath;
+        strcpy(dest, ".");
+        if (o_filename) *o_filename = filepath;
     } else {
-        size_t dir_length = end - filepath + 1;
+        size_t dir_length = end - filepath;
         memcpy(dest, filepath, dir_length);
         dest[dir_length] = '\0';
-        *o_filename = end + 1;
+        if (o_filename) *o_filename = end + 1;
     }
 }
 
@@ -469,28 +481,12 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
         struct {
             bool exists;
             bool is_quote;
+            bool is_next;
             Token tk;
         } inc_file = {0};
         Token tk = pre_next_token(&s);
 
-        if (tk.type == TK_END) {
-            ignore_section(result_buffer, filename, file_buffer, &chunk_begin, s, NULL);
-            break;
-        } else if (tk.type == TK_COMMENT) {
-            ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
-        } else if (tk.type == TK_IDENTIFIER) {
-            ctx->no_expand = NULL;
-            size_t count = SIZE_MAX;
-            Token * list = try_expand_macro(ctx, &tk, &count, &s);
-            if (count != SIZE_MAX) {
-                ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
-                if (list && count > 0) {
-                    strput_tokens(result_buffer, list, count);
-                    arrfree(list);
-                }
-            }
-            arrfree(ctx->no_expand);
-        } else if (*tk.start == '#') {
+        if (*tk.start == '#') {
             Token directive = pre_next_token(&s);
             while (directive.type == TK_COMMENT) directive = pre_next_token(&s);
             if (directive.type != TK_IDENTIFIER) {
@@ -499,7 +495,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
 
             if (is_digit(*directive.start) || tk_equal(&directive, "line")) {
                 // TODO
-            } else if (tk_equal(&directive, "include")) {
+            } else if (tk_equal(&directive, "include") || (tk_equal(&directive, "include_next") && (inc_file.is_next = true))) {
                 Token next = pre_next_token(&s);
                 while (next.type == TK_COMMENT) next = pre_next_token(&s);
                 // expansion is deferred until after the last section gets pasted
@@ -622,6 +618,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
             } else if (tk_equal(&directive, "elif")) {
                 pre_skip(&s, false);
             } else if (tk_equal(&directive, "else")) {
+                pre_skip(&s, false);
             } else if (tk_equal(&directive, "endif")) {
             } else if (tk_equal(&directive, "error")) {
                 preprocess_error(&directive, "User error");
@@ -641,11 +638,12 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
             // find next line
             while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
 
-            ignore_section(result_buffer, filename, file_buffer, &chunk_begin, start_of_line, s);
+            if (!ctx->minimal_parse) ignore_section(result_buffer, filename, file_buffer, &chunk_begin, start_of_line, s);
 
             if (inc_file.exists) {
                 char * inc_filename = copy_and_terminate(inc_file.tk.start + 1, inc_file.tk.length - 2);
                 char inc_filepath [1024];
+                bool is_from_sys = ctx->is_sys_header;
                 if (inc_file.is_quote) {
                     path_join(inc_filepath, file_dir, inc_filename);
                     if (access(inc_filepath, F_OK) == 0) {
@@ -654,19 +652,68 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 }
                 for (int i=0; i < arrlen(include_paths); i++) {
                     const char * include_path = include_paths[i];
+                    if (inc_file.is_next) {
+                        if (0==strcmp(file_dir, include_path)) {
+                            inc_file.is_next = false;
+                        }
+                        continue;
+                    }
                     path_join(inc_filepath, include_path, inc_filename);
                     if (access(inc_filepath, F_OK) == 0) {
+                        if (i >= ctx->sys_header_first || i <= ctx->sys_header_last) {
+                            is_from_sys = true;
+                        }
                         goto include_matched_file;
                     }
                 }
-                preprocess_error(&inc_file.tk, "File not found.");
-                return -1;
+                if (!ctx->m_options.G) {
+                    preprocess_error(&inc_file.tk, "File not found.");
+                    return -1;
+                } else {
+                    char * inc_filepath_stored = copy_and_terminate(inc_filename, strlen(inc_filename));
+                    shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
+                    continue;
+                }
 
             include_matched_file: ;
                 char * inc_filepath_stored = copy_and_terminate(inc_filepath, strlen(inc_filepath));
+                if (!(ctx->m_options.no_sys && is_from_sys)) {
+                    shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
+                } else {
+                    if (ctx->minimal_parse) {
+                        continue;
+                    }
+                }
+                bool prev = ctx->is_sys_header;
+                ctx->is_sys_header = is_from_sys;
                 int error = preprocess_filename(ctx, result_buffer, inc_filepath_stored);
+                ctx->is_sys_header = prev;
                 if (error) return -1;
                 free(inc_filename);
+            }
+        } else if (tk.type == TK_END) {
+            if (!ctx->minimal_parse) ignore_section(result_buffer, filename, file_buffer, &chunk_begin, s, NULL);
+            break;
+        } else {
+            if (ctx->minimal_parse) {
+                // find next line
+                while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
+            } else {
+                if (tk.type == TK_COMMENT) {
+                    ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
+                } else if (tk.type == TK_IDENTIFIER) {
+                    ctx->no_expand = NULL;
+                    size_t count = SIZE_MAX;
+                    Token * list = try_expand_macro(ctx, &tk, &count, &s);
+                    if (count != SIZE_MAX) {
+                        ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
+                        if (list && count > 0) {
+                            strput_tokens(result_buffer, list, count);
+                            arrfree(list);
+                        }
+                    }
+                    arrfree(ctx->no_expand);
+                }
             }
         }
     }
@@ -724,30 +771,36 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     sh_new_arena(defines);
 
     PreContext ctx_ = {0}, *ctx = &ctx_;
-    preprocess_buffer(ctx, &result_buffer, intro_defs, "__intro_defs");
 
     *o_output_filepath = NULL;
 
     bool preprocess_only = false;
     char * filepath = NULL;
+
     for (int i=1; i < argc; i++) {
+        #define ADJACENT() ((strlen(arg) == 2)? argv[++i] : arg+2);
         char * arg = argv[i];
         if (arg[0] == '-') {
             switch(arg[1]) {
             case 'D': {
                 Define new_def;
-                new_def.key = (strlen(arg) == 2)? argv[++i] : arg+2;
+                new_def.key = ADJACENT();
                 shputs(defines, new_def);
             }break;
 
+            case 'U': {
+                const char * iden = ADJACENT();
+                (void)shdel(defines, iden);
+            }break;
+
             case 'I': {
-                const char * new_path = (strlen(arg) == 2)? argv[++i] : arg+2;
+                const char * new_path = ADJACENT();
                 arrput(include_paths, new_path);
             }break;
 
             case 'E': {
                 preprocess_only = true;
-            } break;
+            }break;
 
             case 'o': {
                 *o_output_filepath = argv[++i];
@@ -760,22 +813,102 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
                 }
                 filepath = filename_stdin;
             }break;
-            default: {
-                fputs("Error: Unknown argument: ", stderr);
-                fputs(arg, stderr);
-                fputs("\n", stderr);
+
+            case 'M': {
+                switch(arg[2]) {
+                case 0: {
+                }break;
+
+                case 'M': {
+                    ctx->m_options.no_sys = true;
+                    if (arg[3] == 'D') ctx->m_options.D = true;
+                }break;
+
+                case 'D': {
+                    ctx->m_options.D = true;
+                }break;
+
+                case 'G': {
+                    ctx->m_options.G = true;
+                }break;
+
+                case 'T': {
+                    ctx->m_options.custom_target = argv[++i];
+                }break;
+
+                default: goto pre_unknown_option;
+                }
+
+                ctx->m_options.enabled = true;
+            }break;
+
+            pre_unknown_option: {
+                fprintf(stderr, "Error: Unknown argumen '%s'\n", arg);
                 exit(1);
             }break;
             }
         } else {
             if (filepath) {
-                fputs("Error: This program cannot currently parse more than 1 file.\n", stderr);
+                fprintf(stderr, "Error: More than 1 file passed.\n");
                 exit(1);
             } else {
                 filepath = arg;
             }
         }
+        #undef ADJACENT
     }
+
+    ctx->minimal_parse = true;
+    {
+        char program_dir [1024];
+        char path [1024];
+        strcpy(program_dir, argv[0]);
+        path_normalize(program_dir);
+        path_dir(program_dir, program_dir, NULL);
+
+        // sys paths
+        const char * sys_inc_path = ".intro_inc";
+        path_join(path, program_dir, sys_inc_path);
+        char * paths_buffer = intro_read_file(path, NULL);
+        char * s = paths_buffer;
+        if (paths_buffer) {
+            ctx->sys_header_first = arrlen(include_paths);
+            while (1) {
+                char buf [1024];
+                char * end = strchr(s, '\n');
+                if (!end) break;
+                *end = '\0';
+                strcpy(buf, s);
+                path_normalize(buf);
+                char * stored_path = copy_and_terminate(buf, strlen(buf));
+                arrput(include_paths, stored_path);
+                s = end + 1;
+                if (!*s) break;
+            }
+            ctx->sys_header_last = arrlen(include_paths) - 1;
+            free(paths_buffer);
+        } else {
+            fprintf(stderr, "No file at %s\n", path);
+        }
+
+        // sys defines
+        const char * sys_def_path = ".intro_def";
+        path_join(path, program_dir, sys_def_path);
+        char * def_buffer = intro_read_file(path, NULL);
+        if (def_buffer) {
+            preprocess_buffer(ctx, NULL, def_buffer, path);
+        } else {
+            fprintf(stderr, "No file at %s\n", path);
+        }
+    }
+
+    if (ctx->m_options.enabled && !ctx->m_options.D) {
+        preprocess_only = true;
+        ctx->minimal_parse = true;
+    } else {
+        preprocess_buffer(ctx, NULL, intro_defs, "__intro_defs__");
+    }
+    ctx->minimal_parse = false;
 
     if (!filepath) {
         fputs("No filename given.\n", stderr);
@@ -797,7 +930,25 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     strputnull(result_buffer);
 
     if (preprocess_only) {
-        fputs(result_buffer, stdout);
+        if (ctx->m_options.enabled) {
+            char * rule = NULL;
+            if (ctx->m_options.custom_target) {
+                strputf(&rule, "%s:", ctx->m_options.custom_target);
+            } else {
+                char * ext = strrchr(filepath, '.');
+                int len_basename = (ext)? ext - filepath : strlen(filepath);
+                strputf(&rule, "%.*s.o:", len_basename, filepath);
+            }
+            strputf(&rule, " %s", filepath);
+            for (int i=0; i < shlen(ctx->dependency_set); i++) {
+                strputf(&rule, " %s", ctx->dependency_set[i].key);
+            }
+            arrput(rule, '\n');
+            strputnull(rule);
+            fputs(rule, stdout);
+        } else {
+            fputs(result_buffer, stdout);
+        }
         exit(0);
     }
 

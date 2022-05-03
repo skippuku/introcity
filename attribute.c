@@ -359,8 +359,12 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
         case INTRO_V_FLAG: {
             if (data.type == INTRO_ATTR_TYPE) {
                 IntroType * type = i_struct->members[member_index].type;
+                // TODO IMPORTANT: likely memory corruption, check with valgrind
                 if (!(type->category == INTRO_POINTER && strcmp(type->parent->name, "IntroType") == 0)) {
                     parse_error(ctx, &tk, "Member must be of type 'IntroType *' to have type attribute.");
+                    char typename [1024];
+                    intro_sprint_type_name(typename, type);
+                    fprintf(stderr, "member type is %s\n", typename);
                     return 1;
                 }
             }

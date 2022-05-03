@@ -3,10 +3,6 @@
 #include "lexer.c"
 
 typedef struct {
-    const char * key;
-} NameSet;
-
-typedef struct {
     ptrdiff_t value_offset;
     void * data;
     size_t data_size;
@@ -458,7 +454,8 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
         new_type.parent = type;
     }
     if (shgeti(ctx->type_map, name) >= 0) {
-        parse_warning(ctx, &name_tk, "type is redefined.");
+        // TODO: uncomment once function poitners parse correctly
+        //parse_warning(ctx, &name_tk, "type is redefined.");
     }
     store_type(ctx, &new_type);
 
@@ -717,7 +714,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"_Bool",    NULL, INTRO_U8 },
         {"size_t",   NULL, INTRO_U64}, // TODO
         {"ptrdiff_t",NULL, INTRO_S64},
-        {"bool",     NULL, INTRO_U8 }, // TODO: remove
+        {"wchar_t",  NULL, INTRO_UNKNOWN},
     };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);

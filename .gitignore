@@ -7,3 +7,5 @@ r_*
 *.d
 intro
 test/interactive_test
+.intro_inc
+.intro_def

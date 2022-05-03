@@ -19,6 +19,10 @@
 #define hmtemp(t) stbds_temp((t)-1)
 
 typedef struct {
+    const char * key;
+} NameSet;
+
+typedef struct {
     void * key;
     int32_t value;
 } IndexByPtrMap;

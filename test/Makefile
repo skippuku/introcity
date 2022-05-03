@@ -1,7 +1,8 @@
 INTROLIB := ../lib/introlib.o
 INTRO_PARSE := ../intro
+CPPFLAGS += -I../lib
 CFLAGS := -g
-CFLAGS += -I../lib
+CFLAGS += $(CPPFLAGS)
 SRC = $(wildcard *.c)
 INTERACTIVE := interactive_test
 EXE = $(SRC:%.c=db_%)
@@ -23,7 +24,7 @@ run: $(TESTS)
 	@echo "All tests were successful."
 
 %.intro: % $(INTRO_PARSE)
-	$(CPP) $< $(CFLAGS) -D__INTRO__ | $(INTRO_PARSE) - -o $@
+	$(INTRO_PARSE) $(CPPFLAGS) $< -o $@
 
 $(EXE): db_%: %.o $(INTROLIB)
 	$(CC) $^ -o $@
@@ -31,9 +32,9 @@ $(EXE): db_%: %.o $(INTROLIB)
 clean:
 	rm -f *.intro *.o *.d $(EXE)
 
-deps.d:
+deps.d: $(MAKEFILE_LIST) $(INTRO_PARSE)
 	> deps.d
-	$(foreach f,$(SRC),$(CC) $(CFLAGS) -MM -MG -MT '$(f:.c=.o) deps.d' $(f) >> deps.d$(\n))
+	$(foreach f,$(SRC),$(INTRO_PARSE) $(CPPFLAGS) -MM -MG -MT '$(f:.c=.o) deps.d' $(f) >> deps.d$(\n))
 
 ifneq ($(MAKECMDGOALS),clean)
 include deps.d

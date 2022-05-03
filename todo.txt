@@ -13,6 +13,7 @@ attribute:
     stb_ds hash map attribute?
 
 parse:
+    !! do something about long double
     give c int types a parent based on size and signedness
     add way to change c int type sizes for different platforms
     track type declaration file location?
@@ -24,12 +25,13 @@ parse:
     rudimentary C++ support
 
 pre:
+    !! fix macros not rescanning
     parse #line directives
     create #line directives?
-    fix macros not rescanning
+    better config system for system headers and defines
+    fix highlighting of expanded macros
     # and ## operators
     expressions + defined()
-    include paths
     move toward c99 compliance (6.10)
         C99 6.10.3
         C99 6.10.2.4 : macro expansion in include directive
