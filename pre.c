@@ -775,6 +775,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     *o_output_filepath = NULL;
 
     bool preprocess_only = false;
+    bool no_sys = false;
     char * filepath = NULL;
 
     for (int i=1; i < argc; i++) {
@@ -782,6 +783,16 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         char * arg = argv[i];
         if (arg[0] == '-') {
             switch(arg[1]) {
+            case '-': {
+                arg = argv[i] + 2;
+                if (0==strcmp(arg, "no-sys")) {
+                    no_sys = true;
+                } else {
+                    fprintf(stderr, "Unknown option: '%s'\n", arg);
+                    exit(1);
+                }
+            }break;
+
             case 'D': {
                 Define new_def;
                 new_def.key = ADJACENT();
@@ -858,8 +869,9 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         #undef ADJACENT
     }
 
-    ctx->minimal_parse = true;
-    {
+    if (!no_sys) {
+        ctx->minimal_parse = true;
+
         char program_dir [1024];
         char path [1024];
         strcpy(program_dir, argv[0]);
@@ -900,15 +912,15 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         } else {
             fprintf(stderr, "No file at %s\n", path);
         }
-    }
 
-    if (ctx->m_options.enabled && !ctx->m_options.D) {
-        preprocess_only = true;
-        ctx->minimal_parse = true;
-    } else {
-        preprocess_buffer(ctx, NULL, intro_defs, "__intro_defs__");
+        if (ctx->m_options.enabled && !ctx->m_options.D) {
+            preprocess_only = true;
+            ctx->minimal_parse = true;
+        } else {
+            preprocess_buffer(ctx, NULL, intro_defs, "__intro_defs__");
+        }
+        ctx->minimal_parse = false;
     }
-    ctx->minimal_parse = false;
 
     if (!filepath) {
         fputs("No filename given.\n", stderr);

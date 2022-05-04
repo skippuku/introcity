@@ -228,7 +228,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                     break;
                 } else if (tk.type == TK_COMMA) {
                 } else {
-                    parse_error(ctx, &tk, "Invalid symbol in struct member declaration.");
+                    parse_error(ctx, &tk, "Expected ';' or ','.");
                     return 1;
                 }
             }
@@ -509,8 +509,6 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
             Token tk = next_token(o_s);
             strputf(&type_name, " %.*s", tk.length, tk.start);
 
-            o_tk->start = first.start;
-            o_tk->type = TK_IDENTIFIER;
             o_tk->length = tk.start - first.start + tk.length;
         } else if (error != 0) {
             return NULL;
@@ -519,66 +517,67 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
             return ctx->type_set[last_index].value;
         }
     } else {
-        Token tk, ltk = first;
-        if (tk_equal(&first, "unsigned")) {
-            type.category |= INTRO_UNSIGNED;
-        } else if (tk_equal(&first, "signed")) {
-            type.category |= INTRO_SIGNED;
-        }
-
-        if (type.category) {
-            tk = next_token(o_s);
-        } else {
-            tk = first;
-        }
-
-        bool can_be_followed_by_int = false;
-        if (tk_equal(&tk, "long")) {
-            Token tk2 = next_token(o_s);
-            if (tk_equal(&tk2, "long")) {
-                strputf(&type_name, " long");
-                tk = tk2;
-            } else if (tk_equal(&tk2, "double")) {
-                type.category = INTRO_F128; // TODO
-                tk = tk2;
+#define CHECK_INT(x) \
+    if (x) { \
+        parse_error(ctx, &tk, "Invalid."); \
+        return NULL; \
+    }
+        Token tk = first, ltk = first;
+        while (1) {
+            bool is_first = (tk.start == first.start);
+            if (tk_equal(&tk, "unsigned")) {
+                CHECK_INT((type.category & 0xf0));
+                type.category |= INTRO_UNSIGNED;
+            } else if (tk_equal(&tk, "signed")) {
+                CHECK_INT((type.category & 0xf0));
+                type.category |= INTRO_SIGNED;
+            } else if (tk_equal(&tk, "long")) {
+                CHECK_INT((type.category & 0x0f));
+                Token tk2 = next_token(o_s);
+                if (tk_equal(&tk2, "long")) {
+                    strputf(&type_name, " long");
+                    tk = tk2;
+                } else if (tk_equal(&tk2, "double")) {
+                    type.category = INTRO_F128; // TODO
+                    tk = tk2;
+                    break;
+                } else {
+                    *o_s = tk2.start;
+                }
+                type.category |= 0x08;
+            } else if (tk_equal(&tk, "short")) {
+                CHECK_INT((type.category & 0x0f));
+                type.category |= 0x02;
+            } else if (tk_equal(&tk, "char")) {
+                CHECK_INT((type.category & 0x0f));
+                type.category |= 0x01;
+                if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
+                break;
+            } else if (tk_equal(&tk, "int")) {
+                CHECK_INT((type.category & 0x0f) == 0x01);
+                if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
+                break;
             } else {
-                *o_s = tk2.start;
+                if (!is_first) *o_s = tk.start;
+                tk = ltk;
+                break;
             }
-            type.category |= 0x08;
-            can_be_followed_by_int = true;
-        } else if (tk_equal(&tk, "short")) {
-            type.category |= 0x02;
-            can_be_followed_by_int = true;
-        } else if (tk_equal(&tk, "char")) {
-            type.category |= 0x01;
-        } else if (tk_equal(&tk, "int")) {
-            type.category |= 0x04;
-        }
-
-        if ((type.category & 0x0f)) {
-            if ((type.category & 0xf0) == 0) {
-                type.category |= 0x20;
-            } else {
-                strputf(&type_name, " %.*s", tk.length, tk.start);
-            }
+            if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
             ltk = tk;
             tk = next_token(o_s);
         }
-        if (type.category && (type.category & 0x0f) == 0) {
-            type.category |= 0x04;
-        }
+#undef CHECK_INT
 
-        if (can_be_followed_by_int) {
-            if (tk_equal(&tk, "int")) {
-                strputf(&type_name, " int");
-                ltk = tk;
+        if (type.category) {
+            if ((type.category & 0xf0) == 0) {
+                type.category |= 0x20;
+            }
+            if ((type.category & 0x0f) == 0) {
+                type.category |= 0x04;
             }
         }
 
-        o_tk->start = first.start;
-        o_tk->type = TK_IDENTIFIER;
-        o_tk->length = ltk.start - first.start + ltk.length;
-        *o_s = ltk.start + ltk.length;
+        o_tk->length = tk.start - first.start + tk.length;
     }
 
     strputnull(type_name);
