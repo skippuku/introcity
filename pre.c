@@ -431,11 +431,11 @@ pre_skip(char ** o_s, bool elif_ok) {
                         }
                     }
                 } else {
-                    goto endif_nextline;
+                    goto nextline;
                 }
             }
         } else {
-        endif_nextline:
+        nextline:
             while (tk.type != TK_NEWLINE && tk.type != TK_END) {
                 tk = pre_next_token(o_s);
             }
@@ -524,7 +524,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 }
 
                 if (tk_equal(&macro_name, "I")) {
-                    goto pre_nextline;
+                    goto nextline;
                 }
 
                 char ** arg_list = NULL;
@@ -634,7 +634,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 return -1;
             }
 
-        pre_nextline:
+        nextline:
             // find next line
             while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
 
@@ -847,13 +847,13 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
                     ctx->m_options.custom_target = argv[++i];
                 }break;
 
-                default: goto pre_unknown_option;
+                default: goto unknown_option;
                 }
 
                 ctx->m_options.enabled = true;
             }break;
 
-            pre_unknown_option: {
+            unknown_option: {
                 fprintf(stderr, "Error: Unknown argumen '%s'\n", arg);
                 exit(1);
             }break;

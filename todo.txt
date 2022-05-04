@@ -13,7 +13,6 @@ attribute:
     stb_ds hash map attribute?
 
 parse:
-    !! fix 'short unsigned' etc.
     do something about long double and wchar_t
     give c int types a parent based on size and signedness
     add way to change c int type sizes for different platforms
