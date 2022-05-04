@@ -25,7 +25,6 @@ parse:
     rudimentary C++ support
 
 pre:
-    !! fix path_normalize with many ..
     !! fix macros not rescanning
     parse #line directives
     create #line directives?

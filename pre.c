@@ -176,6 +176,7 @@ path_normalize(char * dest) { // TODO: bug with 4 .. in a row
                         dest = last_dir;
                         last_dir--;
                         while (--last_dir > dest_start && *last_dir != '/');
+                        last_dir++;
                         depth -= 1;
                     } else {
                         depth = 0;
