@@ -466,9 +466,6 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
         } else if (tk.type == TK_COMMA) {
         } else {
             parse_error(ctx, &tk, "Expected ',' or ';'.");
-            fprintf(stderr, "name: %.*s\n", name_tk.length, name_tk.start);
-            fprintf(stderr, "Got : %.*s\n", tk.length, tk.start);
-            fprintf(stderr, "base name: %s\n", base->name);
             return 1;
         }
     }
@@ -555,6 +552,9 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
                 break;
             } else if (tk_equal(&tk, "int")) {
                 CHECK_INT((type.category & 0x0f) == 0x01);
+                if ((type.category & 0x0f) == 0) {
+                    type.category |= 0x04;
+                }
                 if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
                 break;
             } else {
@@ -571,9 +571,6 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
         if (type.category) {
             if ((type.category & 0xf0) == 0) {
                 type.category |= 0x20;
-            }
-            if ((type.category & 0x0f) == 0) {
-                type.category |= 0x04;
             }
         }
 
