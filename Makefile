@@ -3,21 +3,26 @@ EXE = intro
 
 GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
 
-CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"' -fdiagnostics-color=always
-CXXFLAGS += $(CFLAGS) -std=c++11 $(IMGUI_INCLUDE)
+CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
+CFLAGS += -MMD
+
+ifeq (release,$(MAKECMDGOALS))
+  CFLAGS += -O2
+  LDFLAGS += -s
+else
+  CFLAGS += -g
+endif
+
+CXXFLAGS := $(CFLAGS) -std=c++11 $(IMGUI_INCLUDE)
 CFLAGS += -std=gnu99
 
 SRC = intro.c lib/introlib.c lib/intro_imgui.cpp
+OBJ := $(addsuffix .o,$(basename $(SRC)))
 
 .PHONY: release debug test install clean cleanall
 
-all: debug
-
-release: CFLAGS += -O2
-release: LDFLAGS += -s
+all: $(EXE)
 release: $(EXE)
-
-debug: CFLAGS += -g
 debug: $(EXE)
 
 $(EXE): %: %.o lib/introlib.o
@@ -36,26 +41,22 @@ install: release
 	chmod 755 $(PREFIX)/bin/intro
 
 clean:
-	rm -f lib/*.o *.o *.d
+	rm -f lib/*.o *.o lib/*.d *.d
 
 cleanall:
 	@$(MAKE) --directory=test/ clean
-	rm -f $(EXE)
 	@$(MAKE) clean
+	rm -f $(EXE)
 
 define \n
 
 
 endef
 
-SRC_C = $(filter %.c,$(SRC))
-SRC_CPP = $(filter %.cpp,$(SRC))
+DEPS := $(addsuffix .d,$(basename $(SRC)))
 
-deps.d:
-	> deps.d
-	$(foreach f,$(SRC_C),$(CC) -MM -MT '$(f:.c=.o) deps.d' $(f) >> deps.d$(\n))
-	$(foreach f,$(SRC_CPP),$(CC) -MM -MT '$(f:.cpp=.o) deps.d' $(f) >> deps.d$(\n))
+$(DEPS): %.d: %.o
 
-ifneq ($(MAKECMDGOALS),clean)
-include deps.d
+ifeq (,$(filter clean cleanall,$(MAKECMDGOALS)))
+include $(DEPS)
 endif
