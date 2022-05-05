@@ -18,6 +18,11 @@
 #define shtemp(t) stbds_temp((t)-1)
 #define hmtemp(t) stbds_temp((t)-1)
 
+#define STACK_TERMINATE(name, src, length) \
+    char name [length + 1]; \
+    memcpy(name, src, length); \
+    name[length] = 0;
+
 typedef struct {
     const char * key;
 } NameSet;
