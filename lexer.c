@@ -35,6 +35,7 @@ typedef struct Token {
         TK_STRING,
         TK_COMMENT, // preprocessor only
         TK_NEWLINE, // preprocessor only
+        TK_DISABLED, // preprocessor only
         TK_END,
 
         TK_COUNT

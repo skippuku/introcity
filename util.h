@@ -89,4 +89,11 @@ strputf(char ** p_str, const char * format, ...) {
     va_end(args_original);
 }
 
+#ifdef DEBUG
+// this is so i can get the array length in gdb
+int
+dbarrlen(void * a) {
+    return arrlen(a);
+}
+#endif
 #endif

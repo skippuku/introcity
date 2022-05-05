@@ -32,7 +32,12 @@ typedef struct {
 FileLoc * file_location_lookup = NULL;
 
 typedef struct {
-    ptrdiff_t * no_expand;
+    int * macro_index_stack;
+    Token * list;
+    char ** o_s;
+} ExpandContext;
+
+typedef struct {
     FileBuffer * current_file_buffer;
     struct {
         bool enabled;
@@ -41,11 +46,12 @@ typedef struct {
         bool no_sys;
         char * custom_target;
     } m_options;
-    bool minimal_parse;
     NameSet * dependency_set;
+    ExpandContext expand_ctx;
     int sys_header_first;
     int sys_header_last;
     bool is_sys_header;
+    bool minimal_parse;
 } PreContext;
 
 const char ** include_paths = NULL;
@@ -258,7 +264,7 @@ strip_comments(char ** o_s) {
 }
 
 static void
-strput_tokens(char ** p_str, Token * list, size_t count) {
+strput_tokens(char ** p_str, const Token * list, size_t count) {
     if (!list) return;
     bool last_was_iden = false;
     for (int i=0; i < count; i++) {
@@ -272,93 +278,152 @@ strput_tokens(char ** p_str, Token * list, size_t count) {
 }
 
 void
-tk_cat(Token ** p_list, Token * ext) {
+tk_cat(Token ** p_list, const Token * ext) {
+    Token * dest = arraddnptr(*p_list, arrlen(ext));
     for (int i=0; i < arrlen(ext); i++) {
-        arrput(*p_list, ext[i]);
+        dest[i] = ext[i];
     }
 }
 
-static Token * internal_expand(PreContext * ctx, Token * replace_list, char ** o_s);
+static bool macro_scan(PreContext * ctx, int macro_tk_index);
 
-// TODO: macros should probably be stored as text instead of tokens
-//       this is messy
-static Token *
-try_expand_macro(PreContext * ctx, Token * macro_tk, bool pop_no_expand, size_t * o_count, char ** o_s) {
-    *o_count = SIZE_MAX;
-    STACK_TERMINATE(terminated_tk, macro_tk->start, macro_tk->length);
+static Token
+internal_macro_next_token(PreContext * ctx, int * o_index) {
+    ++(*o_index);
+    if (*o_index < arrlen(ctx->expand_ctx.list)) {
+        return ctx->expand_ctx.list[*o_index];
+    } else {
+        Token tk;
+        if (!ctx->expand_ctx.o_s) {
+            tk = (Token){.type = TK_END};
+            arrput(ctx->expand_ctx.list, tk);
+            return tk;
+        }
+        do {
+            tk = pre_next_token(ctx->expand_ctx.o_s);
+        } while (tk.type == TK_COMMENT || tk.type == TK_NEWLINE);
+        arrput(ctx->expand_ctx.list, tk);
+        return tk;
+    }
+}
 
-    ptrdiff_t map_index = shgeti(defines, terminated_tk);
-    if (map_index < 0) {
+static Token ** // array of array of tokens
+get_macro_arguments(PreContext * ctx, int macro_tk_index, int * o_count_tokens) {
+    int i = macro_tk_index;
+    char * prev_s = NULL;
+    if (ctx->expand_ctx.o_s) prev_s = *ctx->expand_ctx.o_s;
+    Token l_paren = internal_macro_next_token(ctx, &i);
+    if (l_paren.type == TK_END || *l_paren.start != '(') {
+        arrsetlen(ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list) - 1);
+        if (ctx->expand_ctx.o_s) *ctx->expand_ctx.o_s = prev_s;
         return NULL;
     }
-    for (int i=0; i < arrlen(ctx->no_expand); i++) {
-        if (map_index == ctx->no_expand[i]) {
-            return NULL;
+    int paren_level = 1;
+    int count_tokens = 1;
+    Token ** arg_list = NULL;
+    Token * arg_tks = NULL;
+    while (1) {
+        Token tk = internal_macro_next_token(ctx, &i);
+        if (tk.type == TK_END) {
+            preprocess_error(&l_paren, "No closing ')'.");
+            exit(1);
         }
-    }
-    int previous_no_expand_length = arrlen(ctx->no_expand);
-    Define * macro = &defines[map_index];
-    Token * replace_list = NULL;
-    bool free_replace_list = false;
-
-    if (macro->func_like && o_s) {
-        // get arguments
-        Token * list = NULL;
-        Token ** args = NULL;
-        char * s = *o_s;
-        Token open_paren;
-        do {
-            open_paren = pre_next_token(&s);
-        } while (open_paren.type == TK_COMMENT || open_paren.type == TK_NEWLINE);
-        if (!(*open_paren.start == '(')) {
-            return NULL;
+        count_tokens += 1;
+        if (paren_level == 1 && *tk.start == ',') {
+            arrput(arg_list, arg_tks);
+            arg_tks = NULL;
+            continue;
         }
-        Token * arg_tks = NULL;
-        int paren_depth = 1;
-        while (1) {
-            Token tk = pre_next_token(&s);
-            if (tk.type == TK_COMMENT || tk.type == TK_NEWLINE) {
-            } else if (*tk.start == ',' && paren_depth == 1) {
-                arrput(args, arg_tks);
-                arg_tks = NULL;
-            } else if (tk.type == TK_END) {
-                goto free_args;
-            } else {
-                if (*tk.start == '(') {
-                    paren_depth++;
-                } else if (*tk.start == ')') {
-                    paren_depth--;
-                    if (paren_depth == 0) {
-                        arrput(args, arg_tks);
-                        *o_s = s;
-                        break;
-                    }
-                }
-                arrput(arg_tks, tk);
+        if (*tk.start == '(') {
+            paren_level += 1;
+        } else if (*tk.start == ')') {
+            paren_level -= 1;
+            if (paren_level == 0) {
+                arrput(arg_list, arg_tks);
+                break;
             }
         }
-        
-        for (int i=0; i < arrlen(args); i++) {
-            Token * arg_expanded = internal_expand(ctx, args[i], NULL);
-            arrfree(args[i]);
-            args[i] = arg_expanded;
-        }
+        arrput(arg_tks, tk);
+    }
+    arg_tks = NULL;
 
+    ExpandContext prev_ctx = ctx->expand_ctx;
+    for (int arg_i=0; arg_i < arrlen(arg_list); arg_i++) {
+        for (int tk_i=0; tk_i < arrlen(arg_list[arg_i]); tk_i++) {
+            assert(arg_list[arg_i]);
+            if (arg_list[arg_i][tk_i].type == TK_IDENTIFIER) {
+                ctx->expand_ctx = (ExpandContext){
+                    .macro_index_stack = ctx->expand_ctx.macro_index_stack,
+                    .list = arg_list[arg_i],
+                    .o_s = NULL,
+                };
+                macro_scan(ctx, tk_i);
+                assert(ctx->expand_ctx.list); // TODO remove
+                arg_list[arg_i] = ctx->expand_ctx.list;
+            }
+        }
+    }
+    ctx->expand_ctx = prev_ctx;
+
+    *o_count_tokens = count_tokens;
+    return arg_list;
+}
+
+static void
+free_macro_arguments(Token ** arg_list) {
+    for (int i=0; i < arrlen(arg_list); i++) {
+        arrfree(arg_list[i]);
+    }
+    arrfree(arg_list);
+}
+
+static bool // true if token was expanded
+macro_scan(PreContext * ctx, int macro_tk_index) {
+    Token * macro_tk = &ctx->expand_ctx.list[macro_tk_index];
+    STACK_TERMINATE(terminated_tk, macro_tk->start, macro_tk->length);
+
+    ptrdiff_t macro_index = shgeti(defines, terminated_tk);
+    if (macro_index < 0) {
+        return false;
+    }
+    for (int i=0; i < arrlen(ctx->expand_ctx.macro_index_stack); i++) {
+        if (macro_index == ctx->expand_ctx.macro_index_stack[i]) {
+            macro_tk->type = TK_DISABLED;
+            return false;
+        }
+    }
+    macro_tk = NULL;
+    Define * macro = &defines[macro_index];
+    Token * replace_list = NULL;
+    bool free_replace_list = false;
+    int count_arg_tokens = 0;
+
+    char * test = NULL; // TODO remove
+
+    fprintf(stderr, "macro: %s\n", macro->key);
+    if (macro->func_like) {
+        Token * list = NULL;
+        Token ** arg_list = get_macro_arguments(ctx, macro_tk_index, &count_arg_tokens);
+        if (!arg_list) {
+            return false;
+        }
+        fprintf(stderr, "sub:\n");
+        
         for (int tk_i=0; tk_i < arrlen(macro->replace_list); tk_i++) {
             Token tk = macro->replace_list[tk_i];
             bool replaced = false;
             if (tk.type == TK_IDENTIFIER) {
                 if (macro->variadic && tk_equal(&tk, "__VA_ARGS__")) {
-                    for (int arg_i=macro->arg_count; arg_i < arrlen(args); arg_i++) {
-                        tk_cat(&list, args[arg_i]);
+                    for (int arg_i=macro->arg_count; arg_i < arrlen(arg_list); arg_i++) {
+                        tk_cat(&list, arg_list[arg_i]);
                         static const Token comma = {.start = ",", .length = 1};
-                        if (arg_i != arrlen(args) - 1) arrput(list, comma);
+                        if (arg_i != arrlen(arg_list) - 1) arrput(list, comma);
                     }
                     replaced = true;
                 }
                 for (int param_i=0; param_i < macro->arg_count; param_i++) {
                     if (tk_equal(&tk, macro->arg_list[param_i])) {
-                        tk_cat(&list, args[param_i]);
+                        tk_cat(&list, arg_list[param_i]);
                         replaced = true;
                         break;
                     }
@@ -369,65 +434,46 @@ try_expand_macro(PreContext * ctx, Token * macro_tk, bool pop_no_expand, size_t 
             }
         }
         replace_list = list;
-        list = NULL;
         free_replace_list = true;
 
-    free_args:
-        for (int i=0; i < arrlen(args); i++) {
-            arrfree(args[i]);
-        }
-        arrfree(args);
+        arrsetlen(test, 0);
+        strput_tokens(&test, ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list));
+        strputnull(test);
+        fprintf(stderr, "%s\n", test);
+
+        free_macro_arguments(arg_list);
     } else {
         replace_list = macro->replace_list;
     }
 
-    arrpush(ctx->no_expand, map_index);
+    fprintf(stderr, "insert:\n");
+    // insert list
+    arrinsn(ctx->expand_ctx.list, macro_tk_index, arrlen(replace_list) - count_arg_tokens - 1); // -1 because we are replacing the original token
+    for (int i=0; i < arrlen(replace_list); i++) {
+        ctx->expand_ctx.list[macro_tk_index + i] = replace_list[i];
+    }
+    arrsetlen(test, 0);
+    strput_tokens(&test, ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list));
+    strputnull(test);
+    fprintf(stderr, "%s\n", test);
 
+    fprintf(stderr, "rescan:\n");
     // rescan
-    Token * final_list = internal_expand(ctx, replace_list, o_s);
-
-    if (pop_no_expand) arrsetlen(ctx->no_expand, previous_no_expand_length);
-
-    if (free_replace_list) arrfree(replace_list);
-    *o_count = arrlen(final_list);
-    return final_list;
-}
-
-static Token *
-internal_expand(PreContext * ctx, Token * replace_list, char ** o_s) {
-    Token * final_list = NULL;
-    if (arrlen(replace_list) > 0) {
-        char * temp_buf = NULL; // TODO IMPORTANT: leak
-        strput_tokens(&temp_buf, replace_list, arrlen(replace_list));
-        char * s = temp_buf;
-        Token tk, next = next_token(&s);
-        while (1) {
-            tk = next;
-            if (tk.type == TK_END) {
-                break;
-            }
-            next = next_token(&s);
-            if (tk.type == TK_IDENTIFIER) {
-                char * temp_s = next.start;
-                char ** pass_s = (next.type == TK_END)? o_s : &temp_s;
-                size_t count_inner;
-                Token * inner_list = try_expand_macro(ctx, &tk, false, &count_inner, pass_s);
-                if (count_inner != SIZE_MAX) {
-                    if (inner_list && count_inner > 0) {
-                        tk_cat(&final_list, inner_list);
-                        arrfree(inner_list);
-                    }
-                    if (temp_s > s) {
-                        s = temp_s;
-                        next = next_token(&s);
-                    }
-                    continue;
-                }
-            }
-            arrput(final_list, tk);
+    arrpush(ctx->expand_ctx.macro_index_stack, macro_index);
+    for (int i=macro_tk_index; i < macro_tk_index + arrlen(replace_list); i++) {
+        if (ctx->expand_ctx.list[i].type == TK_IDENTIFIER) {
+            macro_scan(ctx, i);
         }
     }
-    return final_list;
+    (void)arrpop(ctx->expand_ctx.macro_index_stack);
+    arrsetlen(test, 0);
+    strput_tokens(&test, ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list));
+    strputnull(test);
+    fprintf(stderr, "%s\n", test);
+    arrfree(test);
+
+    if (free_replace_list) arrfree(replace_list);
+    return true;
 }
 
 bool
@@ -517,6 +563,9 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
 
     char * s = file_buffer;
     char * chunk_begin = s;
+
+    arrsetcap(ctx->expand_ctx.list, 64);
+    arrsetlen(ctx->expand_ctx.list, 1);
 
     while (1) {
         char * start_of_line = s;
@@ -744,17 +793,17 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 if (tk.type == TK_COMMENT) {
                     ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
                 } else if (tk.type == TK_IDENTIFIER) {
-                    ctx->no_expand = NULL;
-                    size_t count = SIZE_MAX;
-                    Token * list = try_expand_macro(ctx, &tk, true, &count, &s);
-                    if (count != SIZE_MAX) {
+                    ctx->expand_ctx.o_s = &s;
+                    ctx->expand_ctx.list[0] = tk;
+                    if (macro_scan(ctx, 0)) {
+                        const Token * list = ctx->expand_ctx.list;
                         ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
-                        if (list && count > 0) {
-                            strput_tokens(result_buffer, list, count);
-                            arrfree(list);
+                        if (arrlen(list) > 0) {
+                            strput_tokens(result_buffer, list, arrlen(list));
                         }
+                        arrsetlen(ctx->expand_ctx.list, 1);
+                        arrsetlen(ctx->expand_ctx.macro_index_stack, 0);
                     }
-                    arrfree(ctx->no_expand);
                 }
             }
         }

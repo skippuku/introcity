@@ -10,7 +10,7 @@ ifeq (release,$(MAKECMDGOALS))
   CFLAGS += -O2
   LDFLAGS += -s
 else
-  CFLAGS += -g
+  CFLAGS += -g -DDEBUG
 endif
 
 CXXFLAGS := $(CFLAGS) -std=c++11 $(IMGUI_INCLUDE)
