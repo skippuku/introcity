@@ -266,14 +266,12 @@ strip_comments(char ** o_s) {
 static void
 strput_tokens(char ** p_str, const Token * list, size_t count) {
     if (!list) return;
-    bool last_was_iden = false;
     for (int i=0; i < count; i++) {
         Token tk = list[i];
-        if (last_was_iden && tk.type == TK_IDENTIFIER) {
+        if (tk.preceding_space) {
             arrput(*p_str, ' ');
         }
         strputf(p_str, "%.*s", tk.length, tk.start);
-        last_was_iden = (tk.type == TK_IDENTIFIER);
     }
 }
 
@@ -646,6 +644,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                         break;
                     }
                     if (tk.type != TK_COMMENT) {
+                        if (replace_list == NULL) tk.preceding_space = false;
                         arrput(replace_list, tk);
                     }
                 }

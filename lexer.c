@@ -9,7 +9,8 @@
 
 typedef struct Token {
     char * start;
-    int32_t length;
+    int16_t length;
+    bool preceding_space;
     enum {
         TK_UNKNOWN,
         TK_L_PARENTHESIS,
@@ -21,6 +22,7 @@ typedef struct Token {
         TK_L_ANGLE,
         TK_R_ANGLE,
         TK_EQUAL,
+        TK_D_EQUAL,
         TK_COLON,
         TK_SEMICOLON,
         TK_STAR,
@@ -28,8 +30,17 @@ typedef struct Token {
         TK_PERIOD,
         TK_HASH,
         TK_HYPHEN,
+        TK_FORSLASH,
         TK_BACKSLASH,
         TK_BAR,
+        TK_D_BAR,
+        TK_AND,
+        TK_D_AND,
+        TK_PLUS,
+        TK_CARET,
+        TK_BANG,
+        TK_MOD,
+        TK_TILDE,
 
         TK_IDENTIFIER,
         TK_STRING,
@@ -72,6 +83,7 @@ pre_next_token(char ** o_s) {
 
     while (*s != '\0' && *s != '\n' && is_space(*s)) s++;
     tk.start = s;
+    if (s != *o_s) tk.preceding_space = true;
 
     if (*s == '\0') return tk;
 
@@ -200,7 +212,6 @@ next_token(char ** o_s) {
     case '<': tk.type = TK_L_ANGLE; break;
     case '>': tk.type = TK_R_ANGLE; break;
 
-    case '=': tk.type = TK_EQUAL; break;
     case ':': tk.type = TK_COLON; break;
     case ';': tk.type = TK_SEMICOLON; break;
     case '*': tk.type = TK_STAR; break;
@@ -208,12 +219,27 @@ next_token(char ** o_s) {
     case '.': tk.type = TK_PERIOD; break;
     case '#': tk.type = TK_HASH; break;
     case '-': tk.type = TK_HYPHEN; break;
+    case '+': tk.type = TK_PLUS; break;
+    case '^': tk.type = TK_CARET; break;
+    case '/': tk.type = TK_FORSLASH; break;
+    case '!': tk.type = TK_BANG; break;
     case '\\': tk.type = TK_BACKSLASH; break;
-    case '|': tk.type = TK_BAR; break;
+    case '~': tk.type = TK_TILDE; break;
+
+    case '=': tk.type = TK_EQUAL; goto upgrade;
+    case '|': tk.type = TK_BAR; goto upgrade;
+    case '&': tk.type = TK_AND; goto upgrade;
 
     case EOF: tk.type = TK_END; break;
 
     default: tk.type = TK_UNKNOWN; break;
+
+    upgrade: {
+        if (*(s+1) == *s) {
+            tk.type += 1;
+            s += 1;
+        }
+    }break;
     }
 
     *o_s = s + 1;
