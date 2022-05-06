@@ -25,15 +25,13 @@ parse:
     rudimentary C++ support
 
 pre:
-    !! fix macros not rescanning
+    expressions + defined()
+    # and ## operators
     parse #line directives
     create #line directives?
     better config system for system headers and defines
     fix highlighting of expanded macros
-    # and ## operators
-    expressions + defined()
     move toward c99 compliance (6.10)
-        C99 6.10.3
         C99 6.10.2.4 : macro expansion in include directive
     internal: use context instead of globals
 

@@ -48,11 +48,6 @@ cleanall:
 	@$(MAKE) clean
 	rm -f $(EXE)
 
-define \n
-
-
-endef
-
 DEPS := $(addsuffix .d,$(basename $(SRC)))
 
 $(DEPS): %.d: %.o

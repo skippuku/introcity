@@ -347,10 +347,9 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index, int * o_count_tokens) 
     }
     arg_tks = NULL;
 
-    ExpandContext prev_ctx = ctx->expand_ctx;
+    const ExpandContext prev_ctx = ctx->expand_ctx;
     for (int arg_i=0; arg_i < arrlen(arg_list); arg_i++) {
         for (int tk_i=0; tk_i < arrlen(arg_list[arg_i]); tk_i++) {
-            assert(arg_list[arg_i]);
             if (arg_list[arg_i][tk_i].type == TK_IDENTIFIER) {
                 ctx->expand_ctx = (ExpandContext){
                     .macro_index_stack = ctx->expand_ctx.macro_index_stack,
@@ -358,7 +357,6 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index, int * o_count_tokens) 
                     .o_s = NULL,
                 };
                 macro_scan(ctx, tk_i);
-                assert(ctx->expand_ctx.list); // TODO remove
                 arg_list[arg_i] = ctx->expand_ctx.list;
             }
         }
@@ -398,16 +396,12 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     bool free_replace_list = false;
     int count_arg_tokens = 0;
 
-    char * test = NULL; // TODO remove
-
-    fprintf(stderr, "macro: %s\n", macro->key);
     if (macro->func_like) {
         Token * list = NULL;
         Token ** arg_list = get_macro_arguments(ctx, macro_tk_index, &count_arg_tokens);
         if (!arg_list) {
             return false;
         }
-        fprintf(stderr, "sub:\n");
         
         for (int tk_i=0; tk_i < arrlen(macro->replace_list); tk_i++) {
             Token tk = macro->replace_list[tk_i];
@@ -436,28 +430,22 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         replace_list = list;
         free_replace_list = true;
 
-        arrsetlen(test, 0);
-        strput_tokens(&test, ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list));
-        strputnull(test);
-        fprintf(stderr, "%s\n", test);
-
         free_macro_arguments(arg_list);
     } else {
         replace_list = macro->replace_list;
     }
 
-    fprintf(stderr, "insert:\n");
     // insert list
-    arrinsn(ctx->expand_ctx.list, macro_tk_index, arrlen(replace_list) - count_arg_tokens - 1); // -1 because we are replacing the original token
+    int diff = arrlen(replace_list) - count_arg_tokens - 1;
+    if (diff > 0) {
+        arrinsn(ctx->expand_ctx.list, macro_tk_index, diff);
+    } else {
+        arrdeln(ctx->expand_ctx.list, macro_tk_index, -diff);
+    }
     for (int i=0; i < arrlen(replace_list); i++) {
         ctx->expand_ctx.list[macro_tk_index + i] = replace_list[i];
     }
-    arrsetlen(test, 0);
-    strput_tokens(&test, ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list));
-    strputnull(test);
-    fprintf(stderr, "%s\n", test);
 
-    fprintf(stderr, "rescan:\n");
     // rescan
     arrpush(ctx->expand_ctx.macro_index_stack, macro_index);
     for (int i=macro_tk_index; i < macro_tk_index + arrlen(replace_list); i++) {
@@ -466,11 +454,6 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         }
     }
     (void)arrpop(ctx->expand_ctx.macro_index_stack);
-    arrsetlen(test, 0);
-    strput_tokens(&test, ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list));
-    strputnull(test);
-    fprintf(stderr, "%s\n", test);
-    arrfree(test);
 
     if (free_replace_list) arrfree(replace_list);
     return true;
