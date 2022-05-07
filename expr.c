@@ -12,38 +12,45 @@ typedef struct {
 typedef enum {
     OP_INT = 0x00,
 
-    OP_UNARY_ADD = 0x01,
+    OP_UNARY_ADD = 0x21,
     OP_UNARY_SUB,
     OP_BIT_NOT,
     OP_BOOL_NOT,
 
-    OP_MUL = 0x10,
+    OP_MUL = 0x30,
     OP_DIV,
     OP_MOD,
 
-    OP_ADD = 0x20,
+    OP_ADD = 0x40,
     OP_SUB,
 
-    OP_SHIFT_LEFT = 0x30,
+    OP_SHIFT_LEFT = 0x50,
     OP_SHIFT_RIGHT,
 
-    OP_LESS= 0x40,
+    OP_LESS= 0x60,
     OP_LESS_OR_EQUAL,
     OP_GREATER,
     OP_GREATER_OR_EQUAL,
 
-    OP_EQUAL = 0x50,
+    OP_EQUAL = 0x70,
     OP_NOT_EQUAL,
 
-    OP_BIT_AND  = 0x60,
-    OP_BIT_XOR  = 0x70,
-    OP_BIT_OR   = 0x80,
-    OP_BOOL_AND = 0x90,
-    OP_BOOL_OR  = 0xa0,
+    OP_BIT_AND  = 0x80,
+    OP_BIT_XOR  = 0x90,
+    OP_BIT_OR   = 0xa0,
+    OP_BOOL_AND = 0xb0,
+    OP_BOOL_OR  = 0xc0,
 
     OP_PUSH = 0xf0, // intruction only
-    OP_DONE,        // intruction only
+    OP_SET,
+    OP_DONE,
 } ExprOp;
+
+enum ExprOpTypes {
+    OP_TYPE_MASK  = 0xf0,
+    OP_VALUE_TYPE = 0x00,
+    OP_UNARY_TYPE = 0x20,
+};
 
 typedef struct ExprNode ExprNode;
 struct ExprNode {
@@ -56,8 +63,8 @@ struct ExprNode {
 };
 
 typedef enum {
-    REG_LAST_RESULT,
     REG_VALUE,
+    REG_LAST_RESULT,
     REG_POP_STACK,
 } ExprInstructionRegisterType;
 
@@ -104,6 +111,7 @@ build_expression_tree(MemArena * arena, Token * tokens, int count_tokens) {
 
     int paren_depth = 0;
     ExprNode * node = arena_alloc(arena, sizeof(*node));
+    bool last_was_value = false;
     for (int tk_i=0; tk_i < count_tokens; tk_i++) {
         Token tk = tokens[tk_i];
 
@@ -123,13 +131,26 @@ build_expression_tree(MemArena * arena, Token * tokens, int count_tokens) {
             node->value = (intmax_t)strtol(tk.start, NULL, 0);
         }break;
 
-        case TK_PLUS:     node->op = OP_ADD; break;
-        case TK_HYPHEN:   node->op = OP_SUB; break;
-        case TK_STAR:     node->op = OP_MUL; break;
-        case TK_FORSLASH: node->op = OP_DIV; break;
-        case TK_MOD:      node->op = OP_MOD; break;
-        case TK_D_AND:    node->op = OP_BOOL_AND; break;
-        case TK_D_BAR:    node->op = OP_BOOL_OR; break;
+        case TK_PLUS:          node->op = (last_was_value)? OP_ADD : OP_UNARY_ADD; break;
+        case TK_HYPHEN:        node->op = (last_was_value)? OP_SUB : OP_UNARY_SUB; break;
+        case TK_STAR:          node->op = OP_MUL; break;
+        case TK_FORSLASH:      node->op = OP_DIV; break;
+        case TK_MOD:           node->op = OP_MOD; break;
+        case TK_D_EQUAL:       node->op = OP_EQUAL; break;
+        case TK_NOT_EQUAL:     node->op = OP_NOT_EQUAL; break;
+        case TK_D_AND:         node->op = OP_BOOL_AND; break;
+        case TK_D_BAR:         node->op = OP_BOOL_OR; break;
+        case TK_L_ANGLE:       node->op = OP_LESS; break;
+        case TK_LESS_EQUAL:    node->op = OP_LESS_OR_EQUAL; break;
+        case TK_R_ANGLE:       node->op = OP_GREATER; break;
+        case TK_GREATER_EQUAL: node->op = OP_GREATER_OR_EQUAL; break;
+        case TK_BAR:           node->op = OP_BIT_OR; break;
+        case TK_AND:           node->op = OP_BIT_AND; break;
+        case TK_CARET:         node->op = OP_BIT_XOR; break;
+        case TK_BANG:          node->op = OP_BOOL_NOT; break;
+        case TK_TILDE:         node->op = OP_BIT_NOT; break;
+        case TK_LEFT_SHIFT:    node->op = OP_SHIFT_LEFT; break;
+        case TK_RIGHT_SHIFT:   node->op = OP_SHIFT_RIGHT; break;
 
         default: {
             fprintf(stderr, "invalid symbol in expression: '%.*s'\n", tk.length, tk.start); // TODO
@@ -139,14 +160,19 @@ build_expression_tree(MemArena * arena, Token * tokens, int count_tokens) {
         node->depth = paren_depth;
         node->tk = tk;
 
+        last_was_value = (node->op == OP_INT);
+
         ExprNode ** p_index = &base;
         while (1) {
             ExprNode * index = *p_index;
 
             if (
                 (index == NULL)
-             || (node->depth < index->depth)
-             || (node->depth == index->depth && (node->op & 0xf0) >= (index->op & 0xf0))
+              ||(node->depth < index->depth)
+              ||(
+                 (node->depth == index->depth && (node->op & OP_TYPE_MASK) >= (index->op & OP_TYPE_MASK))
+               &&((node->op & OP_TYPE_MASK) != OP_UNARY_TYPE)
+                )
                )
             {
                 node->left = index;
@@ -168,6 +194,17 @@ build_expr_procedure(ExprNode * tree) {
     ExprNode ** node_stack = NULL;
     ExprNode * node = tree;
     int max_stack_size = 0;
+
+    if (node->op == OP_INT) {
+        ExprInstruction set = {
+            .op = OP_SET,
+            .left_type = REG_VALUE,
+            .right_type = REG_VALUE,
+            .right_value = node->value,
+        };
+        arrput(list, set);
+        goto post_reverse;
+    }
 
     while (1) {
         ExprInstruction ins = {0};
@@ -238,6 +275,7 @@ build_expr_procedure(ExprNode * tree) {
         list[i] = temp;
     }
 
+post_reverse: ;
     static const ExprInstruction done = {.op = OP_DONE};
     arrput(list, done);
 
@@ -269,22 +307,42 @@ run_expression(ExprProcedure * proc) {
         switch(ins.right_type) {
         case REG_VALUE: right = ins.right_value; break;
         case REG_LAST_RESULT: right = result; break;
-        default: ;
+        case REG_POP_STACK: break; // never reached
         }
 
         switch(ins.op) {
         case OP_DONE: return result;
         case OP_PUSH: stack[stack_index++] = result; break;
 
+        case OP_UNARY_ADD: result = +right; break;
+        case OP_UNARY_SUB: result = -right; break;
+        case OP_BOOL_NOT:  result = !right; break;
+        case OP_BIT_NOT:   result = ~right; break;
+
         case OP_ADD: result = left + right; break;
         case OP_SUB: result = left - right; break;
         case OP_MUL: result = left * right; break;
         case OP_DIV: result = left / right; break;
         case OP_MOD: result = left % right; break;
-        case OP_BOOL_AND: result = left && right; break;
-        case OP_BOOL_OR: result = left || right; break;
 
-        default: ;
+        case OP_EQUAL:            result = left == right; break;
+        case OP_NOT_EQUAL:        result = left != right; break;
+        case OP_LESS:             result = left <  right; break;
+        case OP_GREATER:          result = left >  right; break;
+        case OP_LESS_OR_EQUAL:    result = left <= right; break;
+        case OP_GREATER_OR_EQUAL: result = left >= right; break;
+        case OP_BOOL_AND:         result = left && right; break;
+        case OP_BOOL_OR:          result = left || right; break;
+        case OP_SHIFT_LEFT:       result = left << right; break;
+        case OP_SHIFT_RIGHT:      result = left >> right; break;
+        
+        case OP_BIT_AND: result = left & right; break;
+        case OP_BIT_OR:  result = left | right; break;
+        case OP_BIT_XOR: result = left ^ right; break;
+
+        case OP_SET: result = right; break;
+
+        case OP_INT: break; // never reached
         }
     }
 
@@ -293,7 +351,9 @@ run_expression(ExprProcedure * proc) {
 
 void
 expr_test() {
-    char * buf = "7 / ((7 && 2) * 5) - 3 + (2*(3+4) - 2)";
+    char buf [1024];
+    printf("Enter a c expression: ");
+    fgets(buf, sizeof(buf), stdin);
     char * s = buf;
     Token * tks = NULL;
     while (1) {
@@ -313,6 +373,5 @@ expr_test() {
     free(expr);
     free_arena(tree_arena);
 
-    printf("expression: %s\n", buf);
     printf("result: %i\n", (int)result);
 }

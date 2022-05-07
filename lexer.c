@@ -20,9 +20,13 @@ typedef struct Token {
         TK_L_BRACE,
         TK_R_BRACE,
         TK_L_ANGLE,
+        TK_LEFT_SHIFT = TK_L_ANGLE + 1,
+        TK_LESS_EQUAL = TK_L_ANGLE + 2,
         TK_R_ANGLE,
+        TK_RIGHT_SHIFT = TK_R_ANGLE + 1,
+        TK_GREATER_EQUAL = TK_R_ANGLE + 2,
         TK_EQUAL,
-        TK_D_EQUAL,
+        TK_D_EQUAL = TK_EQUAL + 1,
         TK_COLON,
         TK_SEMICOLON,
         TK_STAR,
@@ -33,12 +37,13 @@ typedef struct Token {
         TK_FORSLASH,
         TK_BACKSLASH,
         TK_BAR,
-        TK_D_BAR,
+        TK_D_BAR = TK_BAR + 1,
         TK_AND,
-        TK_D_AND,
+        TK_D_AND = TK_AND + 1,
         TK_PLUS,
         TK_CARET,
         TK_BANG,
+        TK_NOT_EQUAL = TK_BANG + 2,
         TK_MOD,
         TK_TILDE,
 
@@ -198,6 +203,11 @@ next_token(char ** o_s) {
         if (*s == '\0') return tk;
     }
 
+    enum TokenFlags {
+        TK_CHECK_DOUBLE = 0x01,
+        TK_CHECK_EQUAL  = 0x02,
+    } flags = 0;
+
     tk.length = 1;
     switch(*s) {
     case '{': tk.type = TK_L_BRACE; break;
@@ -209,8 +219,10 @@ next_token(char ** o_s) {
     case '(': tk.type = TK_L_PARENTHESIS; break;
     case ')': tk.type = TK_R_PARENTHESIS; break;
 
-    case '<': tk.type = TK_L_ANGLE; break;
-    case '>': tk.type = TK_R_ANGLE; break;
+    case '<': tk.type = TK_L_ANGLE;
+              flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL; break;
+    case '>': tk.type = TK_R_ANGLE;
+              flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL; break;
 
     case ':': tk.type = TK_COLON; break;
     case ';': tk.type = TK_SEMICOLON; break;
@@ -222,25 +234,37 @@ next_token(char ** o_s) {
     case '+': tk.type = TK_PLUS; break;
     case '^': tk.type = TK_CARET; break;
     case '/': tk.type = TK_FORSLASH; break;
-    case '!': tk.type = TK_BANG; break;
     case '\\': tk.type = TK_BACKSLASH; break;
     case '~': tk.type = TK_TILDE; break;
+    case '!': tk.type = TK_BANG;
+              flags = TK_CHECK_EQUAL; break;
 
-    case '=': tk.type = TK_EQUAL; goto upgrade;
-    case '|': tk.type = TK_BAR; goto upgrade;
-    case '&': tk.type = TK_AND; goto upgrade;
+    case '=': tk.type = TK_EQUAL;
+              flags = TK_CHECK_DOUBLE; break;
+    case '|': tk.type = TK_BAR;
+              flags = TK_CHECK_DOUBLE; break;
+    case '&': tk.type = TK_AND;
+              flags = TK_CHECK_DOUBLE; break;
 
     case EOF: tk.type = TK_END; break;
 
     default: tk.type = TK_UNKNOWN; break;
+    }
 
-    upgrade: {
+    if ((flags & TK_CHECK_DOUBLE)) {
         if (*(s+1) == *s) {
             tk.type += 1;
             tk.length += 1;
             s += 1;
+            flags = 0;
         }
-    }break;
+    }
+    if ((flags & TK_CHECK_EQUAL)) {
+        if (*(s+1) == '=') {
+            tk.type += 2;
+            tk.length += 1;
+            s += 1;
+        }
     }
 
     *o_s = s + 1;
