@@ -237,6 +237,7 @@ next_token(char ** o_s) {
     upgrade: {
         if (*(s+1) == *s) {
             tk.type += 1;
+            tk.length += 1;
             s += 1;
         }
     }break;
