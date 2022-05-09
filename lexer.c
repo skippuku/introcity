@@ -33,6 +33,7 @@ typedef struct Token {
         TK_COMMA,
         TK_PERIOD,
         TK_HASH,
+        TK_D_HASH = TK_HASH + 1,
         TK_HYPHEN,
         TK_FORSLASH,
         TK_BACKSLASH,
@@ -167,7 +168,15 @@ pre_next_token(char ** o_s) {
     // we'll just check what *s is since it's just one character
     // NOTE: maybe this should be how the parser version works too?
     if (*s != EOF) tk.type = TK_UNKNOWN;
-    if (*s == '#') tk.type = TK_COMMENT;
+    if (*s == '#') {
+        if (*(s+1) == '#') {
+            s += 1;
+            tk.length += 1;
+            tk.type = TK_D_HASH;
+        } else {
+            tk.type = TK_HASH;
+        }
+    }
 
     *o_s = s + 1;
     return tk;

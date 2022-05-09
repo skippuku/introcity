@@ -154,6 +154,38 @@ preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, ch
 #define preprocess_error(tk, message)   preprocess_message_internal(ctx->current_file_buffer, tk, message, 0)
 #define preprocess_warning(tk, message) preprocess_message_internal(ctx->current_file_buffer, tk, message, 1)
 
+static Token
+create_stringized(Token * list) {
+    char * buf = NULL;
+    arrput(buf, '"');
+    for (int i=0; i < arrlen(list); i++) {
+        Token tk = list[i];
+        if (tk.preceding_space && i > 0) {
+            arrput(buf, ' ');
+        }
+        if (tk.type == TK_STRING) {
+            for (char * s = tk.start; s < tk.start + tk.length; s++) {
+                if (*s == '"' || *s == '\\') {
+                    arrput(buf, '\\');
+                }
+                arrput(buf, *s);
+            }
+            continue;
+        }
+        strputf(&buf, "%.*s", tk.length, tk.start);
+    }
+    arrput(buf, '"');
+    strputnull(buf);
+
+    Token result = {
+        .start = buf, // TODO: leak
+        .length = arrlen(buf) - 1,
+        .preceding_space = (list)? list[0].preceding_space : false,
+        .type = TK_STRING,
+    };
+    return result;
+}
+
 static char * result_buffer = NULL;
 
 static void
@@ -411,6 +443,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             return false;
         }
         
+        Token ltk = {.start = ""};
         for (int tk_i=0; tk_i < arrlen(macro->replace_list); tk_i++) {
             Token tk = macro->replace_list[tk_i];
             bool replaced = false;
@@ -425,15 +458,21 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 }
                 for (int param_i=0; param_i < macro->arg_count; param_i++) {
                     if (tk_equal(&tk, macro->arg_list[param_i])) {
-                        tk_cat(&list, arg_list[param_i]);
+                        if (ltk.type == TK_HASH && ltk.length == 1) {
+                            Token stringized = create_stringized(arg_list[param_i]);
+                            arrput(list, stringized);
+                        } else {
+                            tk_cat(&list, arg_list[param_i]);
+                        }
                         replaced = true;
                         break;
                     }
                 }
             }
-            if (!replaced) {
+            if (!replaced && !(tk.type == TK_HASH || tk.type == TK_D_HASH)) {
                 arrput(list, tk);
             }
+            ltk = tk;
         }
         replace_list = list;
         free_replace_list = true;

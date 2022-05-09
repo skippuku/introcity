@@ -1,3 +1,7 @@
+#define stringize(x) # x
+#define funny_string "hello there, people\n" '"'
+(funny_string) -> stringize(funny_string)
+// from the c99 standard
 #define x 3
 #define f(a) f(x * (a))
 #undef x

@@ -14,6 +14,8 @@ attribute:
 
 parse:
     !! enum expressions ex. "TK_L_ANGLE + 1"
+    (a)? b : c
+    (a * b + !a * c)
     do something about long double and wchar_t
     give c int types a parent based on size and signedness
     add way to change c int type sizes for different platforms
@@ -27,7 +29,6 @@ parse:
 
 pre:
     !! # and ## operators
-    !! ternary operator
     parse #line directives
     create #line directives?
     better config system for system headers and defines
