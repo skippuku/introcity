@@ -46,6 +46,7 @@ typedef struct Token {
         TK_NOT_EQUAL = TK_BANG + 2,
         TK_MOD,
         TK_TILDE,
+        TK_QUESTION_MARK,
 
         TK_IDENTIFIER,
         TK_STRING,
@@ -237,6 +238,7 @@ next_token(char ** o_s) {
     case '/': tk.type = TK_FORSLASH; break;
     case '\\': tk.type = TK_BACKSLASH; break;
     case '~': tk.type = TK_TILDE; break;
+    case '?': tk.type = TK_QUESTION_MARK; break;
     case '!': tk.type = TK_BANG;
               flags = TK_CHECK_EQUAL; break;
 

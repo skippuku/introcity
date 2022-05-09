@@ -41,6 +41,9 @@ typedef enum {
     OP_BOOL_AND = 0xb0,
     OP_BOOL_OR  = 0xc0,
 
+    OP_TERNARY_1 = 0xd0,
+    OP_TERNARY_2,
+
     OP_PUSH = 0xf0, // intruction only
     OP_SET,
     OP_DONE,
@@ -151,14 +154,21 @@ build_expression_tree(MemArena * arena, Token * tokens, int count_tokens, Token 
         case TK_TILDE:         node->op = OP_BIT_NOT; break;
         case TK_LEFT_SHIFT:    node->op = OP_SHIFT_LEFT; break;
         case TK_RIGHT_SHIFT:   node->op = OP_SHIFT_RIGHT; break;
+        case TK_QUESTION_MARK: node->op = OP_TERNARY_1; break;
+        case TK_COLON:         node->op = OP_TERNARY_2; break;
 
         default: {
             if (o_error_tk) *o_error_tk = tk;
             return NULL;
         }break;
         }
+
+        if (node->op == OP_TERNARY_2) paren_depth -= 1;
+
         node->depth = paren_depth;
         node->tk = tk;
+
+        if (node->op == OP_TERNARY_1) paren_depth += 1;
 
         last_was_value = (node->op == OP_INT);
 
@@ -213,14 +223,17 @@ build_expr_procedure(ExprNode * tree) {
         bool right_is_op = node->right->op;
         bool go_left = false;
         bool take_from_node_stack = false;
+        if (node->op == OP_TERNARY_1) {
+            (void)arrpop(node_stack);
+        }
+        if (node->op == OP_TERNARY_2) {
+            arrput(node_stack, NULL); // dummy node to get correct stack size
+        }
         if (left_is_op) {
             if (right_is_op) {
                 ins.left_type = REG_POP_STACK;
                 ins.right_type = REG_LAST_RESULT;
                 arrput(node_stack, node->left);
-                if (arrlen(node_stack) > max_stack_size) {
-                    max_stack_size = arrlen(node_stack);
-                }
             } else {
                 ins.left_type = REG_LAST_RESULT;
                 ins.right_type = REG_VALUE;
@@ -236,6 +249,9 @@ build_expr_procedure(ExprNode * tree) {
                 take_from_node_stack = true;
             }
         }
+        if (arrlen(node_stack) > max_stack_size) {
+            max_stack_size = arrlen(node_stack);
+        }
 
         if (ins.left_type == REG_VALUE) {
             if (node->left) {
@@ -247,7 +263,6 @@ build_expr_procedure(ExprNode * tree) {
         if (ins.right_type == REG_VALUE) {
             ins.right_value = node->right->value;
         }
-
         arrput(list, ins);
 
         if (take_from_node_stack) {
@@ -341,6 +356,15 @@ run_expression(ExprProcedure * proc) {
         case OP_BIT_XOR: result = left ^ right; break;
 
         case OP_SET: result = right; break;
+
+        case OP_TERNARY_1:
+            stack[stack_index++] = !!left;
+            result = right;
+            break;
+
+        case OP_TERNARY_2:
+            result = (stack[--stack_index])? left : right;
+            break;
 
         case OP_INT: break; // never reached
         }
