@@ -13,6 +13,11 @@
 #ifndef LENGTH
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #endif
+
+#ifndef MIN
+#define MIN(a,b) (((a)<(b))? (a) : (b))
+#endif
+
 #define strputnull(a) arrput(a,0)
 // index of last put or get
 #define shtemp(t) stbds_temp((t)-1)
@@ -93,7 +98,7 @@ strputf(char ** p_str, const char * format, ...) {
 // this is so i can get the array length in gdb
 int
 dbarrlen(void * a) {
-    return arrlen(a);
+    return (a)? arrlen(a) : -1;
 }
 #endif
 #endif

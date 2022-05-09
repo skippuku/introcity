@@ -455,8 +455,9 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     }
 
     // rescan
+    int back_offset = macro_tk_index + arrlen(replace_list) - arrlen(ctx->expand_ctx.list);
     arrpush(ctx->expand_ctx.macro_index_stack, macro_index);
-    for (int i=macro_tk_index; i < macro_tk_index + arrlen(replace_list); i++) {
+    for (int i=macro_tk_index; i < arrlen(ctx->expand_ctx.list) - back_offset; i++) {
         if (ctx->expand_ctx.list[i].type == TK_IDENTIFIER) {
             macro_scan(ctx, i);
         }
@@ -473,7 +474,6 @@ parse_expression(PreContext * ctx, char ** o_s) {
     arrsetcap(ptks, 64);
     ExpandContext prev_ctx = ctx->expand_ctx;
     char * processed = NULL;
-    fprintf(stderr, "buf: %.*s\n", (int)(strchr(*o_s, '\n') - *o_s), *o_s);
     while (1) {
         Token ptk = pre_next_token(o_s);
         if (ptk.type == TK_NEWLINE) {
@@ -507,7 +507,6 @@ parse_expression(PreContext * ctx, char ** o_s) {
         if (tk.type == TK_END) break;
         arrput(tks, tk);
     }
-    fprintf(stderr, "expanded expression: %s\n", processed);
 
     MemArena * arena = new_arena();
     Token err_tk = {0};
@@ -518,7 +517,6 @@ parse_expression(PreContext * ctx, char ** o_s) {
     }
     ExprProcedure * expr = build_expr_procedure(tree);
     intmax_t result = run_expression(expr);
-    fprintf(stderr, "result: %i\n\n", (int)result);
 
     free(expr);
     free_arena(arena);

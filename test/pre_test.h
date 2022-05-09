@@ -12,7 +12,6 @@
 #define q(x) x
 #define r(x,y) x ## y
 #define str(x) # x
-
 f(y+1) + f(f(z)) % t(t(g)(0) + t)(1);
 g(x+(3,4)-w) | h 5) & m
 (f)^m(m);
