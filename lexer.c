@@ -166,6 +166,7 @@ pre_next_token(char ** o_s) {
     // we'll just check what *s is since it's just one character
     // NOTE: maybe this should be how the parser version works too?
     if (*s != EOF) tk.type = TK_UNKNOWN;
+    if (*s == '#') tk.type = TK_COMMENT;
 
     *o_s = s + 1;
     return tk;

@@ -21,8 +21,6 @@ main(int argc, char * argv []) {
     mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     SetConsoleMode(con, mode);
 #endif
-    expr_test();
-
     char * output_filename = NULL;
     char * preprocessed_buffer = run_preprocessor(argc, argv, &output_filename);
     if (!preprocessed_buffer) {

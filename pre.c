@@ -241,28 +241,6 @@ ignore_section(char ** buffer, char * filename, char * file_buffer, char ** o_pa
     *o_paste_begin = end;
 }
 
-static char *
-strip_comments(char ** o_s) {
-    char * content = NULL;
-    Token ltk = {0};
-    while (1) {
-        Token tk = pre_next_token(o_s);
-        if (tk.type == TK_NEWLINE) {
-            *o_s = tk.start;
-            break;
-        } else if (tk.type == TK_COMMENT) {
-            continue;
-        } else {
-            if (ltk.start && ltk.start + ltk.length < tk.start) {
-                arrput(content, ' ');
-            }
-            strputf(&content, "%.*s", (int)(tk.length), tk.start);
-            ltk = tk;
-        }
-    }
-    return content;
-}
-
 static void
 strput_tokens(char ** p_str, const Token * list, size_t count) {
     if (!list) return;
@@ -378,6 +356,38 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     Token * macro_tk = &ctx->expand_ctx.list[macro_tk_index];
     STACK_TERMINATE(terminated_tk, macro_tk->start, macro_tk->length);
 
+    if (0==strcmp(terminated_tk, "defined")) {
+        int index = macro_tk_index;
+        Token tk = internal_macro_next_token(ctx, &index);
+        bool is_paren = false;
+        if (tk.start && *tk.start == '(') {
+            is_paren = true;
+            tk = internal_macro_next_token(ctx, &index);
+        }
+        if (tk.type != TK_IDENTIFIER) {
+            preprocess_error(&tk, "Expected identifier.");
+            exit(1);
+        }
+        STACK_TERMINATE(defined_iden, tk.start, tk.length);
+        char * replace = (shgeti(defines, defined_iden) >= 0)? "1" : "0";
+        if (is_paren) {
+            tk = internal_macro_next_token(ctx, &index);
+            if (*tk.start != ')') {
+                preprocess_error(&tk, "Expected ')'.");
+                exit(1);
+            }
+        }
+        Token replace_tk = (Token){
+            .start = replace,
+            .length = 1,
+            .type = TK_IDENTIFIER,
+            .preceding_space = ctx->expand_ctx.list[macro_tk_index].preceding_space,
+        };
+        arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2));
+        ctx->expand_ctx.list[macro_tk_index] = replace_tk;
+        return true;
+    }
+
     ptrdiff_t macro_index = shgeti(defines, terminated_tk);
     if (macro_index < 0) {
         return false;
@@ -458,17 +468,67 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
 }
 
 bool
-parse_expression(char * s) {
-    Token tk = next_token(&s);
-    if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "1")) {
-        return true;
-    } else {
-        return false;
+parse_expression(PreContext * ctx, char ** o_s) {
+    Token * ptks = NULL;
+    arrsetcap(ptks, 64);
+    ExpandContext prev_ctx = ctx->expand_ctx;
+    char * processed = NULL;
+    fprintf(stderr, "buf: %.*s\n", (int)(strchr(*o_s, '\n') - *o_s), *o_s);
+    while (1) {
+        Token ptk = pre_next_token(o_s);
+        if (ptk.type == TK_NEWLINE) {
+            *o_s = ptk.start;
+            break;
+        } else if (ptk.type == TK_COMMENT) {
+            continue;
+        } else {
+            arrsetlen(ptks, 1);
+            ptks[0] = ptk;
+            if (ptk.type == TK_IDENTIFIER) {
+                ctx->expand_ctx = (ExpandContext){
+                    .macro_index_stack = NULL,
+                    .list = ptks,
+                    .o_s = o_s,
+                };
+                ptks = ctx->expand_ctx.list;
+                macro_scan(ctx, 0);
+            }
+            strput_tokens(&processed, ptks, arrlen(ptks));
+        }
     }
+    ctx->expand_ctx = prev_ctx;
+    strputnull(processed);
+    arrfree(ptks);
+
+    char * s = processed;
+    Token * tks = NULL;
+    while (1) {
+        Token tk = next_token(&s);
+        if (tk.type == TK_END) break;
+        arrput(tks, tk);
+    }
+    fprintf(stderr, "expanded expression: %s\n", processed);
+
+    MemArena * arena = new_arena();
+    Token err_tk = {0};
+    ExprNode * tree = build_expression_tree(arena, tks, arrlen(tks), &err_tk);
+    if (!tree && err_tk.start) {
+        preprocess_error(&err_tk, "Invalid symbol in expression.");
+        exit(1);
+    }
+    ExprProcedure * expr = build_expr_procedure(tree);
+    intmax_t result = run_expression(expr);
+    fprintf(stderr, "result: %i\n\n", (int)result);
+
+    free(expr);
+    free_arena(arena);
+    arrfree(processed);
+
+    return !!result;
 }
 
 static void
-pre_skip(char ** o_s, bool elif_ok) {
+pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
     int depth = 1;
     while (1) {
         Token tk = pre_next_token(o_s);
@@ -492,9 +552,7 @@ pre_skip(char ** o_s, bool elif_ok) {
                     }
                 } else if (tk_equal(&tk, "elif")) {
                     if (elif_ok && depth == 1) {
-                        char * expr = strip_comments(o_s);
-                        bool expr_result = parse_expression(expr);
-                        arrfree(expr);
+                        bool expr_result = parse_expression(ctx, o_s);
                         if (expr_result) {
                             return;
                         }
@@ -666,11 +724,9 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 (void) shdel(defines, iden);
                 free(iden);
             } else if (tk_equal(&directive, "if")) {
-                char * expr = strip_comments(&s);
-                bool expr_result = parse_expression(expr);
-                arrfree(expr);
+                bool expr_result = parse_expression(ctx, &s);
                 if (!expr_result) {
-                    pre_skip(&s, true);
+                    pre_skip(ctx, &s, true);
                 }
             } else if (tk_equal(&directive, "ifdef")) {
                 tk = pre_next_token(&s);
@@ -678,7 +734,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 int def_index = shgeti(defines, name);
                 free(name);
                 if (def_index < 0) {
-                    pre_skip(&s, true);
+                    pre_skip(ctx, &s, true);
                 }
             } else if (tk_equal(&directive, "ifndef")) {
                 tk = pre_next_token(&s);
@@ -686,12 +742,12 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 int def_index = shgeti(defines, name);
                 free(name);
                 if (def_index >= 0) {
-                    pre_skip(&s, true);
+                    pre_skip(ctx, &s, true);
                 }
             } else if (tk_equal(&directive, "elif")) {
-                pre_skip(&s, false);
+                pre_skip(ctx, &s, false);
             } else if (tk_equal(&directive, "else")) {
-                pre_skip(&s, false);
+                pre_skip(ctx, &s, false);
             } else if (tk_equal(&directive, "endif")) {
             } else if (tk_equal(&directive, "error")) {
                 preprocess_error(&directive, "User error");
@@ -860,6 +916,9 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
                 arg = argv[i] + 2;
                 if (0==strcmp(arg, "no-sys")) {
                     no_sys = true;
+                } else if (0==strcmp(arg, "expr-test")) {
+                    expr_test();
+                    exit(0);
                 } else {
                     fprintf(stderr, "Unknown option: '%s'\n", arg);
                     exit(1);

@@ -106,7 +106,7 @@ free_arena(MemArena * arena) {
 }
 
 ExprNode *
-build_expression_tree(MemArena * arena, Token * tokens, int count_tokens) {
+build_expression_tree(MemArena * arena, Token * tokens, int count_tokens, Token * o_error_tk) {
     ExprNode * base = NULL;
 
     int paren_depth = 0;
@@ -153,8 +153,8 @@ build_expression_tree(MemArena * arena, Token * tokens, int count_tokens) {
         case TK_RIGHT_SHIFT:   node->op = OP_SHIFT_RIGHT; break;
 
         default: {
-            fprintf(stderr, "invalid symbol in expression: '%.*s'\n", tk.length, tk.start); // TODO
-            exit(1);
+            if (o_error_tk) *o_error_tk = tk;
+            return NULL;
         }break;
         }
         node->depth = paren_depth;
@@ -195,12 +195,12 @@ build_expr_procedure(ExprNode * tree) {
     ExprNode * node = tree;
     int max_stack_size = 0;
 
-    if (node->op == OP_INT) {
+    if (!node || node->op == OP_INT) {
         ExprInstruction set = {
             .op = OP_SET,
             .left_type = REG_VALUE,
             .right_type = REG_VALUE,
-            .right_value = node->value,
+            .right_value = (node)? node->value : 0,
         };
         arrput(list, set);
         goto post_reverse;
@@ -366,7 +366,7 @@ expr_test() {
 
     MemArena * tree_arena = new_arena();
 
-    ExprNode * tree = build_expression_tree(tree_arena, tks, arrlen(tks));
+    ExprNode * tree = build_expression_tree(tree_arena, tks, arrlen(tks), NULL);
     ExprProcedure * expr = build_expr_procedure(tree);
     intmax_t result = run_expression(expr);
 
