@@ -1,7 +1,31 @@
-#define stringize(x) # x
-#define funny_string "hello there, people\n" '"'
-(funny_string) -> stringize(funny_string)
 // from the c99 standard
+
+// 6.10.3.3.4
+#define hash_hash # ## #
+#define mkstr(a) # a
+#define in_between(a) mkstr(a)
+#define join(c, d) in_between(c hash_hash d)
+char p[] = join(x, y);
+
+// 6.10.3.5.6
+#define str(s)      # s
+#define xstr(s)     str(s)
+#define debug(s, t) printf("x" # s "= %d, x" # t "= %s", \
+                        x ## s, x ## t)
+#define INCFILE(n)  vers ## n
+#define glue(a, b)  a ## b
+#define xglue(a, b) glue(a, b)
+#define HIGHLOW     "hello"
+#define LOW         LOW ", world"
+debug(1, 2);
+fputs(str(strncmp("abc\0d", "abc", '\4') // this goes away
+== 0) str(: @\n), s);
+#include xstr(INCFILE(2).h)
+glue(HIGH, LOW);
+xglue(HIGH, LOW)
+
+#undef str
+// 6.10.3.5.5
 #define x 3
 #define f(a) f(x * (a))
 #undef x

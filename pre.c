@@ -180,7 +180,6 @@ create_stringized(Token * list) {
     Token result = {
         .start = buf, // TODO: leak
         .length = arrlen(buf) - 1,
-        .preceding_space = (list)? list[0].preceding_space : false,
         .type = TK_STRING,
     };
     return result;
@@ -315,8 +314,16 @@ internal_macro_next_token(PreContext * ctx, int * o_index) {
     }
 }
 
-static Token ** // array of array of tokens
-get_macro_arguments(PreContext * ctx, int macro_tk_index, int * o_count_tokens) {
+typedef struct {
+    Token ** unexpanded_list;
+    Token ** expanded_list;
+    int count_tokens;
+    bool complete;
+} MacroArgs;
+
+MacroArgs
+get_macro_arguments(PreContext * ctx, int macro_tk_index) {
+    MacroArgs result = {0};
     int i = macro_tk_index;
     char * prev_s = NULL;
     if (ctx->expand_ctx.o_s) prev_s = *ctx->expand_ctx.o_s;
@@ -324,7 +331,7 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index, int * o_count_tokens) 
     if (l_paren.type == TK_END || *l_paren.start != '(') {
         arrsetlen(ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list) - 1);
         if (ctx->expand_ctx.o_s) *ctx->expand_ctx.o_s = prev_s;
-        return NULL;
+        return result;
     }
     int paren_level = 1;
     int count_tokens = 1;
@@ -355,6 +362,15 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index, int * o_count_tokens) 
     }
     arg_tks = NULL;
 
+    Token ** unexpanded_list = NULL;
+    arrsetcap(unexpanded_list, arrlen(arg_list));
+    for (int arg_i=0; arg_i < arrlen(arg_list); arg_i++) {
+        Token * tks = NULL;
+        arraddnptr(tks, arrlen(arg_list[arg_i]));
+        memcpy(tks, arg_list[arg_i], arrlen(arg_list[arg_i]) * sizeof(*arg_list[arg_i]));
+        arrput(unexpanded_list, tks);
+    }
+
     const ExpandContext prev_ctx = ctx->expand_ctx;
     for (int arg_i=0; arg_i < arrlen(arg_list); arg_i++) {
         for (int tk_i=0; tk_i < arrlen(arg_list[arg_i]); tk_i++) {
@@ -371,16 +387,23 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index, int * o_count_tokens) 
     }
     ctx->expand_ctx = prev_ctx;
 
-    *o_count_tokens = count_tokens;
-    return arg_list;
+    result.unexpanded_list = unexpanded_list;
+    result.expanded_list = arg_list;
+    result.count_tokens = count_tokens;
+    result.complete = true;
+    return result;
 }
 
 static void
-free_macro_arguments(Token ** arg_list) {
-    for (int i=0; i < arrlen(arg_list); i++) {
-        arrfree(arg_list[i]);
+free_macro_arguments(MacroArgs margs) {
+    for (int i=0; i < arrlen(margs.unexpanded_list); i++) {
+        arrfree(margs.unexpanded_list[i]);
     }
-    arrfree(arg_list);
+    arrfree(margs.unexpanded_list);
+    for (int i=0; i < arrlen(margs.expanded_list); i++) {
+        arrfree(margs.expanded_list[i]);
+    }
+    arrfree(margs.expanded_list);
 }
 
 static bool // true if token was expanded
@@ -413,7 +436,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             .start = replace,
             .length = 1,
             .type = TK_IDENTIFIER,
-            .preceding_space = ctx->expand_ctx.list[macro_tk_index].preceding_space,
+            .preceding_space = macro_tk->preceding_space,
         };
         arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2));
         ctx->expand_ctx.list[macro_tk_index] = replace_tk;
@@ -430,18 +453,20 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             return false;
         }
     }
-    macro_tk = NULL;
     Define * macro = &defines[macro_index];
     Token * replace_list = NULL;
     bool free_replace_list = false;
     int count_arg_tokens = 0;
+    bool preceding_space = (macro_tk_index == 0)? false : macro_tk->preceding_space;
+    macro_tk = NULL;
 
     if (macro->func_like) {
         Token * list = NULL;
-        Token ** arg_list = get_macro_arguments(ctx, macro_tk_index, &count_arg_tokens);
-        if (!arg_list) {
+        MacroArgs margs = get_macro_arguments(ctx, macro_tk_index);
+        if (!margs.complete) {
             return false;
         }
+        count_arg_tokens = margs.count_tokens;
         
         Token ltk = {.start = ""};
         for (int tk_i=0; tk_i < arrlen(macro->replace_list); tk_i++) {
@@ -449,27 +474,39 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             bool replaced = false;
             if (tk.type == TK_IDENTIFIER) {
                 if (macro->variadic && tk_equal(&tk, "__VA_ARGS__")) {
-                    for (int arg_i=macro->arg_count; arg_i < arrlen(arg_list); arg_i++) {
-                        tk_cat(&list, arg_list[arg_i]);
+                    for (int arg_i=macro->arg_count; arg_i < arrlen(margs.expanded_list); arg_i++) {
+                        tk_cat(&list, margs.expanded_list[arg_i]);
                         static const Token comma = {.start = ",", .length = 1};
-                        if (arg_i != arrlen(arg_list) - 1) arrput(list, comma);
+                        if (arg_i != arrlen(margs.expanded_list) - 1) arrput(list, comma);
                     }
                     replaced = true;
                 }
                 for (int param_i=0; param_i < macro->arg_count; param_i++) {
                     if (tk_equal(&tk, macro->arg_list[param_i])) {
-                        if (ltk.type == TK_HASH && ltk.length == 1) {
-                            Token stringized = create_stringized(arg_list[param_i]);
+                        if (ltk.type == TK_HASH) {
+                            Token stringized = create_stringized(margs.unexpanded_list[param_i]);
+                            stringized.preceding_space = ltk.preceding_space;
                             arrput(list, stringized);
                         } else {
-                            tk_cat(&list, arg_list[param_i]);
+                            bool part_of_concat = ltk.type == TK_D_HASH || (tk_i+1 < arrlen(macro->replace_list) && macro->replace_list[tk_i+1].type == TK_D_HASH);
+                            if (margs.unexpanded_list[param_i]) {
+                                if (part_of_concat) {
+                                    tk_cat(&list, margs.unexpanded_list[param_i]);
+                                } else {
+                                    tk_cat(&list, margs.expanded_list[param_i]);
+                                }
+                            } else {
+                                if (part_of_concat) {
+                                    arrput(list, (Token){.type = TK_PLACEHOLDER});
+                                }
+                            }
                         }
                         replaced = true;
                         break;
                     }
                 }
             }
-            if (!replaced && !(tk.type == TK_HASH || tk.type == TK_D_HASH)) {
+            if (!replaced && !(tk.type == TK_HASH)) {
                 arrput(list, tk);
             }
             ltk = tk;
@@ -477,9 +514,41 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         replace_list = list;
         free_replace_list = true;
 
-        free_macro_arguments(arg_list);
+        free_macro_arguments(margs);
     } else {
         replace_list = macro->replace_list;
+    }
+
+    // ## concat
+    for (int i=0; i < arrlen(replace_list); i++) {
+        Token tk = replace_list[i];
+        if (tk.type == TK_D_HASH) {
+            assert(i > 0 && i+1 < arrlen(replace_list));
+            Token result = {0};
+            Token last_tk = replace_list[i-1];
+            Token next_tk = replace_list[i+1];
+            if (last_tk.type == TK_PLACEHOLDER && next_tk.type == TK_PLACEHOLDER) {
+                result.type = TK_PLACEHOLDER;
+            } else {
+                char * buf = NULL; // TODO: leak
+                if (last_tk.type != TK_PLACEHOLDER) {
+                    strputf(&buf, "%.*s", last_tk.length, last_tk.start);
+                }
+                if (next_tk.type != TK_PLACEHOLDER) {
+                    strputf(&buf, "%.*s", next_tk.length, next_tk.start);
+                }
+                strputnull(buf);
+                result.start = buf;
+                result.length = arrlen(buf) - 1;
+                result.preceding_space = last_tk.preceding_space;
+                if (is_iden(result.start[0])) { // TODO: handle this more gracefully
+                    result.type = TK_IDENTIFIER;
+                }
+            }
+            i--;
+            arrdeln(replace_list, i, MIN(2, arrlen(replace_list) - i));
+            replace_list[i] = result;
+        }
     }
 
     // insert list
@@ -496,19 +565,21 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     // rescan
     int back_offset = macro_tk_index + arrlen(replace_list) - arrlen(ctx->expand_ctx.list);
     arrpush(ctx->expand_ctx.macro_index_stack, macro_index);
-    for (int i=macro_tk_index; i < arrlen(ctx->expand_ctx.list) - back_offset; i++) {
+    for (int i=macro_tk_index; i < arrlen(ctx->expand_ctx.list) + back_offset; i++) {
         if (ctx->expand_ctx.list[i].type == TK_IDENTIFIER) {
             macro_scan(ctx, i);
         }
     }
     (void)arrpop(ctx->expand_ctx.macro_index_stack);
 
+    ctx->expand_ctx.list[macro_tk_index].preceding_space = preceding_space;
+
     if (free_replace_list) arrfree(replace_list);
     return true;
 }
 
-bool
-parse_expression(PreContext * ctx, char ** o_s) {
+char *
+expand_line(PreContext * ctx, char ** o_s, bool is_include) {
     Token * ptks = NULL;
     arrsetcap(ptks, 64);
     ExpandContext prev_ctx = ctx->expand_ctx;
@@ -520,6 +591,14 @@ parse_expression(PreContext * ctx, char ** o_s) {
             break;
         } else if (ptk.type == TK_COMMENT) {
             continue;
+        } else if (is_include && *ptk.start == '<') {
+            char * closing = find_closing(ptk.start);
+            if (!closing) {
+                preprocess_error(&ptk, "No closing '>'.");
+                exit(1);
+            }
+            strputf(&processed, " %.*s", (int)(closing - ptk.start + 1), ptk.start);
+            *o_s = closing + 1;
         } else {
             arrsetlen(ptks, 1);
             ptks[0] = ptk;
@@ -539,6 +618,12 @@ parse_expression(PreContext * ctx, char ** o_s) {
     strputnull(processed);
     arrfree(ptks);
 
+    return processed;
+}
+
+bool
+parse_expression(PreContext * ctx, char ** o_s) {
+    char * processed = expand_line(ctx, o_s, false);
     char * s = processed;
     Token * tks = NULL;
     while (1) {
@@ -663,8 +748,9 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
             if (is_digit(*directive.start) || tk_equal(&directive, "line")) {
                 // TODO
             } else if (tk_equal(&directive, "include") || (tk_equal(&directive, "include_next") && (inc_file.is_next = true))) {
-                Token next = pre_next_token(&s);
-                while (next.type == TK_COMMENT) next = pre_next_token(&s);
+                char * expanded_line = expand_line(ctx, &s, true); // TODO: leak
+                char * is = expanded_line;
+                Token next = pre_next_token(&is);
                 // expansion is deferred until after the last section gets pasted
                 inc_file.exists = true;
                 if (next.type == TK_STRING) {
@@ -702,6 +788,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                     ms++;
                     while (1) {
                         Token tk = pre_next_token(&ms);
+                        while (tk.type == TK_COMMENT) tk = pre_next_token(&ms);
                         if (tk.type == TK_IDENTIFIER) {
                             char * arg = copy_and_terminate(tk.start, tk.length);
                             arrput(arg_list, arg);
@@ -716,6 +803,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                         }
 
                         tk = pre_next_token(&ms);
+                        while (tk.type == TK_COMMENT) tk = pre_next_token(&ms);
                         if (*tk.start == ')') {
                             break;
                         } else if (*tk.start == ',') {
