@@ -7,10 +7,12 @@ parse_error(ParseContext * ctx, Token * tk, char * message) {
     parse_msg_internal(ctx->buffer, tk, message, 0);
 }
 
-static void
+static void UNUSED
 parse_warning(ParseContext * ctx, Token * tk, char * message) {
     parse_msg_internal(ctx->buffer, tk, message, 1);
 }
+
+static intmax_t parse_constant_expression(ParseContext * ctx, char ** o_s);
 
 #include "attribute.c"
 
@@ -103,12 +105,22 @@ static intmax_t
 parse_constant_expression(ParseContext * ctx, char ** o_s) {
     Token * tks = NULL;
     Token tk;
+    int depth = 0;
     while (1) {
         tk = next_token(o_s);
         if (tk.type == TK_END) {
             parse_error(ctx, &tk, "End reached unexpectedly.");
+            exit(1);
         }
-        if (tk.type == TK_COMMA || tk.type == TK_R_BRACE || tk.type == TK_SEMICOLON) {
+        if (tk.type == TK_L_PARENTHESIS) {
+            depth += 1;
+        } else if (tk.type == TK_R_PARENTHESIS) {
+            depth -= 1;
+            if (depth < 0) {
+                *o_s = tk.start;
+                break;
+            }
+        } else if (tk.type == TK_COMMA || tk.type == TK_R_BRACE || tk.type == TK_SEMICOLON || tk.type == TK_R_BRACKET) {
             *o_s = tk.start;
             break;
         }
@@ -634,24 +646,14 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token 
         arrsetlen(temp, 0);
         while (tk.type == TK_L_BRACKET) {
             char * closing_bracket = find_closing(tk.start);
-            long num;
+            int32_t num;
             if (closing_bracket == tk.start + 1) {
                 num = 0;
             } else {
-                char * range_begin = tk.start + 1;
-                char * range_end = closing_bracket;
-                char * num_parse_end = range_begin;
-                num = strtol(range_begin, &num_parse_end, 0);
+                num = (int32_t)parse_constant_expression(ctx, o_s);
                 if (num < 0) {
                     parse_error(ctx, &tk, "Invalid array size.");
                     return NULL;
-                }
-                if (num_parse_end < range_end) {
-                    Token expr_tk = {0};
-                    expr_tk.start = tk.start;
-                    expr_tk.length = range_end - tk.start + 1;
-                    parse_warning(ctx, &expr_tk, "Unable to evaluate array size."); // TODO
-                    num = 0;
                 }
             }
             arrput(temp, num);

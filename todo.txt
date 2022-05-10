@@ -21,6 +21,7 @@ parse:
     handle bit field accessing
     handle strings next to each other
     const flag?
+    parse float expressions
     rudimentary C++ support
 
 pre:

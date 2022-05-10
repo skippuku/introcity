@@ -184,10 +184,10 @@ typedef struct {
 } TestDefault;
 
 typedef struct {
-    int strange_array [sizeof(int) * 4]; // length evaluated to 0 and emits warning for now
+    int strange_array [sizeof(int) * 4];
     struct {
-        char a, b;
-        short u;
+        char a I(= 3), b I(= 4);
+        short u I(= 5);
     } anon_struct_array [4];
 } Dumb;
 

@@ -63,8 +63,12 @@ main(int argc, char ** argv) {
     for (int i=0; i < LENGTH(default_test.words); i++) {
         printf("words[%i] = \"%s\";\n", i, default_test.words[i]);
     }
+    printf("\n");
+
+    assert(default_test.skills == SKILL_PROGRAMMER | SKILL_MUSICIAN);
 
     /*====================*/
+
     EvilEnum size_int = SIZEOF_INT;
     EvilEnum size_short = SIZEOF_SHORT;
 
@@ -73,6 +77,15 @@ main(int argc, char ** argv) {
 
     printf("size_int: %i\n", (int)size_int);
     printf("size_short: %i\n", (int)size_short);
+    printf("\n");
+
+    /*====================*/
+
+    Dumb dumb;
+    printf("dumb = ");
+    intro_set_defaults(&dumb, ITYPE(Dumb));
+    intro_print(&dumb, ITYPE(Dumb), NULL);
+    printf("\n\n");
 
     return 0;
 }

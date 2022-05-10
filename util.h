@@ -28,6 +28,15 @@
     memcpy(name, src, length); \
     name[length] = 0;
 
+#if defined __has_attribute
+  #if __has_attribute(unused)
+    #define UNUSED __attribute__((unused))
+  #endif
+#endif
+#ifndef UNUSED
+  #define UNUSED
+#endif
+
 typedef struct {
     const char * key;
 } NameSet;
