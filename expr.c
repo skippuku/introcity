@@ -381,11 +381,13 @@ post_reverse: ;
     return proc;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 intmax_t
 run_expression(ExprProcedure * proc) {
     intmax_t stack [proc->stack_size];
     intmax_t stack_index = 0;
-    intmax_t result;
+    intmax_t result = 0;
     for (int i=0; i < proc->count_instructions; i++) {
         ExprInstruction ins = proc->instructions[i];
 
@@ -449,6 +451,7 @@ run_expression(ExprProcedure * proc) {
 
     return result;
 }
+#pragma GCC diagnostic pop
 
 void
 expr_test() {

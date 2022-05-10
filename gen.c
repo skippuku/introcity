@@ -73,6 +73,7 @@ category_str(int category) {
 
     case INTRO_F32: return "INTRO_F32";
     case INTRO_F64: return "INTRO_F64";
+    case INTRO_F128: return "INTRO_F128";
 
     case INTRO_ARRAY: return "INTRO_ARRAY";
     case INTRO_POINTER: return "INTRO_POINTER";

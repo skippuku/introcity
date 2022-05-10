@@ -1149,6 +1149,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
             while (1) {
                 char buf [1024];
                 char * end = strchr(s, '\n');
+                if (*(end - 1) == '\r') *(end - 1) = '\0';
                 if (!end) break;
                 *end = '\0';
                 strcpy(buf, s);

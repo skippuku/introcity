@@ -32,8 +32,8 @@ PREFIX = /usr/local
 
 test: debug
 	@$(MAKE) --directory=test/ run
-	-./$(EXE) intro.c -o test/intro.c.intropp.intro
 	-$(CPP) intro.c -D__INTRO__ | ./$(EXE) - -o test/intro.c.gnupp.intro
+	-./$(EXE) intro.c -o test/intro.c.intropp.intro
 
 install: release
 	mkdir -p $(PREFIX)/bin

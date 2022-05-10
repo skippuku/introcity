@@ -13,6 +13,7 @@ attribute:
     stb_ds hash map attribute?
 
 parse:
+    !! sizeof structs/enums in expressions
     give c int types a parent based on size and signedness
     add way to change c type sizes for different platforms
     track type declaration file location?

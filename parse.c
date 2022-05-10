@@ -1,6 +1,6 @@
 #include "lib/intro.h"
-#include "util.h"
 #include "lexer.c"
+#include "util.h"
 
 static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
@@ -254,7 +254,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         }
     }
 
-    IntroStruct * result = malloc(sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
+    IntroStruct * result = calloc(1, sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
     result->count_members = arrlen(members);
     result->is_union = is_union;
     memcpy(result->members, members, sizeof(IntroMember) * arrlen(members));
