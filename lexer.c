@@ -309,13 +309,13 @@ find_closing(char * s) {
     return NULL;
 }
 
-bool
+static bool
 tk_equal(Token * tk, const char * str) {
     size_t len = strlen(str);
     return (tk->length == len && memcmp(tk->start, str, len) == 0);
 }
 
-char *
+static char *
 copy_and_terminate(char * str, int length) {
     char * result = malloc(length + 1);
     memcpy(result, str, length);

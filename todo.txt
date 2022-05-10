@@ -13,16 +13,14 @@ attribute:
     stb_ds hash map attribute?
 
 parse:
-    !! enum expressions ex. "TK_L_ANGLE + 1"
-    do something about long double and wchar_t
     give c int types a parent based on size and signedness
-    add way to change c int type sizes for different platforms
+    add way to change c type sizes for different platforms
     track type declaration file location?
     functions
     function pointers
+    handle bit field accessing
     handle strings next to each other
     const flag?
-    bit fields?
     rudimentary C++ support
 
 pre:

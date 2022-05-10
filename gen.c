@@ -173,7 +173,7 @@ generate_c_header(IntroInfo * info) {
                 for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
                     const IntroMember * m = &t->i_struct->members[m_index];
                     int32_t member_type_index = hmget(info->index_by_ptr_map, m->type);
-                    strputf(&s, "%s{\"%s\", &__intro_types[%i], ", tab, m->name, member_type_index);
+                    strputf(&s, "%s{\"%s\", &__intro_types[%i], %u, ", tab, m->name, member_type_index, (unsigned int)m->bitfield);
                     if (!nest) {
                         strputf(&s, "offsetof(%s, %s)", ref_name, m->name);
                     } else {

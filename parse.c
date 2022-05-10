@@ -25,6 +25,8 @@ typedef struct {
     PtrStore * ptr_stores;
 
     DifferedDefault * differed_length_defaults;
+
+    ExprContext * expr_ctx;
 } ParseContext;
 
 static void
@@ -124,7 +126,36 @@ maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk,
 
 static bool
 is_ignored(Token * tk) {
-    return tk_equal(tk, "const") || tk_equal(tk, "static");
+    return tk_equal(tk, "const") || tk_equal(tk, "static") || tk_equal(tk, "volatile");
+}
+
+static intmax_t
+parse_constant_expression(ParseContext * ctx, char ** o_s) {
+    Token * tks = NULL;
+    Token tk;
+    while (1) {
+        tk = next_token(o_s);
+        if (tk.type == TK_END) {
+            parse_error(ctx, &tk, "End reached unexpectedly.");
+        }
+        if (tk.type == TK_COMMA || tk.type == TK_R_BRACE || tk.type == TK_SEMICOLON) {
+            *o_s = tk.start;
+            break;
+        }
+        arrput(tks, tk);
+    }
+    ExprNode * tree = build_expression_tree(ctx->expr_ctx, tks, arrlen(tks), &tk);
+    if (!tree) {
+        parse_error(ctx, &tk, "Unknown value in expression.");
+        exit(1);
+    }
+    ExprProcedure * expr = build_expression_procedure(tree);
+    intmax_t result = run_expression(expr);
+
+    free(expr);
+    reset_arena(ctx->expr_ctx->arena);
+
+    return result;
 }
 
 static int
@@ -221,6 +252,12 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 tk = next_token(o_s);
                 int error = maybe_expect_attribute(ctx, o_s, arrlen(members), &tk, &attribute_specifiers);
                 if (error) return error;
+
+                if (tk.type == TK_COLON) {
+                    intmax_t bitfield = parse_constant_expression(ctx, o_s);
+                    member.bitfield = (uint8_t)bitfield;
+                    tk = next_token(o_s);
+                }
 
                 arrput(members, member);
 
@@ -341,13 +378,12 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             return 1;
         }
 
-        char * new_name = copy_and_terminate(name.start, name.length);
+        STACK_TERMINATE(new_name, name.start, name.length);
         if (shgeti(ctx->name_set, new_name) >= 0) {
             parse_error(ctx, &name, "Cannot define enumeration with reserved name.");
             return 1;
         }
         v.name = cache_name(ctx, new_name);
-        free(new_name);
 
         tk = next_token(o_s);
         if (is_attribute) {
@@ -362,13 +398,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         if (tk.type == TK_COMMA) {
             v.value = next_int++;
         } else if (tk.type == TK_EQUAL) {
-            char * prev_loc = *o_s;
-            long num = strtol(*o_s, o_s, 0);
-            if (*o_s == prev_loc) {
-                parse_error(ctx, &tk, "Unable to parse enumeration value.");
-                return 1;
-            }
-            v.value = (int)num;
+            v.value = (int)parse_constant_expression(ctx, o_s);
             if (v.value != next_int) {
                 enum_.is_sequential = false;
             }
@@ -386,6 +416,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         mask |= v.value;
 
         arrput(members, v);
+        shput(ctx->expr_ctx->constant_map, v.name, (intmax_t)v.value);
 
         if (is_last) break;
 
@@ -608,8 +639,15 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token 
         paren = NULL;
 
         int pointer_level = 0;
-        while ((tk = next_token(o_s)).type == TK_STAR) {
-            pointer_level += 1;
+        while (1) {
+            tk = next_token(o_s);
+            if (tk.type == TK_STAR) {
+                pointer_level += 1;
+            } else if (tk.type == TK_IDENTIFIER && is_ignored(&tk)) {
+                continue;
+            } else {
+                break;
+            }
         }
 
         if (tk.type == TK_L_PARENTHESIS) {
@@ -701,9 +739,11 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token 
 
 int
 parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
-    ParseContext * ctx = malloc(sizeof(ParseContext));
-    memset(ctx, 0, sizeof(*ctx));
+    ParseContext * ctx = calloc(1, sizeof(ParseContext));
     ctx->buffer = buffer;
+    ctx->expr_ctx = calloc(1, sizeof(ExprContext));
+    ctx->expr_ctx->arena = new_arena();
+    ctx->expr_ctx->mode = MODE_PARSE;
 
     sh_new_arena(ctx->type_map);
     sh_new_arena(ctx->name_set);
@@ -723,7 +763,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"_Bool",    NULL, INTRO_U8 },
         {"size_t",   NULL, INTRO_U64}, // TODO
         {"ptrdiff_t",NULL, INTRO_S64},
-        {"wchar_t",  NULL, INTRO_UNKNOWN},
+        {"wchar_t",  NULL, INTRO_S16}, // TODO
     };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);

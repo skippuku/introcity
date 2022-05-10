@@ -27,7 +27,7 @@ typedef enum {
     OP_SHIFT_LEFT = 0x50,
     OP_SHIFT_RIGHT,
 
-    OP_LESS= 0x60,
+    OP_LESS = 0x60,
     OP_LESS_OR_EQUAL,
     OP_GREATER,
     OP_GREATER_OR_EQUAL,
@@ -54,6 +54,15 @@ enum ExprOpTypes {
     OP_VALUE_TYPE = 0x00,
     OP_UNARY_TYPE = 0x20,
 };
+
+typedef struct {
+    struct{char * key; intmax_t value;} * constant_map;
+    MemArena * arena;
+    enum {
+        MODE_PRE,
+        MODE_PARSE,
+    } mode;
+} ExprContext;
 
 typedef struct ExprNode ExprNode;
 struct ExprNode {
@@ -86,7 +95,9 @@ typedef struct {
 static void *
 arena_alloc(MemArena * arena, size_t amount) {
     if (arena->current_used + amount > BUCKET_CAP) {
-        arena->buckets[++arena->current].data = calloc(1, BUCKET_CAP);
+        if (arena->buckets[++arena->current].data == NULL) {
+            arena->buckets[arena->current].data = calloc(1, BUCKET_CAP);
+        }
     }
     void * result = arena->buckets[arena->current].data + arena->current_used;
     arena->current_used += amount;
@@ -101,19 +112,34 @@ new_arena() {
 }
 
 static void
-free_arena(MemArena * arena) {
+reset_arena(MemArena * arena) {
     for (int i=0; i <= arena->current; i++) {
-        free(arena->buckets[i].data);
+        memset(arena->buckets[i].data, 0, BUCKET_CAP);
+    }
+    arena->current = 0;
+    arena->current_used = 0;
+}
+
+static void
+free_arena(MemArena * arena) {
+    for (int i=0; i < LENGTH(arena->buckets); i++) {
+        if (arena->buckets[i].data) free(arena->buckets[i].data);
     }
     free(arena);
 }
 
+static void
+free_expr_context(ExprContext * ectx) {
+    free_arena(ectx->arena);
+    shfree(ectx->constant_map);
+}
+
 ExprNode *
-build_expression_tree(MemArena * arena, Token * tokens, int count_tokens, Token * o_error_tk) {
+build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Token * o_error_tk) {
     ExprNode * base = NULL;
 
     int paren_depth = 0;
-    ExprNode * node = arena_alloc(arena, sizeof(*node));
+    ExprNode * node = arena_alloc(ectx->arena, sizeof(*node));
     bool last_was_value = false;
     for (int tk_i=0; tk_i < count_tokens; tk_i++) {
         Token tk = tokens[tk_i];
@@ -130,8 +156,32 @@ build_expression_tree(MemArena * arena, Token * tokens, int count_tokens, Token 
         }break;
 
         case TK_IDENTIFIER: {
+            if (ectx->mode == MODE_PARSE && !is_digit(tk.start[0])) {
+                STACK_TERMINATE(terminated, tk.start, tk.length);
+                ptrdiff_t const_index = shgeti(ectx->constant_map, terminated);
+                if (paren_depth > 0 && tk_equal(&tk, "int")) {
+                    while (1) {
+                        if (++tk_i >= count_tokens) {
+                            *o_error_tk = tk;
+                            return NULL;
+                        }
+                        Token tk1 = tokens[tk_i];
+                        if (tk1.type == TK_R_PARENTHESIS) {
+                            paren_depth -= 1;
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                if (const_index < 0) {
+                    *o_error_tk = tk;
+                    return NULL;
+                }
+                node->value = ectx->constant_map[const_index].value;
+            } else {
+                node->value = (intmax_t)strtol(tk.start, NULL, 0);
+            }
             node->op = OP_INT;
-            node->value = (intmax_t)strtol(tk.start, NULL, 0);
         }break;
 
         case TK_PLUS:          node->op = (last_was_value)? OP_ADD : OP_UNARY_ADD; break;
@@ -191,14 +241,14 @@ build_expression_tree(MemArena * arena, Token * tokens, int count_tokens, Token 
             }
             p_index = &index->right;
         }
-        node = arena_alloc(arena, sizeof(*node));
+        node = arena_alloc(ectx->arena, sizeof(*node));
     }
 
     return base;
 }
 
 ExprProcedure *
-build_expr_procedure(ExprNode * tree) {
+build_expression_procedure(ExprNode * tree) {
     ExprInstruction * list = NULL;
 
     ExprNode ** node_stack = NULL;
@@ -388,14 +438,16 @@ expr_test() {
         arrput(tks, tk);
     }
 
-    MemArena * tree_arena = new_arena();
-
-    ExprNode * tree = build_expression_tree(tree_arena, tks, arrlen(tks), NULL);
-    ExprProcedure * expr = build_expr_procedure(tree);
+    ExprContext ectx = {
+        .mode = MODE_PRE,
+        .arena = new_arena(),
+    };
+    ExprNode * tree = build_expression_tree(&ectx, tks, arrlen(tks), NULL);
+    ExprProcedure * expr = build_expression_procedure(tree);
     intmax_t result = run_expression(expr);
 
     free(expr);
-    free_arena(tree_arena);
+    free_expr_context(&ectx);
 
     printf("result: %i\n", (int)result);
 }

@@ -47,6 +47,7 @@ typedef struct {
         char * custom_target;
     } m_options;
     NameSet * dependency_set;
+    ExprContext * expr_ctx;
     ExpandContext expand_ctx;
     int sys_header_first;
     int sys_header_last;
@@ -285,11 +286,12 @@ strput_tokens(char ** p_str, const Token * list, size_t count) {
 }
 
 void
-tk_cat(Token ** p_list, const Token * ext) {
+tk_cat(Token ** p_list, const Token * ext, bool space) {
     Token * dest = arraddnptr(*p_list, arrlen(ext));
     for (int i=0; i < arrlen(ext); i++) {
         dest[i] = ext[i];
     }
+    dest[0].preceding_space = space;
 }
 
 static bool macro_scan(PreContext * ctx, int macro_tk_index);
@@ -475,7 +477,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             if (tk.type == TK_IDENTIFIER) {
                 if (macro->variadic && tk_equal(&tk, "__VA_ARGS__")) {
                     for (int arg_i=macro->arg_count; arg_i < arrlen(margs.expanded_list); arg_i++) {
-                        tk_cat(&list, margs.expanded_list[arg_i]);
+                        tk_cat(&list, margs.expanded_list[arg_i], tk.preceding_space);
                         static const Token comma = {.start = ",", .length = 1};
                         if (arg_i != arrlen(margs.expanded_list) - 1) arrput(list, comma);
                     }
@@ -491,9 +493,9 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                             bool part_of_concat = ltk.type == TK_D_HASH || (tk_i+1 < arrlen(macro->replace_list) && macro->replace_list[tk_i+1].type == TK_D_HASH);
                             if (margs.unexpanded_list[param_i]) {
                                 if (part_of_concat) {
-                                    tk_cat(&list, margs.unexpanded_list[param_i]);
+                                    tk_cat(&list, margs.unexpanded_list[param_i], tk.preceding_space);
                                 } else {
-                                    tk_cat(&list, margs.expanded_list[param_i]);
+                                    tk_cat(&list, margs.expanded_list[param_i], tk.preceding_space);
                                 }
                             } else {
                                 if (part_of_concat) {
@@ -632,18 +634,17 @@ parse_expression(PreContext * ctx, char ** o_s) {
         arrput(tks, tk);
     }
 
-    MemArena * arena = new_arena();
     Token err_tk = {0};
-    ExprNode * tree = build_expression_tree(arena, tks, arrlen(tks), &err_tk);
+    ExprNode * tree = build_expression_tree(ctx->expr_ctx, tks, arrlen(tks), &err_tk);
     if (!tree && err_tk.start) {
         preprocess_error(&err_tk, "Invalid symbol in expression.");
         exit(1);
     }
-    ExprProcedure * expr = build_expr_procedure(tree);
+    ExprProcedure * expr = build_expression_procedure(tree);
     intmax_t result = run_expression(expr);
 
     free(expr);
-    free_arena(arena);
+    reset_arena(ctx->expr_ctx->arena);
     arrfree(processed);
 
     return !!result;
@@ -1025,6 +1026,9 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     sh_new_arena(defines);
 
     PreContext ctx_ = {0}, *ctx = &ctx_;
+    ctx->expr_ctx = calloc(1, sizeof(*ctx->expr_ctx));
+    ctx->expr_ctx->mode = MODE_PRE;
+    ctx->expr_ctx->arena = new_arena();
 
     *o_output_filepath = NULL;
 
@@ -1033,7 +1037,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     char * filepath = NULL;
 
     for (int i=1; i < argc; i++) {
-        #define ADJACENT() ((strlen(arg) == 2)? argv[++i] : arg+2);
+        #define ADJACENT() ((strlen(arg) == 2)? argv[++i] : arg+2)
         char * arg = argv[i];
         if (arg[0] == '-') {
             switch(arg[1]) {

@@ -89,6 +89,7 @@ typedef struct IntroAttributeData {
 typedef struct IntroMember {
     const char * name;
     IntroType * type;
+    uint8_t  bitfield;
     uint32_t offset;
     uint32_t count_attributes;
     const IntroAttributeData * attributes;
