@@ -1,4 +1,5 @@
 #include "lib/intro.h"
+#include "lexer.c"
 #include "util.h"
 #include "expr.c"
 #include "pre.c"

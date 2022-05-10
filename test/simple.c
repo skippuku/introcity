@@ -64,5 +64,15 @@ main(int argc, char ** argv) {
         printf("words[%i] = \"%s\";\n", i, default_test.words[i]);
     }
 
+    /*====================*/
+    EvilEnum size_int = SIZEOF_INT;
+    EvilEnum size_short = SIZEOF_SHORT;
+
+    assert(size_int == sizeof(int));
+    assert(size_short == sizeof(short));
+
+    printf("size_int: %i\n", (int)size_int);
+    printf("size_short: %i\n", (int)size_short);
+
     return 0;
 }

@@ -2,33 +2,6 @@
 #include "util.h"
 #include "lexer.c"
 
-typedef struct {
-    ptrdiff_t value_offset;
-    void * data;
-    size_t data_size;
-} PtrStore;
-
-typedef struct {
-    int32_t member_index, attribute_type;
-    uint32_t value;
-} DifferedDefault;
-
-typedef struct {
-    char * buffer;
-    NameSet * ignore_typedefs;
-    struct{char * key; IntroType * value;} * type_map;
-    struct{IntroType key; IntroType * value;} * type_set;
-    NameSet * name_set;
-    NestInfo * nest_map;
-
-    uint8_t * value_buffer;
-    PtrStore * ptr_stores;
-
-    DifferedDefault * differed_length_defaults;
-
-    ExprContext * expr_ctx;
-} ParseContext;
-
 static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
     parse_msg_internal(ctx->buffer, tk, message, 0);
@@ -91,9 +64,6 @@ store_type(ParseContext * ctx, const IntroType * type) {
     }
     return stored;
 }
-
-static IntroType * parse_base_type(ParseContext *, char **, Token *, bool);
-static IntroType * parse_declaration(ParseContext *, IntroType *, char **, Token *);
 
 typedef struct {
     char * location;
@@ -744,6 +714,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     ctx->expr_ctx = calloc(1, sizeof(ExprContext));
     ctx->expr_ctx->arena = new_arena();
     ctx->expr_ctx->mode = MODE_PARSE;
+    ctx->expr_ctx->ctx = ctx;
 
     sh_new_arena(ctx->type_map);
     sh_new_arena(ctx->name_set);

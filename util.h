@@ -60,6 +60,38 @@ enum ErrorType {
     ERR_FILE_NOT_FOUND = 1,
 };
 
+typedef struct {
+    ptrdiff_t value_offset;
+    void * data;
+    size_t data_size;
+} PtrStore;
+
+typedef struct {
+    int32_t member_index, attribute_type;
+    uint32_t value;
+} DifferedDefault;
+
+typedef struct ExprContext ExprContext;
+
+typedef struct {
+    char * buffer;
+    NameSet * ignore_typedefs;
+    struct{char * key; IntroType * value;} * type_map;
+    struct{IntroType key; IntroType * value;} * type_set;
+    NameSet * name_set;
+    NestInfo * nest_map;
+
+    uint8_t * value_buffer;
+    PtrStore * ptr_stores;
+
+    DifferedDefault * differed_length_defaults;
+
+    ExprContext * expr_ctx;
+} ParseContext;
+
+static IntroType * parse_base_type(ParseContext *, char **, Token *, bool);
+static IntroType * parse_declaration(ParseContext *, IntroType *, char **, Token *);
+
 __attribute__ ((format (printf, 2, 3)))
 static void
 strputf(char ** p_str, const char * format, ...) {

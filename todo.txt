@@ -53,3 +53,4 @@ doc:
 misc:
     use enum error codes instead of magic numbers
     parse program options and pass only relevant ones to sub-processes
+    strange mixture of text parsing and token list parsing is becoming a problem

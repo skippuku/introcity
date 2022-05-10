@@ -1,4 +1,5 @@
 #include "lexer.c"
+#include "util.h"
 
 #define BUCKET_CAP (1<<16)
 typedef struct {
@@ -55,14 +56,15 @@ enum ExprOpTypes {
     OP_UNARY_TYPE = 0x20,
 };
 
-typedef struct {
+struct ExprContext {
     struct{char * key; intmax_t value;} * constant_map;
     MemArena * arena;
+    ParseContext * ctx;
     enum {
         MODE_PRE,
         MODE_PARSE,
     } mode;
-} ExprContext;
+};
 
 typedef struct ExprNode ExprNode;
 struct ExprNode {
@@ -157,6 +159,31 @@ build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Toke
 
         case TK_IDENTIFIER: {
             if (ectx->mode == MODE_PARSE && !is_digit(tk.start[0])) {
+                if (tk_equal(&tk, "sizeof")) {
+                    if (tk_i + 3 >= count_tokens) {
+                        *o_error_tk = tk;
+                        return NULL;
+                    }
+                    Token tk1 = tokens[++tk_i];
+                    if (tk1.type != TK_L_PARENTHESIS) {
+                        *o_error_tk = tk1;
+                        return NULL;
+                    }
+
+                    tk1 = tokens[++tk_i];
+                    char * s = tk1.start;
+                    IntroType * type = parse_base_type(ectx->ctx, &s, o_error_tk, false);
+                    if (!type) return NULL;
+
+                    Token name_tk_;
+                    type = parse_declaration(ectx->ctx, type, &s, &name_tk_);
+                    if (!type) return NULL;
+                    node->value = intro_size(type);
+                    node->op = OP_INT;
+
+                    while (tk1.start < s) tk1 = tokens[++tk_i];
+                    break;
+                }
                 STACK_TERMINATE(terminated, tk.start, tk.length);
                 ptrdiff_t const_index = shgeti(ectx->constant_map, terminated);
                 if (paren_depth > 0 && tk_equal(&tk, "int")) {

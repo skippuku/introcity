@@ -191,6 +191,11 @@ typedef struct {
     } anon_struct_array [4];
 } Dumb;
 
+typedef enum {
+    SIZEOF_INT = sizeof(int),
+    SIZEOF_SHORT = sizeof(short),
+} EvilEnum;
+
 #if 0
 typedef struct {
     char * name;
