@@ -133,7 +133,8 @@ pre_next_token(char ** o_s) {
                 *o_s = s;
                 return tk;
             } else if (!is_space(*s)) {
-                return tk;
+                s = *o_s;
+                goto single;
             } else if (*s == '\0') {
                 return tk;
             }
