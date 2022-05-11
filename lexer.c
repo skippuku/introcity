@@ -93,16 +93,38 @@ pre_next_token(char ** o_s) {
     tk.start = s;
     if (s != *o_s) tk.preceding_space = true;
 
-    if (*s == '\0') return tk;
+    if (is_iden(*s)) {
+        while (*++s != '\0' && is_iden(*s));
+        tk.type = TK_IDENTIFIER;
+        tk.length = s - tk.start;
+        *o_s = s;
+        return tk;
+    }
 
-    if (*s == '\n') {
+    switch(*s) {
+    case '\0': return tk;
+
+    case '\n': {
         tk.type = TK_NEWLINE;
         tk.length = 1;
         *o_s = s + 1;
         return tk;
     }
 
-    if (*s == '\\') {
+    case '#': {
+        if (*(s+1) == '#') {
+            tk.length = 2;
+            tk.type = TK_D_HASH;
+            *o_s = s + 2;
+        } else {
+            tk.length = 1;
+            tk.type = TK_HASH;
+            *o_s = s + 1;
+        }
+        return tk;
+    }
+
+    case '\\': {
         while (1) {
             s++;
             if (*s == '\n') {
@@ -111,14 +133,27 @@ pre_next_token(char ** o_s) {
                 *o_s = s;
                 return tk;
             } else if (!is_space(*s)) {
-                break;
+                return tk;
             } else if (*s == '\0') {
                 return tk;
             }
         }
     }
 
-    if (*s == '/') {
+    case '\'': case '"': {
+        char started_with = *s;
+        while (*++s != '\0') {
+            if (*s == started_with && !(*(s-1) == '\\' && *(s-2) != '\\')) {
+                tk.type = TK_STRING;
+                tk.length = ++s - tk.start;
+                *o_s = s;
+                return tk;
+            }
+        }
+        if (*s == '\0') return tk;
+    }
+
+    case '/': {
         bool is_comment = false;
         if (*(s+1) == '/') {
             is_comment = true;
@@ -140,47 +175,25 @@ pre_next_token(char ** o_s) {
             tk.type = TK_COMMENT;
             *o_s = s;
             return tk;
+        } else {
+            goto single;
         }
     }
 
-    if (is_iden(*s)) {
-        while (*++s != '\0' && is_iden(*s));
-        tk.type = TK_IDENTIFIER;
-        tk.length = s - tk.start;
+    case EOF: {
         *o_s = s;
+        tk.length = 1;
         return tk;
     }
 
-    if (*s == '\'' || *s == '"') {
-        char started_with = *s;
-        while (*++s != '\0') {
-            if (*s == started_with && !(*(s-1) == '\\' && *(s-2) != '\\')) {
-                tk.type = TK_STRING;
-                tk.length = ++s - tk.start;
-                *o_s = s;
-                return tk;
-            }
-        }
-        if (*s == '\0') return tk;
+    single:
+    default: {
+        *o_s = s + 1;
+        tk.type = TK_UNKNOWN;
+        tk.length = 1;
+        return tk;
     }
-
-    tk.length = 1;
-
-    // we'll just check what *s is since it's just one character
-    // NOTE: maybe this should be how the parser version works too?
-    if (*s != EOF) tk.type = TK_UNKNOWN;
-    if (*s == '#') {
-        if (*(s+1) == '#') {
-            s += 1;
-            tk.length += 1;
-            tk.type = TK_D_HASH;
-        } else {
-            tk.type = TK_HASH;
-        }
     }
-
-    *o_s = s + 1;
-    return tk;
 }
 
 Token
@@ -190,7 +203,11 @@ next_token(char ** o_s) {
 
     char * s = *o_s;
     while (*s != '\0' && is_space(*s)) s++;
-    if (*s == '\0') return tk;
+    if (*s == '\0') {
+        tk.start = s - 1;
+        tk.length = 1;
+        return tk;
+    }
 
     tk.start = s;
 
@@ -310,9 +327,14 @@ find_closing(char * s) {
 }
 
 static bool
-tk_equal(Token * tk, const char * str) {
-    size_t len = strlen(str);
-    return (tk->length == len && memcmp(tk->start, str, len) == 0);
+tk_equal(const Token * tk, const char * str) {
+    for (int i=0; i < tk->length; i++) {
+        if (tk->start[i] != str[i]) {
+            return false;
+        }
+    }
+    if (str[tk->length] == '\0') return true;
+    return false;
 }
 
 static char *

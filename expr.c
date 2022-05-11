@@ -1,7 +1,7 @@
 #include "lexer.c"
 #include "util.h"
 
-#define BUCKET_CAP (1<<16)
+#define BUCKET_CAP (1<<12)
 typedef struct {
     int current;
     int current_used;
@@ -457,7 +457,7 @@ void
 expr_test() {
     char buf [1024];
     printf("Enter a c expression: ");
-    fgets(buf, sizeof(buf), stdin);
+    assert(fgets(buf, sizeof(buf), stdin));
     char * s = buf;
     Token * tks = NULL;
     while (1) {

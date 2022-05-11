@@ -680,9 +680,8 @@ pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
                             return;
                         }
                     }
-                } else {
-                    goto nextline;
                 }
+                goto nextline;
             }
         } else {
         nextline:
@@ -1004,7 +1003,7 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
         if (!file_buffer) {
             return ERR_FILE_NOT_FOUND;
         }
-        FileBuffer * new_buf = malloc(sizeof(*new_buf));
+        FileBuffer * new_buf = calloc(1, sizeof(*new_buf));
         new_buf->filename = filename;
         new_buf->buffer = file_buffer;
         new_buf->buffer_size = file_size;
