@@ -960,9 +960,8 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 shputs(defines, def);
             } else if (tk_equal(&directive, "undef")) {
                 Token def = pre_next_token(&s);
-                char * iden = copy_and_terminate(def.start, def.length);
+                STACK_TERMINATE(iden, def.start, def.length);
                 (void) shdel(defines, iden);
-                free(iden);
             } else if (tk_equal(&directive, "if")) {
                 bool expr_result = parse_expression(ctx, &s);
                 if (!expr_result) {
@@ -970,17 +969,15 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 }
             } else if (tk_equal(&directive, "ifdef")) {
                 tk = pre_next_token(&s);
-                char * name = copy_and_terminate(tk.start, tk.length);
+                STACK_TERMINATE(name, tk.start, tk.length);
                 int def_index = shgeti(defines, name);
-                free(name);
                 if (def_index < 0) {
                     pre_skip(ctx, &s, true);
                 }
             } else if (tk_equal(&directive, "ifndef")) {
                 tk = pre_next_token(&s);
-                char * name = copy_and_terminate(tk.start, tk.length);
+                STACK_TERMINATE(name, tk.start, tk.length);
                 int def_index = shgeti(defines, name);
-                free(name);
                 if (def_index >= 0) {
                     pre_skip(ctx, &s, true);
                 }
@@ -1010,7 +1007,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
             if (!ctx->minimal_parse) ignore_section(result_buffer, filename, file_buffer, &chunk_begin, start_of_line, s);
 
             if (inc_file.exists) {
-                char * inc_filename = copy_and_terminate(inc_file.tk.start + 1, inc_file.tk.length - 2);
+                STACK_TERMINATE(inc_filename, inc_file.tk.start + 1, inc_file.tk.length - 2);
                 char inc_filepath [1024];
                 bool is_from_sys = ctx->is_sys_header;
                 if (inc_file.is_quote) {
@@ -1064,7 +1061,6 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 ctx->include_level--;
 
                 if (error) return -1;
-                free(inc_filename);
             }
         } else if (tk.type == TK_END) {
             if (!ctx->minimal_parse) ignore_section(result_buffer, filename, file_buffer, &chunk_begin, s, NULL);

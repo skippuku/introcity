@@ -315,9 +315,8 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
     IntroAttributeData data = {0};
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
-        char * terminated_name = copy_and_terminate(tk.start, tk.length);
+        STACK_TERMINATE(terminated_name, tk.start, tk.length);
         int map_index = shgeti(attribute_map, terminated_name);
-        free(terminated_name);
         if (map_index < 0) {
             parse_error(ctx, &tk, "No such attribute.");
             return 1;

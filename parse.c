@@ -7,11 +7,6 @@ parse_error(ParseContext * ctx, Token * tk, char * message) {
     parse_msg_internal(ctx->buffer, tk, message, 0);
 }
 
-static void UNUSED
-parse_warning(ParseContext * ctx, Token * tk, char * message) {
-    parse_msg_internal(ctx->buffer, tk, message, 1);
-}
-
 static intmax_t parse_constant_expression(ParseContext * ctx, char ** o_s);
 
 #include "attribute.c"
@@ -460,19 +455,21 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
         if (shgeti(ctx->ignore_typedefs, name) >= 0) {
             return 0;
         }
-
-        IntroType new_type = *type;
-        new_type.name = name;
-        bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
-        if (!new_type_is_indirect) {
-            new_type.parent = type;
+        IntroType * prev = shget(ctx->type_map, name);
+        if (prev) {
+            if (prev->parent != type) {
+                parse_error(ctx, &name_tk, "Redefinition does not match previous definition.");
+                return 1;
+            }
+        } else {
+            IntroType new_type = *type;
+            new_type.name = name;
+            bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
+            if (!new_type_is_indirect) {
+                new_type.parent = type;
+            }
+            store_type(ctx, &new_type);
         }
-        if (shgeti(ctx->type_map, name) >= 0) {
-            // TODO: uncomment once function pointers parse correctly
-            //parse_warning(ctx, &name_tk, "type is redefined.");
-        }
-        store_type(ctx, &new_type);
-
         Token tk = next_token(o_s);
         if (tk.type == TK_SEMICOLON) {
             break;

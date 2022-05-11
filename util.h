@@ -101,7 +101,14 @@ typedef struct {
 static IntroType * parse_base_type(ParseContext *, char **, Token *, bool);
 static IntroType * parse_declaration(ParseContext *, IntroType *, char **, Token *);
 
-__attribute__ ((format (printf, 2, 3)))
+#if defined(__has_attribute)
+  #if defined(__MINGW32__)
+    #define STRPUTF_FORMAT __MINGW_PRINTF_FORMAT
+  #else
+    #define STRPUTF_FORMAT printf
+  #endif
+__attribute__ ((format (STRPUTF_FORMAT, 2, 3)))
+#endif
 static void
 strputf(char ** p_str, const char * format, ...) {
     va_list args_original;
@@ -136,10 +143,15 @@ strputf(char ** p_str, const char * format, ...) {
 }
 
 #ifdef DEBUG
-// this is so i can get the array length in gdb
+// this is so i can get array and map length in gdb
 int
 dbarrlen(void * a) {
     return (a)? arrlen(a) : -1;
 }
+
+int
+dbhmlen(void * m) {
+    return (m)? hmlen(m) : -1;
+}
 #endif
-#endif
+#endif // UTIL_H
