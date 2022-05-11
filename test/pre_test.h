@@ -1,3 +1,26 @@
+#if 1
+// SPECIAL MACRO TESTS
+#define SOME_ERR(msg) fprintf(stderr, "error (%s:%i): %s\n", msg, __FILE__, __LINE__)
+#define cat(a, b) a ## b
+#define UNIQUE_ITER(start, end) UNIQUE_ITER_x(start, end, __COUNTER__)
+#define UNIQUE_ITER_x(start, end, c) (int cat(_i_, c)=0; cat(_i_, c) < end; cat(_i_, c)++)
+#define DISPLAY(iden) #iden ==> iden
+
+DISPLAY(__FILE__);
+DISPLAY(__LINE__);
+DISPLAY(__DATE__);
+DISPLAY(__TIME__);
+DISPLAY(__BASE_FILE__);
+DISPLAY(__FILE_NAME__);
+DISPLAY(__TIMESTAMP__);
+DISPLAY(__INCLUDE_LEVEL__);
+
+SOME_ERR("oh no.");
+
+UNIQUE_ITER(0, 5);
+UNIQUE_ITER(1, 12); UNIQUE_ITER(2, 18);
+#endif
+
 // from the c99 standard
 
 // 6.10.3.3.4

@@ -1,4 +1,6 @@
 #include <sys/unistd.h>
+#include <sys/stat.h>
+#include <time.h>
 
 #include "util.h"
 #include "lexer.c"
@@ -9,15 +11,31 @@ typedef struct {
     char * filename;
     char * buffer;
     size_t buffer_size;
+    time_t st_mtime;
     bool once;
 } FileBuffer;
 static FileBuffer ** file_buffers = NULL;
+
+typedef enum {
+    MACRO_NOT_SPECIAL = 0,
+    MACRO_defined,
+    MACRO_FILE,
+    MACRO_LINE,
+    MACRO_DATE,
+    MACRO_TIME,
+    MACRO_COUNTER,
+    MACRO_INCLUDE_LEVEL,
+    MACRO_BASE_FILE,
+    MACRO_FILE_NAME,
+    MACRO_TIMESTAMP,
+} SpecialMacro;
 
 typedef struct {
     char * key;
     Token * replace_list;
     char ** arg_list;
     int32_t arg_count;
+    SpecialMacro special;
     bool func_like;
     bool variadic;
 } Define; // TODO: rename to Macro
@@ -49,6 +67,11 @@ typedef struct {
     NameSet * dependency_set;
     ExprContext * expr_ctx;
     ExpandContext expand_ctx;
+
+    const char * base_file;
+    int counter;
+    int include_level;
+
     int sys_header_first;
     int sys_header_last;
     bool is_sys_header;
@@ -135,19 +158,26 @@ parse_msg_internal(char * buffer, const Token * tk, char * message, int message_
     message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, message_type);
 }
 
-static void
-preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, char * message, int msg_type) {
-    char * start_of_line;
-    if (tk->start < file_buffer->buffer || tk->start >= file_buffer->buffer + file_buffer->buffer_size) {
+static const FileBuffer *
+pre_find_file(const FileBuffer * current_file, const char * s) {
+    const FileBuffer * file_info = current_file;
+    if (s < file_info->buffer || s >= file_info->buffer + file_info->buffer_size) {
         for (int i=0; i < arrlen(file_buffers); i++) {
             char * fb_start = file_buffers[i]->buffer;
             char * fb_end = fb_start + file_buffers[i]->buffer_size;
-            if (tk->start >= fb_start && tk->start < fb_end) {
-                file_buffer = file_buffers[i];
+            if (s >= fb_start && s < fb_end) {
+                file_info = file_buffers[i];
                 break;
             }
         }
     }
+    return file_info;
+}
+
+static void
+preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, char * message, int msg_type) {
+    file_buffer = pre_find_file(file_buffer, tk->start);
+    char * start_of_line;
     int line_num = count_newlines_in_range(file_buffer->buffer, tk->start, &start_of_line);
     message_internal(start_of_line, file_buffer->filename, line_num, tk->start, tk->start + tk->length, message, msg_type);
 }
@@ -413,41 +443,126 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     Token * macro_tk = &ctx->expand_ctx.list[macro_tk_index];
     STACK_TERMINATE(terminated_tk, macro_tk->start, macro_tk->length);
 
-    if (0==strcmp(terminated_tk, "defined")) {
-        int index = macro_tk_index;
-        Token tk = internal_macro_next_token(ctx, &index);
-        bool is_paren = false;
-        if (tk.start && *tk.start == '(') {
-            is_paren = true;
-            tk = internal_macro_next_token(ctx, &index);
-        }
-        if (tk.type != TK_IDENTIFIER) {
-            preprocess_error(&tk, "Expected identifier.");
-            exit(1);
-        }
-        STACK_TERMINATE(defined_iden, tk.start, tk.length);
-        char * replace = (shgeti(defines, defined_iden) >= 0)? "1" : "0";
-        if (is_paren) {
-            tk = internal_macro_next_token(ctx, &index);
-            if (*tk.start != ')') {
-                preprocess_error(&tk, "Expected ')'.");
-                exit(1);
-            }
-        }
-        Token replace_tk = (Token){
-            .start = replace,
-            .length = 1,
-            .type = TK_IDENTIFIER,
-            .preceding_space = macro_tk->preceding_space,
-        };
-        arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2));
-        ctx->expand_ctx.list[macro_tk_index] = replace_tk;
-        return true;
-    }
-
     ptrdiff_t macro_index = shgeti(defines, terminated_tk);
     if (macro_index < 0) {
         return false;
+    }
+    Define * macro = &defines[macro_index];
+    if (macro->special != MACRO_NOT_SPECIAL) {
+        char * buf = NULL; // TODO: leak
+        int token_type = TK_STRING;
+        switch(macro->special) {
+        case MACRO_NOT_SPECIAL: break; // never reached
+
+        case MACRO_defined: {
+            int index = macro_tk_index;
+            Token tk = internal_macro_next_token(ctx, &index);
+            bool is_paren = false;
+            if (tk.start && *tk.start == '(') {
+                is_paren = true;
+                tk = internal_macro_next_token(ctx, &index);
+            }
+            if (tk.type != TK_IDENTIFIER) {
+                preprocess_error(&tk, "Expected identifier.");
+                exit(1);
+            }
+            STACK_TERMINATE(defined_iden, tk.start, tk.length);
+            char * replace = (shgeti(defines, defined_iden) >= 0)? "1" : "0";
+            if (is_paren) {
+                tk = internal_macro_next_token(ctx, &index);
+                if (*tk.start != ')') {
+                    preprocess_error(&tk, "Expected ')'.");
+                    exit(1);
+                }
+            }
+            Token replace_tk = (Token){
+                .start = replace,
+                .length = 1,
+                .type = TK_IDENTIFIER,
+                .preceding_space = macro_tk->preceding_space,
+            };
+            arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2));
+            ctx->expand_ctx.list[macro_tk_index] = replace_tk;
+            return true;
+        }break;
+
+        case MACRO_FILE: {
+            strputf(&buf, "\"%s\"", ctx->current_file_buffer->filename);
+        }break;
+
+        case MACRO_LINE: {
+            const FileBuffer * current_file = pre_find_file(ctx->current_file_buffer, macro_tk->start);
+            char * start_of_line_;
+            int line_num = count_newlines_in_range(current_file->buffer, macro_tk->start, &start_of_line_);
+            strputf(&buf, "%i", line_num);
+            token_type = TK_IDENTIFIER;
+        }break;
+
+        case MACRO_DATE: {
+            char static_buf [12];
+            time_t time_value;
+            struct tm * date;
+
+            time(&time_value);
+            date = localtime(&time_value);
+            strftime(static_buf, sizeof(static_buf), "%b %d %Y", date);
+
+            strputf(&buf, "\"%s\"", static_buf);
+        }break;
+
+        case MACRO_TIME: {
+            char static_buf [9];
+            time_t time_value;
+            struct tm * date;
+
+            time(&time_value);
+            date = localtime(&time_value);
+            strftime(static_buf, sizeof(static_buf), "%H:%M:%S", date);
+
+            strputf(&buf, "\"%s\"", static_buf);
+        }break;
+
+        case MACRO_COUNTER: {
+            strputf(&buf, "%i", ctx->counter++);
+            token_type = TK_IDENTIFIER;
+        }break;
+
+        case MACRO_INCLUDE_LEVEL: {
+            strputf(&buf, "%i", ctx->include_level);
+            token_type = TK_IDENTIFIER;
+        }break;
+
+        case MACRO_BASE_FILE: {
+            strputf(&buf, "\"%s\"", ctx->base_file);
+        }break;
+
+        case MACRO_FILE_NAME: {
+            char static_buf_ [1024];
+            char * filename = NULL;
+            path_dir(static_buf_, ctx->current_file_buffer->filename, &filename);
+            strputf(&buf, "\"%s\"", filename);
+        }break;
+
+        case MACRO_TIMESTAMP: {
+            char static_buf [256];
+            struct tm * date;
+
+            date = localtime(&ctx->current_file_buffer->st_mtime);
+            strftime(static_buf, sizeof(static_buf), "%a %b %d %H:%M:%S %Y", date);
+
+            strputf(&buf, "\"%s\"", static_buf);
+        }break;
+        }
+
+        strputnull(buf);
+        Token replace_tk = {
+            .start = buf,
+            .length = arrlen(buf) - 1,
+            .type = token_type,
+            .preceding_space = macro_tk->preceding_space,
+        };
+        ctx->expand_ctx.list[macro_tk_index] = replace_tk;
+        return true;
     }
     for (int i=0; i < arrlen(ctx->expand_ctx.macro_index_stack); i++) {
         if (macro_index == ctx->expand_ctx.macro_index_stack[i]) {
@@ -455,12 +570,12 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             return false;
         }
     }
-    Define * macro = &defines[macro_index];
     Token * replace_list = NULL;
     bool free_replace_list = false;
     int count_arg_tokens = 0;
     bool preceding_space = (macro_tk_index == 0)? false : macro_tk->preceding_space;
-    macro_tk = NULL;
+
+    macro_tk = NULL; // following code will make this invalid
 
     if (macro->func_like) {
         Token * list = NULL;
@@ -938,10 +1053,16 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                         continue;
                     }
                 }
+
                 bool prev = ctx->is_sys_header;
                 ctx->is_sys_header = is_from_sys;
+                ctx->include_level++;
+
                 int error = preprocess_filename(ctx, result_buffer, inc_filepath_stored);
+
                 ctx->is_sys_header = prev;
+                ctx->include_level--;
+
                 if (error) return -1;
                 free(inc_filename);
             }
@@ -994,11 +1115,16 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
         }
     }
     if (!file_buffer) {
+        time_t mtime;
         if (filename == filename_stdin) {
             file_buffer = read_stream(stdin);
             file_size = arrlen(file_buffer);
+            time(&mtime);
         } else {
             file_buffer = intro_read_file(filename, &file_size);
+            struct stat file_stat;
+            stat(filename, &file_stat);
+            mtime = file_stat.st_mtime;
         }
         if (!file_buffer) {
             return ERR_FILE_NOT_FOUND;
@@ -1007,8 +1133,13 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
         new_buf->filename = filename;
         new_buf->buffer = file_buffer;
         new_buf->buffer_size = file_size;
+        new_buf->st_mtime = mtime;
         arrput(file_buffers, new_buf);
         ctx->current_file_buffer = arrlast(file_buffers);
+    }
+
+    if (ctx->include_level == 0) {
+        ctx->base_file = filename;
     }
 
     return preprocess_buffer(ctx, result_buffer, file_buffer, filename);
@@ -1024,10 +1155,30 @@ char *
 run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     sh_new_arena(defines);
 
+    // init pre context
     PreContext ctx_ = {0}, *ctx = &ctx_;
     ctx->expr_ctx = calloc(1, sizeof(*ctx->expr_ctx));
     ctx->expr_ctx->mode = MODE_PRE;
     ctx->expr_ctx->arena = new_arena();
+
+    static const struct{char * name; SpecialMacro value;} special_macros [] = {
+        {"defined", MACRO_defined},
+        {"__FILE__", MACRO_FILE},
+        {"__LINE__", MACRO_LINE},
+        {"__DATE__", MACRO_DATE},
+        {"__TIME__", MACRO_TIME},
+        {"__COUNTER__", MACRO_COUNTER},
+        {"__INCLUDE_LEVEL__", MACRO_INCLUDE_LEVEL},
+        {"__BASE_FILE__", MACRO_BASE_FILE},
+        {"__FILE_NAME__", MACRO_FILE_NAME},
+        {"__TIMESTAMP__", MACRO_TIMESTAMP},
+    };
+    for (int i=0; i < LENGTH(special_macros); i++) {
+        Define special = {0};
+        special.key = special_macros[i].name;
+        special.special = special_macros[i].value;
+        shputs(defines, special);
+    }
 
     *o_output_filepath = NULL;
 

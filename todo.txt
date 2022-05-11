@@ -29,7 +29,6 @@ pre:
     fix highlighting of expanded macros
     parse #line directives
     create #line directives?
-    __FILE__, __LINE__, __COUNTER, etc.
     better config system for system headers and defines
     internal: use context instead of globals
 
