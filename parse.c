@@ -93,7 +93,10 @@ maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk,
 
 static bool
 is_ignored(Token * tk) {
-    return tk_equal(tk, "const") || tk_equal(tk, "static") || tk_equal(tk, "volatile");
+    return tk_equal(tk, "const")
+        || tk_equal(tk, "static")
+        || tk_equal(tk, "volatile")
+        || tk_equal(tk, "inline");
 }
 
 static intmax_t
@@ -706,6 +709,87 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token 
     return last_type;
 }
 
+void
+find_declaration_end(char ** o_s) {
+    Token tk;
+    while (1) {
+        if (tk.type != TK_SEMICOLON) {
+            break;
+        }
+        tk = next_token(o_s);
+    }
+}
+
+int
+maybe_parse_function(ParseContext * ctx, char ** o_s) {
+    Token type_tk, name_tk;
+    IntroType * return_base = parse_base_type(ctx, o_s, &type_tk, false);
+    if (!return_base) return -1;
+
+    IntroType * return_type = parse_declaration(ctx, return_base, o_s, &name_tk);
+    if (!return_type) return -1;
+
+    if (return_type->category == INTRO_UNKNOWN) {
+        parse_error(ctx, &type_tk, "Type is unknown.");
+    }
+
+    Token tk = next_token(o_s);
+    if (tk.type != TK_L_PARENTHESIS) {
+        find_declaration_end(o_s);
+        return 0;
+    }
+
+    IntroArgument * arguments = NULL;
+    tk = next_token(o_s);
+    if (tk.type == TK_R_PARENTHESIS) {
+        goto after_args;
+    } else {
+        *o_s = tk.start;
+    }
+    while (1) {
+        Token arg_type_tk, arg_name_tk;
+        IntroType * arg_base = parse_base_type(ctx, o_s, &arg_type_tk, false);
+        if (!arg_base) return -1;
+
+        IntroType * arg_type = parse_declaration(ctx, arg_base, o_s, &arg_name_tk);
+        if (!arg_type) return -1;
+
+        IntroArgument arg = {0};
+        arg.name = copy_and_terminate(name_tk.start, name_tk.length);
+        arg.type = arg_type;
+        arrput(arguments, arg);
+
+        tk = next_token(o_s);
+        if (tk.type == TK_R_PARENTHESIS) {
+            break;
+        } else  if (tk.type != TK_COMMA) {
+            parse_error(ctx, &tk, "Expected ','.");
+            return -1;
+        }
+    }
+after_args: ;
+    
+    IntroFunction * func = malloc(sizeof(*func) + arrlen(arguments) * sizeof(*arguments));
+    memset(func, 0, sizeof(*func));
+    memcpy(func->arguments, arguments, arrlen(arguments) * sizeof(*arguments));
+
+    arrfree(arguments);
+
+    func->return_type = return_type;
+    func->count_arguments = arrlen(arguments);
+
+    IntroType type = {0};
+    type.name = copy_and_terminate(name_tk.start, name_tk.length);
+    type.category = INTRO_FUNCTION;
+    type.function = func;
+
+    store_type(ctx, &type);
+
+    find_declaration_end(o_s);
+
+    return 0;
+}
+
 int
 parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     ParseContext * ctx = calloc(1, sizeof(ParseContext));
@@ -731,9 +815,6 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"float",    NULL, INTRO_F32},
         {"double",   NULL, INTRO_F64},
         {"_Bool",    NULL, INTRO_U8 },
-        {"size_t",   NULL, INTRO_U64}, // TODO
-        {"ptrdiff_t",NULL, INTRO_S64},
-        {"wchar_t",  NULL, INTRO_S16}, // TODO
     };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);
@@ -759,6 +840,9 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
                 if (error == 2) error = 0;
             } else if (tk_equal(&tk, "typedef")) {
                 error = parse_typedef(ctx, &s);
+            } else {
+                //s = tk.start;
+                //error = maybe_parse_function(ctx, &s);
             }
 
             if (error) {

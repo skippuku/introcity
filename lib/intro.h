@@ -46,6 +46,7 @@ typedef enum {
 
 typedef struct IntroStruct IntroStruct;
 typedef struct IntroEnum IntroEnum;
+typedef struct IntroFunction IntroFunction;
 typedef struct IntroType IntroType;
 
 struct IntroType {
@@ -56,6 +57,7 @@ struct IntroType {
         uint32_t array_size;
         IntroStruct * i_struct;
         IntroEnum * i_enum;
+        IntroFunction * function;
     };
 };
 
@@ -115,6 +117,17 @@ struct IntroEnum {
     IntroEnumValue members [];
 };
 
+typedef struct IntroArgument {
+    const char * name;
+    IntroType * type;
+} IntroArgument;
+
+struct IntroFunction {
+    IntroType * return_type;
+    uint32_t count_arguments;
+    IntroArgument arguments [];
+};
+
 typedef struct IntroContext {
     IntroType * types;
     const char ** notes;
@@ -152,7 +165,8 @@ INTRO_INLINE bool
 intro_is_complex(const IntroType * type) {
     return (type->category == INTRO_STRUCT
          || type->category == INTRO_UNION
-         || type->category == INTRO_ENUM);
+         || type->category == INTRO_ENUM
+         || type->category == INTRO_FUNCTION);
 }
 
 typedef struct IntroNameSize {
