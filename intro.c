@@ -45,7 +45,7 @@ main(int argc, char * argv []) {
         return error;
     }
 
-    char * header = generate_c_header(&info);
+    char * header = generate_c_header(&info, output_filename);
     if (!header) {
         fprintf(stderr, "generator failed.\n");
         return -2;

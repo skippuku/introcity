@@ -98,7 +98,7 @@ attr_value_str(int attr_value) {
 }
 
 char *
-generate_c_header(IntroInfo * info) {
+generate_c_header(IntroInfo * info, const char * output_filename) {
     // generate info needed to get offset and sizeof for anonymous types
     for (int i=0; i < hmlen(info->nest_map); i++) {
         NestInfo * nest = &info->nest_map[i];
@@ -109,8 +109,25 @@ generate_c_header(IntroInfo * info) {
 
     const char * tab = "    ";
 
+    char * header_def = NULL;
+    arrsetcap(header_def, strlen(output_filename) + 2);
+    arrsetlen(header_def, 1);
+    header_def[0] = '_';
+    for (int i=0; i < strlen(output_filename); i++) {
+        char c = output_filename[i];
+        if (is_iden(c)) {
+            arrput(header_def, c);
+        } else {
+            arrput(header_def, '_');
+        }
+    }
+    strputnull(header_def);
+
     strputf(&s, "/* Generated with intro %s */\n\n", VERSION);
     strputf(&s, "#ifndef __INTRO__\n");
+    strputf(&s, "#ifndef %s\n"
+                "#define %s\n",
+                header_def, header_def);
     strputf(&s, "#include <stddef.h>\n\n");
 
     struct {
@@ -273,7 +290,7 @@ generate_c_header(IntroInfo * info) {
     strputf(&s, "%s.size_values = %i,\n", tab, (int)arrlenu(info->value_buffer));
     strputf(&s, "};\n");
 
-    strputf(&s, "#endif\n");
+    strputf(&s, "#endif\n#endif\n");
 
     hmfree(complex_type_map);
 
