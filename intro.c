@@ -16,8 +16,8 @@
   #endif
 #endif
 
-int
-main(int argc, char * argv []) {
+static void
+enable_windows_console_color() {
 #ifdef _WIN32
     HANDLE con = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD mode = 0;
@@ -25,6 +25,11 @@ main(int argc, char * argv []) {
     mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     SetConsoleMode(con, mode);
 #endif
+}
+
+int
+main(int argc, char * argv []) {
+    enable_windows_console_color();
 
     char * output_filename = NULL;
     char * preprocessed_buffer = run_preprocessor(argc, argv, &output_filename);

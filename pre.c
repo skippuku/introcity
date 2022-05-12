@@ -11,7 +11,7 @@ typedef struct {
     char * filename;
     char * buffer;
     size_t buffer_size;
-    time_t st_mtime;
+    time_t mtime;
     bool once;
 } FileBuffer;
 static FileBuffer ** file_buffers = NULL;
@@ -63,6 +63,7 @@ typedef struct {
         bool G;
         bool no_sys;
         char * custom_target;
+        char * filename;
     } m_options;
     NameSet * dependency_set;
     ExprContext * expr_ctx;
@@ -547,7 +548,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             char static_buf [256];
             struct tm * date;
 
-            date = localtime(&ctx->current_file_buffer->st_mtime);
+            date = localtime(&ctx->current_file_buffer->mtime);
             strftime(static_buf, sizeof(static_buf), "%a %b %d %H:%M:%S %Y", date);
 
             strputf(&buf, "\"%s\"", static_buf);
@@ -987,7 +988,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 pre_skip(ctx, &s, false);
             } else if (tk_equal(&directive, "endif")) {
             } else if (tk_equal(&directive, "error")) {
-                preprocess_error(&directive, "User error");
+                preprocess_error(&directive, "User error.");
                 return -1;
             } else if (tk_equal(&directive, "pragma")) {
                 tk = pre_next_token(&s);
@@ -1129,7 +1130,7 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
         new_buf->filename = filename;
         new_buf->buffer = file_buffer;
         new_buf->buffer_size = file_size;
-        new_buf->st_mtime = mtime;
+        new_buf->mtime = mtime;
         arrput(file_buffers, new_buf);
         ctx->current_file_buffer = arrlast(file_buffers);
     }
@@ -1254,6 +1255,10 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
                     ctx->m_options.custom_target = argv[++i];
                 }break;
 
+                case 'F' :{
+                    ctx->m_options.filename = argv[++i];
+                }break;
+
                 default: goto unknown_option;
                 }
 
@@ -1349,26 +1354,43 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
 
     strputnull(result_buffer);
 
-    if (preprocess_only) {
-        if (ctx->m_options.enabled) {
-            char * rule = NULL;
-            if (ctx->m_options.custom_target) {
-                strputf(&rule, "%s:", ctx->m_options.custom_target);
-            } else {
-                char * ext = strrchr(filepath, '.');
-                int len_basename = (ext)? ext - filepath : strlen(filepath);
-                strputf(&rule, "%.*s.o:", len_basename, filepath);
-            }
-            strputf(&rule, " %s", filepath);
-            for (int i=0; i < shlen(ctx->dependency_set); i++) {
-                strputf(&rule, " %s", ctx->dependency_set[i].key);
-            }
-            arrput(rule, '\n');
-            strputnull(rule);
-            fputs(rule, stdout);
-        } else {
-            fputs(result_buffer, stdout);
+    if (ctx->m_options.enabled) {
+        char * ext = strrchr(filepath, '.');
+        int len_basename = (ext)? ext - filepath : strlen(filepath);
+        if (ctx->m_options.D && !ctx->m_options.filename) {
+            char * dep_file = NULL;
+            strputf(&dep_file, "%.*s.d", len_basename, filepath);
+            ctx->m_options.filename = dep_file;
         }
+
+        char * rule = NULL;
+        if (ctx->m_options.custom_target) {
+            strputf(&rule, "%s:", ctx->m_options.custom_target);
+        } else {
+            strputf(&rule, "%.*s.o:", len_basename, filepath);
+        }
+        strputf(&rule, " %s", filepath);
+        for (int i=0; i < shlen(ctx->dependency_set); i++) {
+            strputf(&rule, " %s", ctx->dependency_set[i].key);
+        }
+        arrput(rule, '\n');
+        strputnull(rule);
+
+        if (preprocess_only && !ctx->m_options.filename) {
+            fputs(rule, stdout);
+            exit(0);
+        }
+
+        assert(ctx->m_options.filename != NULL
+               /* I don't know how you did this, but the program can't figure out where you want the dependencies. */);
+        int error = intro_dump_file(ctx->m_options.filename, rule, arrlen(rule) - 1);
+        if (error < 0) {
+            fprintf(stderr, "Failed to write dependencies to '%s'\n", ctx->m_options.filename);
+            exit(1);
+        }
+    }
+    if (preprocess_only) {
+        fputs(result_buffer, stdout);
         exit(0);
     }
 

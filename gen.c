@@ -110,6 +110,7 @@ generate_c_header(IntroInfo * info) {
     const char * tab = "    ";
 
     strputf(&s, "/* Generated with intro %s */\n\n", VERSION);
+    strputf(&s, "#ifndef __INTRO__\n");
     strputf(&s, "#include <stddef.h>\n\n");
 
     struct {
@@ -271,6 +272,8 @@ generate_c_header(IntroInfo * info) {
     strputf(&s, "%s.count_notes = %i,\n", tab, (int)arrlenu(note_set));
     strputf(&s, "%s.size_values = %i,\n", tab, (int)arrlenu(info->value_buffer));
     strputf(&s, "};\n");
+
+    strputf(&s, "#endif\n");
 
     hmfree(complex_type_map);
 
