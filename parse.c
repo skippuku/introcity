@@ -585,6 +585,9 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
             if ((type.category & 0xf0) == 0) {
                 type.category |= 0x20;
             }
+            if ((type.category & 0x0f) == 0) {
+                type.category |= 0x04;
+            }
         }
 
         o_tk->length = tk.start - first.start + tk.length;

@@ -4,7 +4,7 @@ void
 check(int index, const char * str, IntroCategory a, IntroCategory b) {
     if (a != b) {
         fprintf(stderr, "m[%i].type%s->category: expected 0x%x, got 0x%x\n", index, str, (int)b, (int)a);
-        exit(3);
+        exit(134);
     }
 }
 
@@ -43,12 +43,12 @@ main() {
         CHECK0(14, ->parent,         POINTER);
         CHECK0(14, ->parent->parent, U64);
 
-        CHECK0(15,,                  POINTER);
-        CHECK0(15, ->parent,         ARRAY);
+        CHECK0(15,,                  ARRAY);
+        CHECK0(15, ->parent,         POINTER);
         CHECK0(15, ->parent->parent, U64);
 
-        CHECK0(16,,                  ARRAY);
-        CHECK0(16, ->parent,         POINTER);
+        CHECK0(16,,                  POINTER);
+        CHECK0(16, ->parent,         ARRAY);
         CHECK0(16, ->parent->parent, U64);
 
     CHECK0(17,, U64);
