@@ -1,7 +1,7 @@
 INTROLIB := ../lib/introlib.o
 INTRO_PARSE := ../intro
 CPPFLAGS += -I../lib
-CFLAGS := -g
+CFLAGS := -g -MMD
 CFLAGS += $(CPPFLAGS)
 SRC = $(wildcard *.c)
 INTERACTIVE := interactive_test
@@ -19,9 +19,37 @@ endef
 all: $(EXE)
 	@echo "Build complete."
 
+CRED   := \e[31m
+CGREEN := \e[32m
+CCYAN  := \e[36m
+CRESET := \e[0m
+
+.ONESHELL:
 run: $(TESTS)
-	$(foreach x,$(TESTS),./$(x)$(\n))
-	@echo "All tests were successful."
+	@echo > log.txt
+	fails=0
+	for f in $(TESTS); do
+		printf "\n----------------\nTEST $$f\n----------------\n" >> log.txt
+		printf "%-30b" "TEST $(CCYAN)$$f$(CRESET)"
+		err=$$(./$$f 2>&1 >> log.txt)
+		ok=$$?
+		printf -- "$$err" >> log.txt
+		if [ $$ok -eq 0 ]; then
+			printf "$(CGREEN)OK"
+		else
+			printf "$(CRED)FAILED$(CRESET)\n"
+			printf "    $$err\n"
+			((fails+=1))
+		fi
+		printf "$(CRESET)\n"
+	done
+	[[ $$fails = 0 ]] \
+	  && printf "$(CGREEN)All tests passed." \
+	  || printf "$(CRED)Some tests failed."
+	printf "$(CRESET)\n"
+
+$(INTRO_PARSE):
+	@$(MAKE) -C .. debug
 
 %.intro: % $(INTRO_PARSE)
 	$(INTRO_PARSE) $(CPPFLAGS) $< -o $@
@@ -32,10 +60,10 @@ $(EXE): db_%: %.o $(INTROLIB)
 clean:
 	rm -f *.intro *.o *.d $(EXE)
 
-deps.d: $(MAKEFILE_LIST) $(INTRO_PARSE)
-	> deps.d
-	$(foreach f,$(SRC),$(INTRO_PARSE) $(CPPFLAGS) -MM -MG -MT '$(f:.c=.o) deps.d' $(f) >> deps.d$(\n))
+%.d:
+	$(INTRO_PARSE) $(CPPFLAGS) -MM -MG $*.c > $@
 
-ifneq ($(MAKECMDGOALS),clean)
-include deps.d
+DEPS := $(SRC:.c=.d)
+ifeq (,$(filter clean,$(MAKECMDGOALS)))
+include $(DEPS)
 endif

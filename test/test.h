@@ -60,24 +60,33 @@ enum UndefEnum;
 typedef struct Forward Forward;
 
 typedef struct {
-    char c;
+    char c; // 0
     short s;
     int i;
     long l;
     long long ll;
 
-    signed char sc;
+    signed char sc; // 5
     signed int si;
 
-    unsigned char uc;
+    unsigned char uc; // 7
     unsigned short int us;
     unsigned u;
     unsigned int ui;
+
+    //                     11  12   13      14      15        16
     unsigned long long int v1, *v2, v3[3], *v4[4], *(v5[5]), (*v6)[6];
 
-    unsigned long int uli;
+    unsigned long int uli; // 17
     signed long int sli;
     signed long long int slli;
+
+    long unsigned int lui; // 20
+    short unsigned su;
+    long long signed int llsi;
+    long signed ls;
+    signed _s;
+    signed int _si;
 } TestInt;
 
 struct TestPtr {
@@ -196,9 +205,14 @@ typedef enum {
     SIZEOF_SHORT = sizeof(short),
 } EvilEnum;
 
+// commented out because gcc doesn't enabled MS extensions by default
 #if 0
 typedef struct {
     char * name;
     Forward;
 } MsExt;
+#endif
+
+#ifndef __INTRO__
+#  include "test.h.intro"
 #endif

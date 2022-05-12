@@ -37,6 +37,22 @@ main() {
     intro_print(&obj_load, obj_load.type, NULL);
     printf("\n");
 
+#define CHECK_EQUAL(member) \
+    if (0!=memcmp(&obj_load.member, &obj_save.member, sizeof(obj_save.member))) { \
+        fprintf(stderr, "NOT EQUAL (%s:%i): " #member, __FILE__, __LINE__); \
+        exit(1); \
+    }
+
+    CHECK_EQUAL(a);
+    assert(obj_save.b == obj_load.b2);
+    CHECK_EQUAL(array);
+    CHECK_EQUAL(wood_type);
+    CHECK_EQUAL(stuff.a);
+    CHECK_EQUAL(stuff.b);
+    assert(0==strcmp(obj_save.name, obj_load.name));
+    CHECK_EQUAL(count_numbers);
+    assert(0==memcmp(obj_save.numbers, obj_load.numbers, obj_save.count_numbers * sizeof(obj_save.numbers[0])));
+
     free(city_data_handle);
 
     return 0;

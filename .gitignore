@@ -9,3 +9,4 @@ intro
 test/interactive_test
 .intro_inc
 .intro_def
+test/log.txt
