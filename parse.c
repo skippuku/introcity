@@ -550,6 +550,7 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
                 } else if (tk_equal(&tk2, "double")) {
                     type.category = INTRO_F128; // TODO
                     tk = tk2;
+                    strputf(&type_name, " %.*s", tk.length, tk.start);
                     break;
                 } else {
                     *o_s = tk2.start;

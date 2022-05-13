@@ -38,11 +38,11 @@ run: $(TESTS)
 		else
 			printf "$(CRED)FAILED$(CRESET)\n"
 			printf "    $$err"
-			((fails+=1))
+			fails=1
 		fi
 		printf "$(CRESET)\n"
 	done
-	[[ $$fails = 0 ]] \
+	[ $$fails -eq 0 ] \
 	  && printf "$(CGREEN)All tests passed." \
 	  || printf "$(CRED)Some tests failed."
 	printf "$(CRESET)\n"
