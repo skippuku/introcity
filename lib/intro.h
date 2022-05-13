@@ -169,17 +169,13 @@ intro_is_complex(const IntroType * type) {
          || type->category == INTRO_FUNCTION);
 }
 
-typedef struct IntroNameSize {
-    char * name;
-    size_t size;
-} IntroNameSize;
-
 typedef struct {
     int indent;
 } IntroPrintOptions;
 
 int intro_size(const IntroType * type);
 const IntroType * intro_base(const IntroType * type, int * o_depth);
+const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
 bool intro_attribute_flag(const IntroMember * m, int32_t attr_type);
 bool intro_attribute_int(const IntroMember * m, int32_t attr_type, int32_t * o_int);
@@ -188,7 +184,6 @@ bool intro_attribute_length(const void * struct_data, const IntroType * struct_t
 void intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, int member_index, int value_attribute);
 void intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, int value_attribute);
 void intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type);
-void * intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * list, size_t count); // i have never tested this, don't use it lol
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
 void intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt);

@@ -10,6 +10,8 @@ check(int index, const char * str, IntroCategory a, IntroCategory b) {
 
 int
 main() {
+    TestInt t;
+    (void)t;
     const IntroType * test_int_type = ITYPE(TestInt);
     
     const IntroMember * m = test_int_type->i_struct->members;
@@ -38,18 +40,22 @@ main() {
 
         CHECK0(13,,          ARRAY);
         CHECK0(13, ->parent, U64);
+        assert(m[13].type->array_size == LENGTH(t.v3));
 
         CHECK0(14,,                  ARRAY);
         CHECK0(14, ->parent,         POINTER);
         CHECK0(14, ->parent->parent, U64);
+        assert(m[14].type->array_size == LENGTH(t.v4));
 
         CHECK0(15,,                  ARRAY);
         CHECK0(15, ->parent,         POINTER);
         CHECK0(15, ->parent->parent, U64);
+        assert(m[15].type->array_size == LENGTH(t.v5));
 
         CHECK0(16,,                  POINTER);
         CHECK0(16, ->parent,         ARRAY);
         CHECK0(16, ->parent->parent, U64);
+        assert(m[16].type->parent->array_size == LENGTH(*t.v6));
 
     CHECK0(17,, U64);
     CHECK0(18,, S64);

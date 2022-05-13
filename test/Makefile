@@ -2,7 +2,6 @@ INTROLIB := ../lib/introlib.o
 INTRO_PARSE := ../intro
 CPPFLAGS += -I../lib
 CFLAGS := -g -MMD
-CFLAGS += $(CPPFLAGS)
 SRC = $(wildcard *.c)
 INTERACTIVE := interactive_test
 EXE = $(SRC:%.c=db_%)
@@ -38,7 +37,7 @@ run: $(TESTS)
 			printf "$(CGREEN)OK"
 		else
 			printf "$(CRED)FAILED$(CRESET)\n"
-			printf "    $$err\n"
+			printf "    $$err"
 			((fails+=1))
 		fi
 		printf "$(CRESET)\n"

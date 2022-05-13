@@ -14,6 +14,7 @@ attribute:
 
 parse:
     !! sizeof structs/enums in expressions
+    !! fix needing enum name before I(attribute)
     give c int types a parent based on size and signedness
     add way to change c type sizes for different platforms
     track type declaration file location?

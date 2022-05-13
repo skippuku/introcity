@@ -48,6 +48,20 @@ intro_base(const IntroType * type, int * o_depth) {
     return type;
 }
 
+const char *
+intro_enum_name(const IntroType * type, int value) {
+    if (type->i_enum->is_sequential) {
+        return type->i_enum->members[value].name;
+    } else {
+        for (int i=0; i < type->i_enum->count_members; i++) {
+            if (type->i_enum->members[i].value == value) {
+                return type->i_enum->members[i].name;
+            }
+        }
+    }
+    return NULL;
+}
+
 int64_t
 intro_int_value(const void * data, const IntroType * type) {
     int64_t result;
@@ -183,37 +197,6 @@ intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, in
 void
 intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
     intro_set_values_ctx(ctx, dest, type, INTRO_ATTR_DEFAULT);
-}
-
-void *
-intro_joint_alloc(void * dest, const IntroType * type, const IntroNameSize * list, size_t count) {
-    int32_t member_indices [count];
-    size_t ptr_offsets [count];
-    size_t alloc_size = 0;
-    for (int i=0; i < count; i++) {
-        for (int mi=0; mi < type->i_struct->count_members; mi++) { // NOTE: slow search
-            const IntroMember * m = &type->i_struct->members[mi];
-            if (0==strcmp(m->name, list[i].name)) {
-                assert(m->type->category == INTRO_POINTER);
-                member_indices[i] = mi;
-                ptr_offsets[i] = alloc_size;
-                alloc_size += list[i].size;
-                break;
-            }
-        }
-    }
-
-    void * buffer = malloc(alloc_size);
-    if (!buffer) return NULL;
-
-    for (int i=0; i < count; i++) {
-        int mi = member_indices[i];
-        const IntroMember * m = &type->i_struct->members[mi];
-        void ** member_loc = (void **)(dest + m->offset);
-        *member_loc = (void *)(buffer + ptr_offsets[i]);
-    }
-
-    return buffer;
 }
 
 static void
