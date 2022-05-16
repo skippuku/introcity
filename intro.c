@@ -1,6 +1,6 @@
 #include "lib/intro.h"
 #include "lexer.c"
-#include "util.h"
+#include "global.h"
 #include "expr.c"
 #include "pre.c"
 #include "parse.c"

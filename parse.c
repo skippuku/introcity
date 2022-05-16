@@ -1,6 +1,6 @@
 #include "lib/intro.h"
 #include "lexer.c"
-#include "util.h"
+#include "global.h"
 
 static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
@@ -74,7 +74,7 @@ maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk,
         Token paren = next_token(o_s);
         if (paren.type != TK_L_PARENTHESIS) {
             parse_error(ctx, &paren, "Expected '('.");
-            return 1;
+            return -1;
         }
         AttributeSpecifier spec;
         spec.location = paren.start;
@@ -83,7 +83,7 @@ maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk,
         char * closing = find_closing(paren.start);
         if (!closing) {
             parse_error(ctx, &paren, "Missing closing ')'.");
-            return 1;
+            return -1;
         }
         *o_s = closing + 1;
         *o_tk = next_token(o_s);
@@ -91,12 +91,24 @@ maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk,
     return 0;
 }
 
+static int
+get_keyword(ParseContext * ctx, Token tk) {
+    if (tk.type != TK_IDENTIFIER) return -1;
+    STACK_TERMINATE(terminated, tk.start, tk.length);
+    return shgeti(ctx->keyword_set, terminated);
+}
+
 static bool
-is_ignored(Token * tk) {
-    return tk_equal(tk, "const")
-        || tk_equal(tk, "static")
-        || tk_equal(tk, "volatile")
-        || tk_equal(tk, "inline");
+is_ignored(int keyword) {
+    switch(keyword) {
+    case KEYW_STATIC:
+    case KEYW_CONST:
+    case KEYW_VOLATILE:
+    case KEYW_INLINE:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static intmax_t
@@ -169,7 +181,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     }
 
     if (tk.type != TK_L_BRACE) {
-        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return 2;
+        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return RET_NOT_DEFINITION;
         parse_error(ctx, &tk, "Expected '{'.");
         return -1;
     }
@@ -179,17 +191,17 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     NestInfo * nests = NULL;
     while (1) {
         Token type_tk = {0};
-        IntroType * base_type = parse_base_type(ctx, o_s, &type_tk, false);
+        Token tk = next_token(o_s);
+        if (tk.type == TK_R_BRACE) {
+            break;
+        }
+        *o_s = tk.start;
+        IntroType * base_type = parse_type_base(ctx, o_s, &type_tk);
         if (!base_type) {
-            Token tk = next_token(o_s);
-            if (tk.type == TK_R_BRACE) {
-                break;
-            } else {
-                return 1;
-            }
+            return -1;
         }
 
-        Token tk = next_token(o_s);
+        tk = next_token(o_s);
         if (tk.type == TK_SEMICOLON) {
             if (base_type->category == INTRO_STRUCT || base_type->category == INTRO_UNION) {
                 IntroStruct * s = base_type->i_struct;
@@ -199,7 +211,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 continue;
             } else {
                 parse_error(ctx, &tk, "Struct member has no name or type is unknown.");
-                return 1;
+                return -1;
             }
         } else {
             *o_s = tk.start;
@@ -207,13 +219,13 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 IntroMember member = {0};
 
                 Token name_tk;
-                IntroType * type = parse_declaration(ctx, base_type, o_s, &name_tk);
+                IntroType * type = parse_type_annex(ctx, base_type, o_s, &name_tk);
                 member.name = copy_and_terminate(name_tk.start, name_tk.length);
-                if (!type) return 1;
+                if (!type) return -1;
 
                 if (type->category == INTRO_UNKNOWN) {
                     parse_error(ctx, &type_tk, "Unknown type.");
-                    return 1;
+                    return -1;
                 }
                 member.type = type;
 
@@ -246,7 +258,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 } else if (tk.type == TK_COMMA) {
                 } else {
                     parse_error(ctx, &tk, "Expected ';' or ','.");
-                    return 1;
+                    return -1;
                 }
             }
         }
@@ -320,26 +332,26 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         tk = next_token(o_s);
         if (tk.type != TK_L_PARENTHESIS) {
             parse_error(ctx, &tk, "Expected '('.");
-            return 1;
+            return -1;
         }
         tk = next_token(o_s);
         if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "attribute")) {
             is_attribute = true;
         } else {
             parse_error(ctx, &tk, "Invalid.");
-            return 1;
+            return -1;
         }
         tk = next_token(o_s);
         if (tk.type != TK_R_PARENTHESIS) {
             parse_error(ctx, &tk, "Expected ')'.");
-            return 1;
+            return -1;
         }
         tk = next_token(o_s);
     }
     if (tk.type != TK_L_BRACE) {
-        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return 2;
+        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return RET_NOT_DEFINITION;
         parse_error(ctx, &tk, "Expected '{'.");
-        return 1;
+        return -1;
     }
 
     enum_.is_flags = true;
@@ -355,13 +367,13 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         }
         if (name.type != TK_IDENTIFIER) {
             parse_error(ctx, &name, "Expected identifier.");
-            return 1;
+            return -1;
         }
 
         STACK_TERMINATE(new_name, name.start, name.length);
         if (shgeti(ctx->name_set, new_name) >= 0) {
             parse_error(ctx, &name, "Cannot define enumeration with reserved name.");
-            return 1;
+            return -1;
         }
         v.name = cache_name(ctx, new_name);
 
@@ -389,7 +401,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             is_last = true;
         } else {
             parse_error(ctx, &tk, "Unexpected symbol.");
-            return 1;
+            return -1;
         }
 
         if (mask & v.value) enum_.is_flags = false;
@@ -407,7 +419,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
                 break;
             } else {
                 parse_error(ctx, &tk, "Unexpected symbol.");
-                return 1;
+                return -1;
             }
         }
     }
@@ -443,16 +455,16 @@ static int
 parse_typedef(ParseContext * ctx, char ** o_s) {
     Token type_tk = {0};
     (void) type_tk;
-    IntroType * base = parse_base_type(ctx, o_s, &type_tk, true);
-    if (!base) return 1;
+    IntroType * base = parse_type_base(ctx, o_s, &type_tk);
+    if (!base) return -1;
 
     while (1) {
         Token name_tk = {0};
-        IntroType * type = parse_declaration(ctx, base, o_s, &name_tk);
-        if (!type) return 1;
+        IntroType * type = parse_type_annex(ctx, base, o_s, &name_tk);
+        if (!type) return -1;
         if (name_tk.start == NULL) {
             parse_error(ctx, &type_tk, "typedef has no name.");
-            return 1;
+            return -1;
         }
         char * name = copy_and_terminate(name_tk.start, name_tk.length);
         if (shgeti(ctx->ignore_typedefs, name) >= 0) {
@@ -462,7 +474,7 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
         if (prev) {
             if (prev->parent != type) {
                 parse_error(ctx, &name_tk, "Redefinition does not match previous definition.");
-                return 1;
+                return -1;
             }
         } else {
             IntroType new_type = *type;
@@ -479,7 +491,7 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
         } else if (tk.type == TK_COMMA) {
         } else {
             parse_error(ctx, &tk, "Expected ',' or ';'.");
-            return 1;
+            return -1;
         }
     }
 
@@ -487,14 +499,26 @@ parse_typedef(ParseContext * ctx, char ** o_s) {
 }
 
 static IntroType *
-parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) {
+parse_type_base(ParseContext * ctx, char ** o_s, Token * o_tk) {
     IntroType type = {0};
     char * type_name = NULL;
+    bool is_typedef = false;
+    int first_keyword = -1;
 
     Token first;
-    do {
+    while (1) {
         first = next_token(o_s);
-    } while (first.type == TK_IDENTIFIER && is_ignored(&first));
+        if (first.type == TK_IDENTIFIER) {
+            first_keyword = get_keyword(ctx, first);
+            if (!is_ignored(first_keyword)) {
+                if (!is_typedef && first_keyword == KEYW_TYPEDEF) {
+                    is_typedef = true;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
     if (first.type != TK_IDENTIFIER) {
         *o_s = first.start;
         return NULL;
@@ -502,19 +526,18 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
     *o_tk = first;
     strputf(&type_name, "%.*s", first.length, first.start);
 
-    bool is_struct = tk_equal(&first, "struct");
-    bool is_union  = tk_equal(&first, "union");
-    bool is_enum   = tk_equal(&first, "enum");
-    if (is_struct || is_union || is_enum) {
+    if (first_keyword == KEYW_STRUCT
+      ||first_keyword == KEYW_UNION
+      ||first_keyword == KEYW_ENUM) {
         char * after_keyword = *o_s;
         int error;
-        if (is_struct || is_union) {
+        if (first_keyword == KEYW_STRUCT || first_keyword == KEYW_UNION) {
             *o_s = first.start;
             error = parse_struct(ctx, o_s);
         } else {
             error = parse_enum(ctx, o_s);
         }
-        if (error == 2) {
+        if (error == RET_NOT_DEFINITION) {
             *o_s = after_keyword;
             Token tk = next_token(o_s);
             strputf(&type_name, " %.*s", tk.length, tk.start);
@@ -535,13 +558,20 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
         Token tk = first, ltk = first;
         while (1) {
             bool is_first = (tk.start == first.start);
-            if (tk_equal(&tk, "unsigned")) {
+            bool break_loop = false;
+            int keyword = get_keyword(ctx, tk);
+            switch(keyword) {
+            case KEYW_UNSIGNED: {
                 CHECK_INT((type.category & 0xf0));
                 type.category |= INTRO_UNSIGNED;
-            } else if (tk_equal(&tk, "signed")) {
+            }break;
+
+            case KEYW_SIGNED: {
                 CHECK_INT((type.category & 0xf0));
                 type.category |= INTRO_SIGNED;
-            } else if (tk_equal(&tk, "long")) {
+            }break;
+
+            case KEYW_LONG: {
                 CHECK_INT((type.category & 0x0f));
                 Token tk2 = next_token(o_s);
                 if (tk_equal(&tk2, "long")) {
@@ -556,26 +586,35 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
                     *o_s = tk2.start;
                 }
                 type.category |= 0x08;
-            } else if (tk_equal(&tk, "short")) {
+            }break;
+
+            case KEYW_SHORT: {
                 CHECK_INT((type.category & 0x0f));
                 type.category |= 0x02;
-            } else if (tk_equal(&tk, "char")) {
+            }break;
+
+            case KEYW_CHAR: {
                 CHECK_INT((type.category & 0x0f));
                 type.category |= 0x01;
                 if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
                 break;
-            } else if (tk_equal(&tk, "int")) {
+            }break;
+
+            case KEYW_INT: {
                 CHECK_INT((type.category & 0x0f) == 0x01);
                 if ((type.category & 0x0f) == 0) {
                     type.category |= 0x04;
                 }
                 if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
                 break;
-            } else {
+            }break;
+
+            default:
                 if (!is_first) *o_s = tk.start;
                 tk = ltk;
-                break;
+                break_loop = true;
             }
+            if (break_loop) break;
             if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
             ltk = tk;
             tk = next_token(o_s);
@@ -613,7 +652,7 @@ parse_base_type(ParseContext * ctx, char ** o_s, Token * o_tk, bool is_typedef) 
 }
 
 static IntroType *
-parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token * o_name_tk) {
+parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token * o_name_tk) {
     int32_t * indirection = NULL;
     int32_t * temp = NULL;
     char * paren;
@@ -629,7 +668,7 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token 
             tk = next_token(o_s);
             if (tk.type == TK_STAR) {
                 pointer_level += 1;
-            } else if (tk.type == TK_IDENTIFIER && is_ignored(&tk)) {
+            } else if (is_ignored(get_keyword(ctx, tk))) {
                 continue;
             } else {
                 break;
@@ -713,24 +752,24 @@ parse_declaration(ParseContext * ctx, IntroType * base_type, char ** o_s, Token 
     return last_type;
 }
 
-void
-find_declaration_end(char ** o_s) {
-    Token tk;
-    while (1) {
-        if (tk.type != TK_SEMICOLON) {
-            break;
-        }
-        tk = next_token(o_s);
-    }
-}
+#if 0
+int
+parse_declaration(ParseContext * ctx, char ** o_s) {
+    Token tk = next_token(o_s);
 
+    return 0;
+
+}
+#endif
+
+#if 0
 int
 maybe_parse_function(ParseContext * ctx, char ** o_s) {
     Token type_tk, name_tk;
-    IntroType * return_base = parse_base_type(ctx, o_s, &type_tk, false);
+    IntroType * return_base = parse_type_base(ctx, o_s, &type_tk);
     if (!return_base) return -1;
 
-    IntroType * return_type = parse_declaration(ctx, return_base, o_s, &name_tk);
+    IntroType * return_type = parse_type_annex(ctx, return_base, o_s, &name_tk);
     if (!return_type) return -1;
 
     if (return_type->category == INTRO_UNKNOWN) {
@@ -752,10 +791,10 @@ maybe_parse_function(ParseContext * ctx, char ** o_s) {
     }
     while (1) {
         Token arg_type_tk, arg_name_tk;
-        IntroType * arg_base = parse_base_type(ctx, o_s, &arg_type_tk, false);
+        IntroType * arg_base = parse_type_base(ctx, o_s, &arg_type_tk);
         if (!arg_base) return -1;
 
-        IntroType * arg_type = parse_declaration(ctx, arg_base, o_s, &arg_name_tk);
+        IntroType * arg_type = parse_type_annex(ctx, arg_base, o_s, &arg_name_tk);
         if (!arg_type) return -1;
 
         IntroArgument arg = {0};
@@ -793,6 +832,7 @@ after_args: ;
 
     return 0;
 }
+#endif
 
 int
 parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
@@ -825,6 +865,34 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         shputs(ctx->ignore_typedefs, (NameSet){known_types[i].name});
     }
 
+    // NOTE: this must be in the same order as the enum definition in global.h
+    static const struct{char * key; Keyword value;} keywords [] = {
+        {"const",    KEYW_CONST},
+        {"static",   KEYW_STATIC},
+        {"struct",   KEYW_STRUCT},
+        {"union",    KEYW_UNION},
+        {"enum",     KEYW_ENUM},
+        {"typedef",  KEYW_TYPEDEF},
+        {"volatile", KEYW_VOLATILE},
+        {"inline",   KEYW_INLINE},
+        {"restrict", KEYW_RESTRICT},
+
+        {"unsigned", KEYW_UNSIGNED},
+        {"signed",   KEYW_SIGNED},
+        {"int",      KEYW_INT},
+        {"long",     KEYW_LONG},
+        {"char",     KEYW_CHAR},
+        {"short",    KEYW_SHORT},
+        {"float",    KEYW_FLOAT},
+        {"double",   KEYW_DOUBLE},
+    };
+    for (int i=0; i < LENGTH(keywords); i++) {
+        shputs(ctx->keyword_set, (NameSet){keywords[i].key});
+#if DEBUG
+        assert(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
+#endif
+    }
+
     create_initial_attributes();
 
     char * s = buffer;
@@ -838,15 +906,13 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
             if (tk_equal(&tk, "struct") || tk_equal(&tk, "union")) {
                 s = tk.start;
                 error = parse_struct(ctx, &s);
-                if (error == 2) error = 0;
+                if (error == RET_NOT_DEFINITION) error = 0;
             } else if (tk_equal(&tk, "enum")) {
                 error = parse_enum(ctx, &s);
-                if (error == 2) error = 0;
+                if (error == RET_NOT_DEFINITION) error = 0;
             } else if (tk_equal(&tk, "typedef")) {
+                s = tk.start;
                 error = parse_typedef(ctx, &s);
-            } else {
-                //s = tk.start;
-                //error = maybe_parse_function(ctx, &s);
             }
 
             if (error) {

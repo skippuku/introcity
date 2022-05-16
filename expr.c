@@ -1,5 +1,5 @@
 #include "lexer.c"
-#include "util.h"
+#include "global.h"
 
 #define BUCKET_CAP (1<<12)
 typedef struct {
@@ -172,11 +172,11 @@ build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Toke
 
                     tk1 = tokens[++tk_i];
                     char * s = tk1.start;
-                    IntroType * type = parse_base_type(ectx->ctx, &s, o_error_tk, false);
+                    IntroType * type = parse_type_base(ectx->ctx, &s, o_error_tk);
                     if (!type) return NULL;
 
                     Token name_tk_;
-                    type = parse_declaration(ectx->ctx, type, &s, &name_tk_);
+                    type = parse_type_annex(ectx->ctx, type, &s, &name_tk_);
                     if (!type) return NULL;
                     node->value = intro_size(type);
                     node->op = OP_INT;

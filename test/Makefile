@@ -50,8 +50,10 @@ run: $(TESTS)
 $(INTRO_PARSE):
 	@$(MAKE) -C .. debug
 
-%.intro: % $(INTRO_PARSE)
+%.intro: % $(INTRO_PARSE) FORCE
 	$(INTRO_PARSE) $(CPPFLAGS) $< -o $@
+
+FORCE:
 
 $(EXE): db_%: %.o $(INTROLIB)
 	$(CC) $^ -o $@

@@ -1,5 +1,5 @@
 #include "lib/intro.h"
-#include "util.h"
+#include "global.h"
 
 static const char *
 get_ref_name(IntroInfo * info, const IntroType * t) {

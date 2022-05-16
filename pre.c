@@ -2,7 +2,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
-#include "util.h"
+#include "global.h"
 #include "lexer.c"
 
 static char * filename_stdin = "__stdin__";
@@ -1047,7 +1047,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                     }
                 }
                 if (ctx->m_options.G) {
-                skip_and_add_include_dep:
+                skip_and_add_include_dep: ;
                     char * inc_filepath_stored = copy_and_terminate(inc_filename, strlen(inc_filename));
                     shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
                     continue;
@@ -1138,7 +1138,7 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
             mtime = file_stat.st_mtime;
         }
         if (!file_buffer) {
-            return ERR_FILE_NOT_FOUND;
+            return RET_FILE_NOT_FOUND;
         }
         FileBuffer * new_buf = calloc(1, sizeof(*new_buf));
         new_buf->filename = filename;
@@ -1360,7 +1360,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
 
     int error = preprocess_filename(ctx, &result_buffer, filepath);
     if (error) {
-        if (error == ERR_FILE_NOT_FOUND) {
+        if (error == RET_FILE_NOT_FOUND) {
             fputs("File not found.\n", stderr);
         }
         return NULL;

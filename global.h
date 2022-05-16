@@ -63,10 +63,15 @@ typedef struct IntroInfo {
     uint8_t * value_buffer;
 } IntroInfo;
 
-enum ErrorType {
-    ERR_IRRELEVANT = -1,
-    ERR_NONE = 0,
-    ERR_FILE_NOT_FOUND = 1,
+enum ReturnCode {
+    RET_IRRELEVANT_ERROR = -1,
+    RET_OK = 0,
+
+    RET_FILE_NOT_FOUND  = 2,
+
+    RET_NOT_DEFINITION = 3,
+    RET_DECL_CONTINUE  = 4,
+    RET_DECL_FINISHED  = 5,
 };
 
 typedef struct {
@@ -82,11 +87,37 @@ typedef struct {
 
 typedef struct ExprContext ExprContext;
 
+typedef enum {
+    KEYW_INVALID = -1,
+
+    KEYW_CONST = 0,
+    KEYW_STATIC,
+    KEYW_STRUCT,
+    KEYW_UNION,
+    KEYW_ENUM,
+    KEYW_TYPEDEF,
+    KEYW_VOLATILE,
+    KEYW_INLINE,
+    KEYW_RESTRICT,
+
+    KEYW_UNSIGNED,
+    KEYW_SIGNED,
+    KEYW_INT,
+    KEYW_LONG,
+    KEYW_CHAR,
+    KEYW_SHORT,
+    KEYW_FLOAT,
+    KEYW_DOUBLE,
+
+    KEYW_COUNT
+} Keyword;
+
 typedef struct {
     char * buffer;
     NameSet * ignore_typedefs;
     struct{char * key; IntroType * value;} * type_map;
     struct{IntroType key; IntroType * value;} * type_set;
+    NameSet * keyword_set;
     NameSet * name_set;
     NestInfo * nest_map;
 
@@ -98,8 +129,8 @@ typedef struct {
     ExprContext * expr_ctx;
 } ParseContext;
 
-static IntroType * parse_base_type(ParseContext *, char **, Token *, bool);
-static IntroType * parse_declaration(ParseContext *, IntroType *, char **, Token *);
+static IntroType * parse_type_base(ParseContext *, char **, Token *);
+static IntroType * parse_type_annex(ParseContext *, IntroType *, char **, Token *);
 
 #if defined(__has_attribute)
   #if defined(__MINGW32__)
