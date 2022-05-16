@@ -1,7 +1,6 @@
 #include "../lib/intro.h"
 
 #include "test.h"
-#include "test.h.intro"
 
 int
 main() {

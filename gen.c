@@ -124,7 +124,6 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputnull(header_def);
 
     strputf(&s, "/* Generated with intro %s */\n\n", VERSION);
-    strputf(&s, "#ifndef __INTRO__\n");
     strputf(&s, "#ifndef %s\n"
                 "#define %s\n",
                 header_def, header_def);
@@ -282,18 +281,18 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
 
     // context
     strputf(&s, "IntroContext __intro_ctx = {\n");
-    strputf(&s, "%s.types = __intro_types,\n", tab);
-    strputf(&s, "%s.notes = __intro_notes,\n", tab);
-    strputf(&s, "%s.values = __intro_values,\n", tab);
-    strputf(&s, "%s.count_types = %u,\n", tab, info->count_types);
-    strputf(&s, "%s.count_notes = %i,\n", tab, (int)arrlenu(note_set));
-    strputf(&s, "%s.size_values = %i,\n", tab, (int)arrlenu(info->value_buffer));
+    strputf(&s, "%s__intro_types,\n", tab);
+    strputf(&s, "%s__intro_notes,\n", tab);
+    strputf(&s, "%s__intro_values,\n", tab);
+    strputf(&s, "%s%u,\n", tab, info->count_types);
+    strputf(&s, "%s%i,\n", tab, (int)arrlenu(note_set));
+    strputf(&s, "%s%i,\n", tab, (int)arrlenu(info->value_buffer));
     strputf(&s, "};\n");
 
-    strputf(&s, "#endif\n#endif\n");
+    strputf(&s, "#endif\n");
+    strputnull(s);
 
     hmfree(complex_type_map);
 
-    strputnull(s);
     return s;
 }

@@ -31,9 +31,7 @@ typedef struct {
     signed int _si;
 } TestInt;
 
-#ifndef __INTRO__
 #include "int.c.intro"
-#endif
 
 void
 check(int index, const char * str, IntroCategory a, IntroCategory b) {

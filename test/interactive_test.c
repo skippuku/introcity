@@ -10,9 +10,7 @@ typedef struct {
     char * message I(default "empty message");
 } SaveData;
 
-#ifndef __INTRO__
-# include "interactive_test.c.intro"
-#endif
+#include "interactive_test.c.intro"
 
 int
 main() {

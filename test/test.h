@@ -183,6 +183,4 @@ typedef struct {
 } MsExt;
 #endif
 
-#ifndef __INTRO__
-#  include "test.h.intro"
-#endif
+#include "test.h.intro"

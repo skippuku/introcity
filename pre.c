@@ -290,6 +290,15 @@ path_dir(char * dest, char * filepath, char ** o_filename) {
     }
 }
 
+static char *
+path_extension(char * dest, const char * path) {
+    char * forslash = strrchr(path, '/');
+    char * period = strrchr(path, '.');
+    if (!period || forslash > period) return NULL;
+
+    return strcpy(dest, period);
+}
+
 static void
 ignore_section(char ** buffer, char * filename, char * file_buffer, char ** o_paste_begin, char * ignore_begin, char * end) {
     // save last chunk location
@@ -1009,6 +1018,10 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
 
             if (inc_file.exists) {
                 STACK_TERMINATE(inc_filename, inc_file.tk.start + 1, inc_file.tk.length - 2);
+                char ext_buf [128];
+                if (0==strcmp(".intro", path_extension(ext_buf, inc_filename))) {
+                    goto skip_and_add_include_dep;
+                }
                 char inc_filepath [1024];
                 bool is_from_sys = ctx->is_sys_header;
                 if (inc_file.is_quote) {
@@ -1033,13 +1046,14 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                         goto include_matched_file;
                     }
                 }
-                if (!ctx->m_options.G) {
-                    preprocess_error(&inc_file.tk, "File not found.");
-                    return -1;
-                } else {
+                if (ctx->m_options.G) {
+                skip_and_add_include_dep:
                     char * inc_filepath_stored = copy_and_terminate(inc_filename, strlen(inc_filename));
                     shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
                     continue;
+                } else {
+                    preprocess_error(&inc_file.tk, "File not found.");
+                    return -1;
                 }
 
             include_matched_file: ;

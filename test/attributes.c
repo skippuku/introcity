@@ -4,10 +4,11 @@
 
 typedef enum CustomAttributes I(attribute) {
     ATTR_JOINT I(member joint),
+    ATTR_HANDLE I(flag handle),
 } CustomAttributes;
 
 typedef struct {
-    char * name I(length length_name);
+    char * name I(length length_name, handle);
     int length_name;
 
     char * resume I(length length_resume, joint name);
@@ -20,54 +21,62 @@ typedef struct {
     int count_sweet_nothings;
 } JointAllocTest;
 
-#ifndef __INTRO__
 #include "attributes.c.intro"
-#endif
 
 void
-joint_alloc(void * dest_struct, void * dest_member, const IntroType * type) {
+special_alloc(void * dest_struct, const IntroType * type) {
     int owner_index = -1;
     for (int mi=0; mi < type->i_struct->count_members; mi++) {
         const IntroMember * m = &type->i_struct->members[mi];
-        if (dest_member - dest_struct == m->offset) {
+        if (intro_attribute_flag(m, ATTR_HANDLE)) {
             assert(m->type->category == INTRO_POINTER);
             owner_index = mi;
-            break;
+
+            struct join_info {int index; int ptr_offset;} * stack = NULL;
+            size_t amount = 0;
+            for (int mi=0; mi < type->i_struct->count_members; mi++) {
+                const IntroMember * m = &type->i_struct->members[mi];
+                int friend_index;
+                if (mi == owner_index
+                    || (intro_attribute_int(m, ATTR_JOINT, &friend_index)
+                        && friend_index == owner_index))
+                {
+                    int element_size = intro_size(m->type->parent);
+                    int64_t length;
+                    assert( intro_attribute_length(dest_struct, type, m, &length) );
+
+                    struct join_info info;
+                    info.index = mi;
+                    info.ptr_offset = amount;
+                    arrput(stack, info);
+                    amount += length * element_size;
+                }
+            }
+
+            void * buffer = malloc(amount);
+            assert(buffer);
+
+            for (int i=0; i < arrlen(stack); i++) {
+                struct join_info info = stack[i];
+                const IntroMember * m = &type->i_struct->members[info.index];
+                void ** member_loc = (void **)(dest_struct + m->offset);
+                *member_loc = (void *)(buffer + info.ptr_offset);
+            }
+
+            arrfree(stack);
         }
     }
+}
 
-    struct join_info {int index; int ptr_offset;} * stack = NULL;
-    size_t amount = 0;
+void
+special_free(void * dest_struct, const IntroType * type) {
     for (int mi=0; mi < type->i_struct->count_members; mi++) {
         const IntroMember * m = &type->i_struct->members[mi];
-        int friend_index;
-        if (mi == owner_index
-            || (intro_attribute_int(m, ATTR_JOINT, &friend_index)
-                && friend_index == owner_index))
-        {
-            int element_size = intro_size(m->type->parent);
-            int64_t length;
-            assert( intro_attribute_length(dest_struct, type, m, &length) );
-
-            struct join_info info;
-            info.index = mi;
-            info.ptr_offset = amount;
-            arrput(stack, info);
-            amount += length * element_size;
+        if (intro_attribute_flag(m, ATTR_HANDLE)) {
+            void * member_value = *(void **)(dest_struct + m->offset);
+            free(member_value);
         }
     }
-
-    void * buffer = malloc(amount);
-    assert(buffer);
-
-    for (int i=0; i < arrlen(stack); i++) {
-        struct join_info info = stack[i];
-        const IntroMember * m = &type->i_struct->members[info.index];
-        void ** member_loc = (void **)(dest_struct + m->offset);
-        *member_loc = (void *)(buffer + info.ptr_offset);
-    }
-
-    arrfree(stack);
 }
 
 int
@@ -79,7 +88,7 @@ main() {
     data.size_buffer = 1024;
     data.count_sweet_nothings = 3;
 
-    joint_alloc(&data, &data.name, ITYPE(JointAllocTest));
+    special_alloc(&data, ITYPE(JointAllocTest));
 
     // TODO ...
     
@@ -99,7 +108,7 @@ main() {
         assert(data.sweet_nothings == p);
     }
     
-    free(data.name);
+    special_free(&data, ITYPE(JointAllocTest));
 
     return 0;
 }
