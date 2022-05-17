@@ -172,17 +172,19 @@ build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Toke
 
                     tk1 = tokens[++tk_i];
                     char * s = tk1.start;
-                    DeclState cast = {0};
+                    DeclState cast = {.state = DECL_CAST};
                     if (parse_declaration(ectx->ctx, &s, &cast) < 0) return NULL;
 
                     node->value = intro_size(cast.type);
                     node->op = OP_INT;
 
-                    while (tk1.start < s) tk1 = tokens[++tk_i];
+                    while (tk1.start < s && ++tk_i < count_tokens) tk1 = tokens[tk_i];
+                    tk_i--;
                     break;
                 }
                 STACK_TERMINATE(terminated, tk.start, tk.length);
                 ptrdiff_t const_index = shgeti(ectx->constant_map, terminated);
+                // NOTE: dumb hack to get around casts... if they are to int
                 if (paren_depth > 0 && tk_equal(&tk, "int")) {
                     while (1) {
                         if (++tk_i >= count_tokens) {

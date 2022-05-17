@@ -266,6 +266,7 @@ next_token(char ** o_s) {
     case '/': tk.type = TK_FORSLASH; break;
     case '\\': tk.type = TK_BACKSLASH; break;
     case '~': tk.type = TK_TILDE; break;
+    case '%': tk.type = TK_MOD; break;
     case '?': tk.type = TK_QUESTION_MARK; break;
     case '!': tk.type = TK_BANG;
               flags = TK_CHECK_EQUAL; break;

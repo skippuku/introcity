@@ -165,8 +165,7 @@ INTRO_INLINE bool
 intro_is_complex(const IntroType * type) {
     return (type->category == INTRO_STRUCT
          || type->category == INTRO_UNION
-         || type->category == INTRO_ENUM
-         || type->category == INTRO_FUNCTION);
+         || type->category == INTRO_ENUM);
 }
 
 typedef struct {

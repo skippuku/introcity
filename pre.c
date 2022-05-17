@@ -1158,8 +1158,7 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
 
 static char intro_defs [] =
 "#define __INTRO__ 1\n"
-"#define __attribute__(x) \n"
-"#define __extension__ \n"
+"#undef __GNUC__\n"
 ;
 
 char *

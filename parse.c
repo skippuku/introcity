@@ -119,9 +119,9 @@ is_ignored(int keyword) {
     case KEYW_STATIC:
     case KEYW_CONST:
     case KEYW_VOLATILE:
-    case KEYW_INLINE:
-    case KEYW_GNU_INLINE:
     case KEYW_EXTERN:
+    case KEYW_INLINE:
+    case KEYW_RESTRICT:
         return true;
     default:
         return false;
@@ -491,6 +491,8 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                     break;
                 }
             }
+        } else if (first.type == TK_END) {
+            return RET_FOUND_END;
         }
     }
     if (first.type != TK_IDENTIFIER) {
@@ -692,10 +694,23 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
             arrput(indirection, temp[i]);
         }
     } while ((*o_s = paren) != NULL);
-
     arrfree(temp);
 
     IntroType * last_type = base_type;
+    for (int i=0; i < arrlen(indirection); i++) {
+        int32_t it = indirection[i];
+        IntroType new_type = {0};
+        new_type.parent = last_type;
+        if (it == POINTER) {
+            new_type.category = INTRO_POINTER;
+        } else {
+            new_type.category = INTRO_ARRAY;
+            new_type.array_size = it;
+        }
+        last_type = store_type(ctx, &new_type);
+    }
+    arrfree(indirection);
+
     *o_s = end;
     tk = next_token(o_s);
     if (tk.type == TK_L_PARENTHESIS) {
@@ -714,27 +729,15 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
         last_type = store_type(ctx, &func);
     }
     
-    for (int i=0; i < arrlen(indirection); i++) {
-        int32_t it = indirection[i];
-        IntroType new_type = {0};
-        new_type.parent = last_type;
-        if (it == POINTER) {
-            new_type.category = INTRO_POINTER;
-        } else {
-            new_type.category = INTRO_ARRAY;
-            new_type.array_size = it;
-        }
-        last_type = store_type(ctx, &new_type);
-    }
-
     *o_s = end;
     return last_type;
 }
 
 static int
 parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
-    if (decl->base == NULL) parse_type_base(ctx, o_s, decl);
-    if (decl->base == NULL) return -1;
+    int ret = 0;
+    if (decl->base == NULL) ret = parse_type_base(ctx, o_s, decl);
+    if (ret < 0 || ret == RET_FOUND_END) return ret;
 
     decl->type = parse_type_annex(ctx, decl->base, o_s, &decl->name_tk);
     if (decl->type == NULL) return -1;
@@ -746,7 +749,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         }
         char * name = copy_and_terminate(decl->name_tk.start, decl->name_tk.length);
         if (shgeti(ctx->ignore_typedefs, name) >= 0) {
-            return 0;
+            goto find_end;
         }
         IntroType * prev = shget(ctx->type_map, name);
         if (prev) {
@@ -765,6 +768,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         }
     }
 
+find_end: ;
     bool in_expr = false;
     while (1) {
         Token tk = next_token(o_s);
@@ -787,6 +791,9 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
             }
             if (tk.type == TK_L_BRACE && decl->type->category == INTRO_FUNCTION) {
                 do_find_closing = true;
+            }
+            if (decl->state == DECL_CAST && tk.type == TK_R_PARENTHESIS) {
+                return RET_DECL_FINISHED;
             }
             if (do_find_closing) {
                 *o_s = find_closing(tk.start);
@@ -910,7 +917,6 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"inline",   KEYW_INLINE},
         {"restrict", KEYW_RESTRICT},
         {"extern",   KEYW_EXTERN},
-        {"__inline__", KEYW_GNU_INLINE},
 
         {"unsigned", KEYW_UNSIGNED},
         {"signed",   KEYW_SIGNED},

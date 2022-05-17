@@ -101,7 +101,6 @@ typedef enum {
     KEYW_INLINE,
     KEYW_RESTRICT,
     KEYW_EXTERN,
-    KEYW_GNU_INLINE,
 
     KEYW_UNSIGNED,
     KEYW_SIGNED,
@@ -141,6 +140,7 @@ typedef struct {
     enum {
         DECL_NORMAL = 0,
         DECL_TYPEDEF,
+        DECL_CAST,
     } state;
 } DeclState;
 
