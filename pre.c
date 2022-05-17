@@ -38,6 +38,7 @@ typedef struct {
     SpecialMacro special;
     bool func_like;
     bool variadic;
+    bool forced;
 } Define; // TODO: rename to Macro
 static Define * defines = NULL;
 
@@ -369,9 +370,10 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
     int i = macro_tk_index;
     char * prev_s = NULL;
     if (ctx->expand_ctx.o_s) prev_s = *ctx->expand_ctx.o_s;
+    int prev_len_list = arrlen(ctx->expand_ctx.list);
     Token l_paren = internal_macro_next_token(ctx, &i);
     if (l_paren.type == TK_END || *l_paren.start != '(') {
-        arrsetlen(ctx->expand_ctx.list, arrlen(ctx->expand_ctx.list) - 1);
+        arrsetlen(ctx->expand_ctx.list, prev_len_list);
         if (ctx->expand_ctx.o_s) *ctx->expand_ctx.o_s = prev_s;
         return result;
     }
@@ -694,7 +696,9 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     arrpush(ctx->expand_ctx.macro_index_stack, macro_index);
     for (int i=macro_tk_index; i < arrlen(ctx->expand_ctx.list) + back_offset; i++) {
         if (ctx->expand_ctx.list[i].type == TK_IDENTIFIER) {
-            macro_scan(ctx, i);
+            if (macro_scan(ctx, i)) {
+                i--;
+            }
         }
     }
     (void)arrpop(ctx->expand_ctx.macro_index_stack);
@@ -862,6 +866,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
             Token tk;
         } inc_file = {0};
         Token tk = pre_next_token(&s);
+        bool def_forced = false;
 
         if (*tk.start == '#') {
             Token directive = pre_next_token(&s);
@@ -893,7 +898,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                     preprocess_error(&next, "Unexpected token in include directive.");
                     return -1;
                 }
-            } else if (tk_equal(&directive, "define")) {
+            } else if (tk_equal(&directive, "define") || (tk_equal(&directive, "define_forced") && (def_forced = true))) {
                 char * ms = s;
                 Token macro_name = pre_next_token(&ms);
                 if (macro_name.type != TK_IDENTIFIER) {
@@ -961,17 +966,35 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 Define def = {0};
                 def.key = copy_and_terminate(macro_name.start, macro_name.length);
                 def.replace_list = replace_list;
+                def.forced = def_forced;
                 if (is_func_like) {
                     def.arg_list = arg_list;
                     def.arg_count = arrlen(arg_list);
                     def.func_like = true;
                     def.variadic = variadic;
                 }
+                // TODO: detect redefinitions
+                Define * prevdef = shgetp_null(defines, def.key);
+                if (prevdef) {
+                    if (prevdef->forced) {
+                        preprocess_warning(&macro_name, "Attempted consesquent #define of forced define.");
+                        goto nextline;
+                    } else {
+                        //preprocess_warning(&macro_name, "Macro redefinition.");
+                        // NOTE: system headers would cause this to trigger a lot, though redefinitions
+                        //       are against the C standard. So something is amok.
+                    }
+                }
                 shputs(defines, def);
             } else if (tk_equal(&directive, "undef")) {
                 Token def = pre_next_token(&s);
                 STACK_TERMINATE(iden, def.start, def.length);
-                (void) shdel(defines, iden);
+                Define * macro = shgetp(defines, iden);
+                if (!macro->forced) {
+                    (void) shdel(defines, iden);
+                } else {
+                    preprocess_warning(&def, "Attempted #undef of forced define.");
+                }
             } else if (tk_equal(&directive, "if")) {
                 bool expr_result = parse_expression(ctx, &s);
                 if (!expr_result) {
@@ -1158,7 +1181,28 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
 
 static char intro_defs [] =
 "#define __INTRO__ 1\n"
-"#undef __GNUC__\n"
+
+// MINGW
+"#define _VA_LIST_DEFINED 1\n"
+
+// MSVC
+"#if defined _WIN32\n"
+"#define_forced __unaligned \n"
+"#if !defined __GNUC__\n"
+"  #define_forced __forceinline inline\n"
+"#endif\n"
+"#define_forced __inline inline\n"
+"#endif\n"
+
+// GNU
+"#if defined __GNUC__\n"
+"#define_forced __inline__ inline\n"
+"#define_forced __attribute__(x) \n"
+"#define_forced __extension__ \n"
+"#define_forced __asm__(x) \n"
+"#define_forced __volatile__(x) \n"
+"#define_forced __THROW \n"
+"#endif\n"
 ;
 
 char *
@@ -1196,6 +1240,9 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     bool no_sys = false;
     char * filepath = NULL;
 
+    Token * default_replace_list = NULL;
+    arrput(default_replace_list, ((Token){.start = "1", .length = 1}));
+
     for (int i=1; i < argc; i++) {
         #define ADJACENT() ((strlen(arg) == 2)? argv[++i] : arg+2)
         char * arg = argv[i];
@@ -1217,6 +1264,8 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
             case 'D': {
                 Define new_def;
                 new_def.key = ADJACENT();
+                new_def.replace_list = default_replace_list;
+                // TODO: define option
                 shputs(defines, new_def);
             }break;
 

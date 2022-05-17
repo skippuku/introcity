@@ -27,7 +27,7 @@ parse:
     rudimentary C++ support
 
 pre:
-    fix highlighting of expanded macros
+    !! fix highlighting of expanded macros
     parse #line directives
     create #line directives?
     better config system for system headers and defines

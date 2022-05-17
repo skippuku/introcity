@@ -110,6 +110,8 @@ typedef enum {
     KEYW_SHORT,
     KEYW_FLOAT,
     KEYW_DOUBLE,
+    KEYW_MS_INT32,
+    KEYW_MS_INT64,
 
     KEYW_COUNT
 } Keyword;

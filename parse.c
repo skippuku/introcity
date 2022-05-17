@@ -22,6 +22,11 @@ parse_error(ParseContext * ctx, Token * tk, char * message) {
     parse_msg_internal(ctx->buffer, tk, message, 0);
 }
 
+static void UNUSED
+parse_warning(ParseContext * ctx, Token * tk, char * message) {
+    parse_msg_internal(ctx->buffer, tk, message, 1);
+}
+
 static intmax_t parse_constant_expression(ParseContext * ctx, char ** o_s);
 
 #include "attribute.c"
@@ -566,6 +571,11 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 type.category |= 0x08;
             }break;
 
+            case KEYW_MS_INT64: {
+                CHECK_INT((type.category & 0x0f));
+                type.category |= 0x08;
+            }break;
+
             case KEYW_SHORT: {
                 CHECK_INT((type.category & 0x0f));
                 type.category |= 0x02;
@@ -578,6 +588,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 break;
             }break;
 
+            case KEYW_MS_INT32:
             case KEYW_INT: {
                 CHECK_INT((type.category & 0x0f) == 0x01);
                 if ((type.category & 0x0f) == 0) {
@@ -782,6 +793,7 @@ find_end: ;
             in_expr = true;
         } else {
             bool do_find_closing = false;
+            bool func_body = false;
             if (in_expr) {
                 if (tk.type == TK_L_BRACE || tk.type == TK_L_BRACKET || tk.type == TK_L_PARENTHESIS) {
                     do_find_closing = true;
@@ -791,6 +803,7 @@ find_end: ;
             }
             if (tk.type == TK_L_BRACE && decl->type->category == INTRO_FUNCTION) {
                 do_find_closing = true;
+                func_body = true;
             }
             if (decl->state == DECL_CAST && tk.type == TK_R_PARENTHESIS) {
                 return RET_DECL_FINISHED;
@@ -798,7 +811,14 @@ find_end: ;
             if (do_find_closing) {
                 *o_s = find_closing(tk.start);
                 if (!*o_s) {
-                    parse_error(ctx, &tk, "No closing '}' for function body.");
+                    if (func_body) {
+                        parse_error(ctx, &tk, "No closing '}' for function body.");
+                        if (decl->name_tk.start) {
+                            parse_warning(ctx, &decl->name_tk, "Function name here.");
+                        }
+                    } else {
+                        parse_error(ctx, &tk, "Parenthesis, bracket, or brace is not closed.");
+                    }
                     return -1;
                 }
                 *o_s += 1;
@@ -926,6 +946,8 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"short",    KEYW_SHORT},
         {"float",    KEYW_FLOAT},
         {"double",   KEYW_DOUBLE},
+        {"__int32",  KEYW_MS_INT32},
+        {"__int64",  KEYW_MS_INT64},
     };
     for (int i=0; i < LENGTH(keywords); i++) {
         shputs(ctx->keyword_set, (NameSet){keywords[i].key});
