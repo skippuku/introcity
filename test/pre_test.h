@@ -1,4 +1,3 @@
-#if 1
 // SPECIAL MACRO TESTS
 #define SOME_ERR(msg) fprintf(stderr, "error (%s:%i): %s\n", msg, __FILE__, __LINE__)
 #define cat(a, b) a ## b
@@ -6,23 +5,37 @@
 #define UNIQUE_ITER_x(start, end, c) (int cat(_i_, c)=0; cat(_i_, c) < end; cat(_i_, c)++)
 #define DISPLAY(iden) #iden ==> iden
 
-DISPLAY(__FILE__);
-DISPLAY(__LINE__);
-DISPLAY(__DATE__);
-DISPLAY(__TIME__);
-DISPLAY(__BASE_FILE__);
-DISPLAY(__FILE_NAME__);
-DISPLAY(__TIMESTAMP__);
-DISPLAY(__INCLUDE_LEVEL__);
+int
+special_macros() {
+    DISPLAY(__FILE__);
+    DISPLAY(__LINE__);
+    DISPLAY(__DATE__);
+    DISPLAY(__TIME__);
+    DISPLAY(__BASE_FILE__);
+    DISPLAY(__FILE_NAME__);
+    DISPLAY(__TIMESTAMP__);
+    DISPLAY(__INCLUDE_LEVEL__);
 
-SOME_ERR("oh no.");
+    SOME_ERR("oh no.");
 
-UNIQUE_ITER(0, 5);
-UNIQUE_ITER(1, 12); UNIQUE_ITER(2, 18);
-#endif
+    UNIQUE_ITER(0, 5);
+    UNIQUE_ITER(1, 12); UNIQUE_ITER(2, 18);
+}
+
+// error highlighting test
+#define BUILD_DYNAMIC_ARRAY(type) \
+    struct { \
+        type * data; \
+        int len; \
+        int cap; \
+    }
+
+typedef BUILD_DYNAMIC_ARRAY(int) int_arr;
+typedef BUILD_DYNAMIC_ARRAY(NotAType) invalid_arr;
 
 // from the c99 standard
-
+int
+std_examples() {
 // 6.10.3.3.4
 #define hash_hash # ## #
 #define mkstr(a) # a
@@ -68,3 +81,4 @@ g(x+(3,4)-w) | h 5) & m
 (f)^m(m);
 p() i[q()] = { q(1), r(2,3), r(4,), r(,5), r(,) };
 char c[2][6] = { str(hello), str() };
+}

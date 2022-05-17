@@ -147,6 +147,11 @@ build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Toke
         Token tk = tokens[tk_i];
 
         switch(tk.type) {
+        case TK_END: {
+            tk_i = count_tokens; // break loop
+            continue;
+        }break;
+
         case TK_L_PARENTHESIS: {
             paren_depth += 1;
             continue;
@@ -384,7 +389,7 @@ post_reverse: ;
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 intmax_t
 run_expression(ExprProcedure * proc) {
-    intmax_t stack [proc->stack_size];
+    intmax_t stack [proc->stack_size + 1]; // +1: no undefined behavior
     intmax_t stack_index = 0;
     intmax_t result = 0;
     for (int i=0; i < proc->count_instructions; i++) {

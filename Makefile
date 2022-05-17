@@ -10,7 +10,11 @@ ifeq (release,$(MAKECMDGOALS))
   CFLAGS += -O2
   LDFLAGS += -s
 else
-  CFLAGS += -g -DDEBUG
+  ifeq (sanitize,$(MAKECMDGOALS))
+    SANITIZE_FLAGS := -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
+  endif
+  CFLAGS += -g -DDEBUG $(SANITIZE_FLAGS)
+  LDFLAGS += $(SANITIZE_FLAGS)
 endif
 
 CXXFLAGS := $(CFLAGS) -std=c++11 $(IMGUI_INCLUDE)
@@ -19,11 +23,12 @@ CFLAGS += -std=gnu99
 SRC = intro.c lib/introlib.c lib/intro_imgui.cpp
 OBJ := $(addsuffix .o,$(basename $(SRC)))
 
-.PHONY: release debug test install clean cleanall
+.PHONY: release debug test install clean cleanall sanitize
 
 all: $(EXE)
 release: $(EXE)
 debug: $(EXE)
+sanitize: $(EXE)
 
 $(EXE): %: %.o lib/introlib.o
 	$(CC) $(LDFLAGS) -o $@ $^

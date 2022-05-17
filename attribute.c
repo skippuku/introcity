@@ -281,7 +281,7 @@ store_differed_ptrs(ParseContext * ctx) {
         store_value(ctx, &ptr_store.data_size, 4);
         size_t offset = store_value(ctx, ptr_store.data, ptr_store.data_size);
         size_t * o_offset = (size_t *)(ctx->value_buffer + ptr_store.value_offset);
-        *o_offset = offset;
+        memcpy(o_offset, &offset, sizeof(offset));
         free(ptr_store.data);
     }
     arrsetlen(ctx->ptr_stores, 0);

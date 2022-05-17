@@ -101,6 +101,12 @@ pre_next_token(char ** o_s) {
         return tk;
     }
 
+    enum TokenFlags {
+        TK_CHECK_DOUBLE = 0x01,
+        TK_CHECK_EQUAL  = 0x02,
+    } flags = 0;
+
+    tk.length = 1;
     switch(*s) {
     case '\0': return tk;
 
@@ -133,8 +139,8 @@ pre_next_token(char ** o_s) {
                 *o_s = s;
                 return tk;
             } else if (!is_space(*s)) {
-                s = *o_s;
-                goto single;
+                tk.type = TK_BACKSLASH;
+                goto end;
             } else if (*s == '\0') {
                 return tk;
             }
@@ -177,26 +183,76 @@ pre_next_token(char ** o_s) {
             *o_s = s;
             return tk;
         } else {
-            goto single;
+            tk.type = TK_FORSLASH;
+            break;
         }
     }
 
     case EOF: {
         *o_s = s;
-        tk.length = 1;
         return tk;
     }
 
-    single:
-    default: {
-        *o_s = s + 1;
-        tk.type = TK_UNKNOWN;
-        tk.length = 1;
-        return tk;
+    case '{': tk.type = TK_L_BRACE; break;
+    case '}': tk.type = TK_R_BRACE; break;
+
+    case '[': tk.type = TK_L_BRACKET; break;
+    case ']': tk.type = TK_R_BRACKET; break;
+
+    case '(': tk.type = TK_L_PARENTHESIS; break;
+    case ')': tk.type = TK_R_PARENTHESIS; break;
+
+    case '<': tk.type = TK_L_ANGLE;
+              flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL; break;
+    case '>': tk.type = TK_R_ANGLE;
+              flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL; break;
+
+    case ':': tk.type = TK_COLON; break;
+    case ';': tk.type = TK_SEMICOLON; break;
+    case '*': tk.type = TK_STAR; break;
+    case ',': tk.type = TK_COMMA; break;
+    case '.': tk.type = TK_PERIOD; break;
+    case '-': tk.type = TK_HYPHEN; break;
+    case '+': tk.type = TK_PLUS; break;
+    case '^': tk.type = TK_CARET; break;
+    case '~': tk.type = TK_TILDE; break;
+    case '%': tk.type = TK_MOD; break;
+    case '?': tk.type = TK_QUESTION_MARK; break;
+    case '!': tk.type = TK_BANG;
+              flags = TK_CHECK_EQUAL; break;
+
+    case '=': tk.type = TK_EQUAL;
+              flags = TK_CHECK_DOUBLE; break;
+    case '|': tk.type = TK_BAR;
+              flags = TK_CHECK_DOUBLE; break;
+    case '&': tk.type = TK_AND;
+              flags = TK_CHECK_DOUBLE; break;
+
+    default: tk.type = TK_UNKNOWN; break;
     }
+
+    if ((flags & TK_CHECK_DOUBLE)) {
+        if (*(s+1) == *s) {
+            tk.type += 1;
+            tk.length += 1;
+            s += 1;
+            flags = 0;
+        }
     }
+    if ((flags & TK_CHECK_EQUAL)) {
+        if (*(s+1) == '=') {
+            tk.type += 2;
+            tk.length += 1;
+            s += 1;
+        }
+    }
+
+end:
+    *o_s = s + 1;
+    return tk;
 }
 
+// TODO: remove this function, parser will receive tokens
 Token
 next_token(char ** o_s) {
     Token tk = {0};
@@ -264,7 +320,6 @@ next_token(char ** o_s) {
     case '+': tk.type = TK_PLUS; break;
     case '^': tk.type = TK_CARET; break;
     case '/': tk.type = TK_FORSLASH; break;
-    case '\\': tk.type = TK_BACKSLASH; break;
     case '~': tk.type = TK_TILDE; break;
     case '%': tk.type = TK_MOD; break;
     case '?': tk.type = TK_QUESTION_MARK; break;

@@ -435,12 +435,14 @@ intro_read_file(const char * filename, size_t * o_size) {
     if (!file) return NULL;
     size_t file_size = fsize(file);
     char * buffer = malloc(file_size + 1);
-    if (fread(buffer, file_size, 1, file) != 1) {
+    if (file_size > 0) {
+        if (fread(buffer, file_size, 1, file) != 1) {
+            fclose(file);
+            free(buffer);
+            return NULL;
+        }
         fclose(file);
-        free(buffer);
-        return NULL;
     }
-    fclose(file);
     buffer[file_size] = '\0';
     if (o_size) *o_size = file_size;
     return buffer;

@@ -57,7 +57,8 @@ typedef struct {
 } ExpandContext;
 
 typedef struct {
-    FileBuffer * current_file_buffer;
+    char * result_buffer;
+    FileBuffer * current_file;
     struct {
         bool enabled;
         bool D;
@@ -80,6 +81,12 @@ typedef struct {
     bool minimal_parse;
 } PreContext;
 
+typedef struct {
+    PreContext * ctx;
+    FileBuffer * last_file;
+    char * begin_chunk;
+} PasteState;
+
 const char ** include_paths = NULL;
 
 #define BOLD_RED "\e[1;31m"
@@ -91,7 +98,7 @@ static void
 strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char * highlight_start, char * highlight_end, const char * highlight_color) {
     strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
     strputf(p_s, "%s%.*s" WHITE, highlight_color, (int)(highlight_end - highlight_start), highlight_start);
-    strputf(p_s, "%.*s", (int)(segment_end - highlight_end), highlight_end);
+    strputf(p_s, "%.*s\n", (int)(segment_end - highlight_end), highlight_end);
     for (int i=0; i < highlight_start - segment_start; i++) arrput(*p_s, ' ');
     for (int i=0; i < highlight_end - highlight_start; i++) arrput(*p_s, '~');
     arrput(*p_s, '\n');
@@ -128,7 +135,9 @@ get_line(char * buffer_begin, char ** o_pos, char ** o_start_of_line, char ** o_
             file_buffer = file_buffers[i]->buffer;
         }
     }
-    assert(file_buffer);
+    if (!file_buffer) {
+        file_buffer = *o_pos;
+    }
     *o_pos = file_buffer + (loc->file_offset + ((*o_pos - buffer_begin) - loc->offset));
     char * last_line;
     int line_num = count_newlines_in_range(file_buffer, *o_pos, &last_line);
@@ -137,9 +146,31 @@ get_line(char * buffer_begin, char ** o_pos, char ** o_start_of_line, char ** o_
     return line_num;
 }
 
+static FileBuffer *
+find_origin(FileBuffer * current, char * ptr) {
+    int i = arrlen(file_buffers);
+    FileBuffer * file = (current)? current : file_buffers[--i];
+    while (1) {
+        if (ptr >= file->buffer && ptr < (file->buffer + file->buffer_size)) {
+            return file;
+        }
+
+        if (--i >= 0) {
+            file = file_buffers[i];
+        } else {
+            break;
+        }
+    }
+
+    return NULL;
+}
+
 static void
 message_internal(char * start_of_line, char * filename, int line, char * hl_start, char * hl_end, char * message, int message_type) {
-    char * end_of_line = strchr(hl_end, '\n') + 1;
+    char * end_of_line = strchr(hl_end, '\n');
+    if (!end_of_line) {
+        end_of_line = hl_end;
+    }
     char * s = NULL;
     const char * message_type_string = (message_type == 1)? "Warning" : "Error";
     const char * color = (message_type == 1)? BOLD_YELLOW : BOLD_RED;
@@ -160,32 +191,21 @@ parse_msg_internal(char * buffer, const Token * tk, char * message, int message_
     message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, message_type);
 }
 
-static const FileBuffer *
-pre_find_file(const FileBuffer * current_file, const char * s) {
-    const FileBuffer * file_info = current_file;
-    if (s < file_info->buffer || s >= file_info->buffer + file_info->buffer_size) {
-        for (int i=0; i < arrlen(file_buffers); i++) {
-            char * fb_start = file_buffers[i]->buffer;
-            char * fb_end = fb_start + file_buffers[i]->buffer_size;
-            if (s >= fb_start && s < fb_end) {
-                file_info = file_buffers[i];
-                break;
-            }
-        }
-    }
-    return file_info;
-}
-
 static void
-preprocess_message_internal(const FileBuffer * file_buffer, const Token * tk, char * message, int msg_type) {
-    file_buffer = pre_find_file(file_buffer, tk->start);
-    char * start_of_line;
-    int line_num = count_newlines_in_range(file_buffer->buffer, tk->start, &start_of_line);
-    message_internal(start_of_line, file_buffer->filename, line_num, tk->start, tk->start + tk->length, message, msg_type);
+preprocess_message_internal(FileBuffer * file, const Token * tk, char * message, int msg_type) {
+    file = find_origin(file, tk->start);
+    int line_num = 0;
+    char * start_of_line = tk->start;
+    char * filename = "__GENERATED__";
+    if (file) {
+        line_num = count_newlines_in_range(file->buffer, tk->start, &start_of_line);
+        filename = file->filename;
+    }
+    message_internal(start_of_line, filename, line_num, tk->start, tk->start + tk->length, message, msg_type);
 }
 
-#define preprocess_error(tk, message)   preprocess_message_internal(ctx->current_file_buffer, tk, message, 0)
-#define preprocess_warning(tk, message) preprocess_message_internal(ctx->current_file_buffer, tk, message, 1)
+#define preprocess_error(tk, message)   preprocess_message_internal(ctx->current_file, tk, message, 0)
+#define preprocess_warning(tk, message) preprocess_message_internal(ctx->current_file, tk, message, 1)
 
 static Token
 create_stringized(Token * list) {
@@ -217,8 +237,6 @@ create_stringized(Token * list) {
     };
     return result;
 }
-
-static char * result_buffer = NULL;
 
 static void
 path_normalize(char * dest) {
@@ -301,29 +319,21 @@ path_extension(char * dest, const char * path) {
 }
 
 static void
-ignore_section(char ** buffer, char * filename, char * file_buffer, char ** o_paste_begin, char * ignore_begin, char * end) {
+ignore_section(PasteState * state, FileBuffer * file, char * begin_ignored, char * end_ignored) {
     // save last chunk location
-    FileLoc loc;
-    loc.offset = arrlen(*buffer);
-    loc.filename = filename;
-    loc.file_offset = *o_paste_begin - file_buffer;
+    FileLoc loc = {
+        .offset      = arrlen(state->ctx->result_buffer),
+        .filename    = state->last_file->filename,
+        .file_offset = state->begin_chunk - file->buffer,
+    };
     arrput(file_location_lookup, loc);
 
-    // insert last chunk into result buffer
-    strputf(buffer, "%.*s", (int)(ignore_begin - *o_paste_begin), *o_paste_begin);
-    *o_paste_begin = end;
-}
-
-static void
-strput_tokens(char ** p_str, const Token * list, size_t count) {
-    if (!list) return;
-    for (int i=0; i < count; i++) {
-        Token tk = list[i];
-        if (tk.preceding_space) {
-            arrput(*p_str, ' ');
-        }
-        strputf(p_str, "%.*s", tk.length, tk.start);
-    }
+    // insert last chunk into buffer
+    int size_chunk = begin_ignored - state->begin_chunk;
+    char * out = arraddnptr(state->ctx->result_buffer, size_chunk);
+    memcpy(out, state->begin_chunk, size_chunk);
+    state->begin_chunk = end_ignored;
+    state->last_file = file;
 }
 
 void
@@ -467,6 +477,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         case MACRO_NOT_SPECIAL: break; // never reached
 
         case MACRO_defined: {
+            bool preceding_space = macro_tk->preceding_space;
             int index = macro_tk_index;
             Token tk = internal_macro_next_token(ctx, &index);
             bool is_paren = false;
@@ -491,7 +502,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 .start = replace,
                 .length = 1,
                 .type = TK_IDENTIFIER,
-                .preceding_space = macro_tk->preceding_space,
+                .preceding_space = preceding_space,
             };
             arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2));
             ctx->expand_ctx.list[macro_tk_index] = replace_tk;
@@ -499,13 +510,16 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         }break;
 
         case MACRO_FILE: {
-            strputf(&buf, "\"%s\"", ctx->current_file_buffer->filename);
+            strputf(&buf, "\"%s\"", ctx->current_file->filename);
         }break;
 
         case MACRO_LINE: {
-            const FileBuffer * current_file = pre_find_file(ctx->current_file_buffer, macro_tk->start);
-            char * start_of_line_;
-            int line_num = count_newlines_in_range(current_file->buffer, macro_tk->start, &start_of_line_);
+            const FileBuffer * current_file = find_origin(ctx->current_file, macro_tk->start); // TODO: use parent macro if there is one
+            int line_num = 0;
+            if (current_file) {
+                char * start_of_line_;
+                line_num = count_newlines_in_range(current_file->buffer, macro_tk->start, &start_of_line_);
+            }
             strputf(&buf, "%i", line_num);
             token_type = TK_IDENTIFIER;
         }break;
@@ -551,7 +565,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         case MACRO_FILE_NAME: {
             char static_buf_ [1024];
             char * filename = NULL;
-            path_dir(static_buf_, ctx->current_file_buffer->filename, &filename);
+            path_dir(static_buf_, ctx->current_file->filename, &filename);
             strputf(&buf, "\"%s\"", filename);
         }break;
 
@@ -559,7 +573,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             char static_buf [256];
             struct tm * date;
 
-            date = localtime(&ctx->current_file_buffer->mtime);
+            date = localtime(&ctx->current_file->mtime);
             strftime(static_buf, sizeof(static_buf), "%a %b %d %H:%M:%S %Y", date);
 
             strputf(&buf, "\"%s\"", static_buf);
@@ -709,16 +723,18 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     return true;
 }
 
-char *
+Token *
 expand_line(PreContext * ctx, char ** o_s, bool is_include) {
     Token * ptks = NULL;
-    arrsetcap(ptks, 64);
+    arrsetcap(ptks, 16);
     ExpandContext prev_ctx = ctx->expand_ctx;
-    char * processed = NULL;
     while (1) {
         Token ptk = pre_next_token(o_s);
         if (ptk.type == TK_NEWLINE) {
             *o_s = ptk.start;
+            ptk.type = TK_END;
+            ptk.start -= 1; // highlight last character in errors
+            arrput(ptks, ptk);
             break;
         } else if (ptk.type == TK_COMMENT) {
             continue;
@@ -728,41 +744,32 @@ expand_line(PreContext * ctx, char ** o_s, bool is_include) {
                 preprocess_error(&ptk, "No closing '>'.");
                 exit(1);
             }
-            strputf(&processed, " %.*s", (int)(closing - ptk.start + 1), ptk.start);
             *o_s = closing + 1;
+            ptk.length = *o_s - ptk.start;
+            ptk.type = TK_STRING;
+            arrput(ptks, ptk);
         } else {
-            arrsetlen(ptks, 1);
-            ptks[0] = ptk;
+            int index = arrlen(ptks);
+            arrput(ptks, ptk);
             if (ptk.type == TK_IDENTIFIER) {
                 ctx->expand_ctx = (ExpandContext){
                     .macro_index_stack = NULL,
                     .list = ptks,
                     .o_s = o_s,
                 };
+                macro_scan(ctx, index);
                 ptks = ctx->expand_ctx.list;
-                macro_scan(ctx, 0);
             }
-            strput_tokens(&processed, ptks, arrlen(ptks));
         }
     }
     ctx->expand_ctx = prev_ctx;
-    strputnull(processed);
-    arrfree(ptks);
 
-    return processed;
+    return ptks;
 }
 
 bool
 parse_expression(PreContext * ctx, char ** o_s) {
-    char * processed = expand_line(ctx, o_s, false);
-    char * s = processed;
-    Token * tks = NULL;
-    while (1) {
-        Token tk = next_token(&s);
-        if (tk.type == TK_END) break;
-        arrput(tks, tk);
-    }
-
+    Token * tks = expand_line(ctx, o_s, false);
     Token err_tk = {0};
     ExprNode * tree = build_expression_tree(ctx->expr_ctx, tks, arrlen(tks), &err_tk);
     if (!tree && err_tk.start) {
@@ -774,7 +781,7 @@ parse_expression(PreContext * ctx, char ** o_s) {
 
     free(expr);
     reset_arena(ctx->expr_ctx->arena);
-    arrfree(processed);
+    arrfree(tks);
 
     return !!result;
 }
@@ -842,20 +849,29 @@ read_stream(FILE * file) {
     return result;
 }
 
-int preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename);
+int preprocess_filename(PreContext * ctx, char * filename);
 
 int
-preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, char * filename) {
+preprocess_buffer(PreContext * ctx) {
+    FileBuffer * file = ctx->current_file;
+    char * file_buffer = file->buffer;
+    char * filename = file->filename;
+
     char file_dir [1024];
     char * filename_nodir;
     (void) filename_nodir;
     path_dir(file_dir, filename, &filename_nodir);
 
     char * s = file_buffer;
-    char * chunk_begin = s;
 
     arrsetcap(ctx->expand_ctx.list, 64);
     arrsetlen(ctx->expand_ctx.list, 1);
+
+    PasteState paste_ = {
+        .ctx = ctx,
+        .last_file = ctx->current_file,
+        .begin_chunk = s,
+    }, *paste = &paste_;
 
     while (1) {
         char * start_of_line = s;
@@ -878,26 +894,18 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
             if (is_digit(*directive.start) || tk_equal(&directive, "line")) {
                 // TODO
             } else if (tk_equal(&directive, "include") || (tk_equal(&directive, "include_next") && (inc_file.is_next = true))) {
-                char * expanded_line = expand_line(ctx, &s, true); // TODO: leak
-                char * is = expanded_line;
-                Token next = pre_next_token(&is);
-                // expansion is deferred until after the last section gets pasted
+                Token * expanded = expand_line(ctx, &s, true);
+                Token next = expanded[0];
+                // inclusion is deferred until after the last section gets pasted
                 inc_file.exists = true;
                 if (next.type == TK_STRING) {
-                    inc_file.is_quote = true;
+                    inc_file.is_quote = (*next.start == '"');
                     inc_file.tk = next;
-                } else if (*next.start == '<') {
-                    char * tk_end = find_closing(next.start);
-                    if (!tk_end) {
-                        preprocess_error(&next, "No closing '>'.");
-                        return -1;
-                    }
-                    inc_file.tk.start = next.start;
-                    inc_file.tk.length = tk_end - next.start + 1;
                 } else {
                     preprocess_error(&next, "Unexpected token in include directive.");
                     return -1;
                 }
+                arrfree(expanded);
             } else if (tk_equal(&directive, "define") || (tk_equal(&directive, "define_forced") && (def_forced = true))) {
                 char * ms = s;
                 Token macro_name = pre_next_token(&ms);
@@ -1020,12 +1028,12 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 pre_skip(ctx, &s, false);
             } else if (tk_equal(&directive, "endif")) {
             } else if (tk_equal(&directive, "error")) {
-                preprocess_error(&directive, "User error.");
+                preprocess_error(&directive, "error directive.");
                 return -1;
             } else if (tk_equal(&directive, "pragma")) {
                 tk = pre_next_token(&s);
                 if (tk_equal(&tk, "once")) {
-                    ctx->current_file_buffer->once = true;
+                    ctx->current_file->once = true;
                 }
             } else {
             unknown_directive:
@@ -1037,7 +1045,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
             // find next line
             while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
 
-            if (!ctx->minimal_parse) ignore_section(result_buffer, filename, file_buffer, &chunk_begin, start_of_line, s);
+            if (!ctx->minimal_parse) ignore_section(paste, file, start_of_line, s);
 
             if (inc_file.exists) {
                 STACK_TERMINATE(inc_filename, inc_file.tk.start + 1, inc_file.tk.length - 2);
@@ -1093,15 +1101,19 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 ctx->is_sys_header = is_from_sys;
                 ctx->include_level++;
 
-                int error = preprocess_filename(ctx, result_buffer, inc_filepath_stored);
+                int error = preprocess_filename(ctx, inc_filepath_stored);
 
                 ctx->is_sys_header = prev;
                 ctx->include_level--;
 
-                if (error) return -1;
+                if (error == RET_FILE_NOT_FOUND) {
+                    preprocess_error(&inc_file.tk, "Failed to read file.");
+                    return -1;
+                }
+                if (error < 0) return -1;
             }
         } else if (tk.type == TK_END) {
-            if (!ctx->minimal_parse) ignore_section(result_buffer, filename, file_buffer, &chunk_begin, s, NULL);
+            if (!ctx->minimal_parse) ignore_section(paste, file, s, NULL);
             break;
         } else {
             if (ctx->minimal_parse) {
@@ -1109,16 +1121,38 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
                 while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
             } else {
                 if (tk.type == TK_COMMENT) {
-                    ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
+                    ignore_section(paste, file, tk.start, s);
                 } else if (tk.type == TK_IDENTIFIER) {
                     ctx->expand_ctx.o_s = &s;
                     ctx->expand_ctx.list[0] = tk;
                     if (macro_scan(ctx, 0)) {
                         const Token * list = ctx->expand_ctx.list;
-                        ignore_section(result_buffer, filename, file_buffer, &chunk_begin, tk.start, s);
+                        ignore_section(paste, file, tk.start, s);
+
                         if (arrlen(list) > 0) {
-                            strput_tokens(result_buffer, list, arrlen(list));
+                            FileBuffer * last_origin = ctx->current_file;
+                            ptrdiff_t last_file_offset = -1;
+                            for (int i=0; i < arrlen(list); i++) {
+                                Token tk = list[i];
+                                FileBuffer * origin = find_origin(last_origin, tk.start);
+                                ptrdiff_t file_offset = (origin)? tk.start - origin->buffer : 0;
+                                if (file_offset != last_file_offset || origin != last_origin) {
+                                    FileLoc loc = {
+                                        .offset = arrlen(ctx->result_buffer) + 1,
+                                        .filename = (origin)? origin->filename : "__GENERATED__",
+                                        .file_offset = file_offset,
+                                    };
+                                    arrput(file_location_lookup, loc);
+                                    last_origin = origin;
+                                    last_file_offset = file_offset;
+                                }
+                                if (tk.preceding_space) {
+                                    arrput(ctx->result_buffer, ' ');
+                                }
+                                memcpy(arraddnptr(ctx->result_buffer, tk.length), tk.start, tk.length);
+                            }
                         }
+
                         arrsetlen(ctx->expand_ctx.list, 1);
                         arrsetlen(ctx->expand_ctx.macro_index_stack, 0);
                     }
@@ -1131,7 +1165,7 @@ preprocess_buffer(PreContext * ctx, char ** result_buffer, char * file_buffer, c
 }
 
 int
-preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
+preprocess_filename(PreContext * ctx, char * filename) {
     char * file_buffer = NULL;
     size_t file_size;
 
@@ -1144,7 +1178,7 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
             }
             file_buffer = fb->buffer;
             file_size = fb->buffer_size;
-            ctx->current_file_buffer = fb;
+            ctx->current_file = fb;
             break;
         }
     }
@@ -1169,14 +1203,14 @@ preprocess_filename(PreContext * ctx, char ** result_buffer, char * filename) {
         new_buf->buffer_size = file_size;
         new_buf->mtime = mtime;
         arrput(file_buffers, new_buf);
-        ctx->current_file_buffer = arrlast(file_buffers);
+        ctx->current_file = arrlast(file_buffers);
     }
 
     if (ctx->include_level == 0) {
         ctx->base_file = filename;
     }
 
-    return preprocess_buffer(ctx, result_buffer, file_buffer, filename);
+    return preprocess_buffer(ctx);
 }
 
 static char intro_defs [] =
@@ -1382,8 +1416,12 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         const char * sys_def_path = ".intro_def";
         path_join(path, program_dir, sys_def_path);
         char * def_buffer = intro_read_file(path, NULL);
+        FileBuffer temp_file = {0};
         if (def_buffer) {
-            preprocess_buffer(ctx, NULL, def_buffer, path);
+            temp_file.buffer = def_buffer;
+            temp_file.filename = path;
+            ctx->current_file = &temp_file;
+            preprocess_buffer(ctx);
         } else {
             fprintf(stderr, "No file at %s\n", path);
         }
@@ -1392,7 +1430,10 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
             preprocess_only = true;
             ctx->minimal_parse = true;
         } else {
-            preprocess_buffer(ctx, NULL, intro_defs, "__intro_defs__");
+            temp_file.buffer = intro_defs;
+            temp_file.filename = "__INTRO_DEFS__";
+            ctx->current_file = &temp_file;
+            preprocess_buffer(ctx);
         }
         ctx->minimal_parse = false;
     }
@@ -1406,15 +1447,15 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         strputnull(*o_output_filepath);
     }
 
-    int error = preprocess_filename(ctx, &result_buffer, filepath);
+    int error = preprocess_filename(ctx, filepath);
     if (error) {
         if (error == RET_FILE_NOT_FOUND) {
-            fputs("File not found.\n", stderr);
+            fprintf(stderr, "File not found.\n");
         }
         return NULL;
     }
 
-    strputnull(result_buffer);
+    strputnull(ctx->result_buffer);
 
     if (ctx->m_options.enabled) {
         char * ext = strrchr(filepath, '.');
@@ -1452,9 +1493,9 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         }
     }
     if (preprocess_only) {
-        fputs(result_buffer, stdout);
+        fputs(ctx->result_buffer, stdout);
         exit(0);
     }
 
-    return result_buffer;
+    return ctx->result_buffer;
 }

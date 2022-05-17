@@ -37,6 +37,8 @@
   #define UNUSED
 #endif
 
+#define HERE() fprintf(stderr, "here: %s:%i\n", __FILE__, __LINE__)
+
 typedef struct {
     const char * key;
 } NameSet;
@@ -165,6 +167,8 @@ strputf(char ** p_str, const char * format, ...) {
         va_list args;
         va_copy(args, args_original);
 
+        if (*p_str == NULL) arrsetcap(*p_str, 128);
+
         char * loc = *p_str + arrlen(*p_str);
         size_t n = arrcap(*p_str) - arrlen(*p_str);
         size_t pn;
@@ -180,7 +184,7 @@ strputf(char ** p_str, const char * format, ...) {
             break;
         } else {
             size_t prev_cap = arrcap(*p_str);
-            arrsetcap(*p_str, (prev_cap)? prev_cap << 1 : 64);
+            arrsetcap(*p_str, prev_cap << 1);
         }
 
         va_end(args);
