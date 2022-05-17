@@ -2,6 +2,21 @@
 #include "lexer.c"
 #include "global.h"
 
+static const IntroType known_types [] = {
+    {"void",     NULL, INTRO_UNKNOWN},
+    {"uint8_t",  NULL, INTRO_U8 },
+    {"uint16_t", NULL, INTRO_U16},
+    {"uint32_t", NULL, INTRO_U32},
+    {"uint64_t", NULL, INTRO_U64},
+    {"int8_t",   NULL, INTRO_S8 },
+    {"int16_t",  NULL, INTRO_S16},
+    {"int32_t",  NULL, INTRO_S32},
+    {"int64_t",  NULL, INTRO_S64},
+    {"float",    NULL, INTRO_F32},
+    {"double",   NULL, INTRO_F64},
+    {"_Bool",    NULL, INTRO_U8 },
+};
+
 static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
     parse_msg_internal(ctx->buffer, tk, message, 0);
@@ -48,7 +63,7 @@ store_type(ParseContext * ctx, const IntroType * type) {
     }
     // TODO: i am not a fan of this
     if (original && intro_is_complex(type)) {
-        for (int i=15; i < hmlen(ctx->type_set); i++) {
+        for (int i=LENGTH(known_types); i < hmlen(ctx->type_set); i++) {
             IntroType * t = ctx->type_set[i].value;
             if (t->parent == original) {
                 if (t->category == INTRO_UNKNOWN) {
@@ -105,6 +120,8 @@ is_ignored(int keyword) {
     case KEYW_CONST:
     case KEYW_VOLATILE:
     case KEYW_INLINE:
+    case KEYW_GNU_INLINE:
+    case KEYW_EXTERN:
         return true;
     default:
         return false;
@@ -150,6 +167,9 @@ parse_constant_expression(ParseContext * ctx, char ** o_s) {
     return result;
 }
 
+static int parse_type_base(ParseContext *, char **, DeclState * decl);
+static IntroType * parse_type_annex(ParseContext *, IntroType *, char **, Token *);
+
 static int
 parse_struct(ParseContext * ctx, char ** o_s) {
     Token tk = next_token(o_s), name_tk = {0};
@@ -189,6 +209,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     IntroMember * members = NULL;
     AttributeSpecifier * attribute_specifiers = NULL;
     NestInfo * nests = NULL;
+    DeclState decl = {0};
     while (1) {
         Token type_tk = {0};
         Token tk = next_token(o_s);
@@ -196,15 +217,15 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             break;
         }
         *o_s = tk.start;
-        IntroType * base_type = parse_type_base(ctx, o_s, &type_tk);
-        if (!base_type) {
+        int base_ret = parse_type_base(ctx, o_s, &decl);
+        if (base_ret != 0) {
             return -1;
         }
 
         tk = next_token(o_s);
         if (tk.type == TK_SEMICOLON) {
-            if (base_type->category == INTRO_STRUCT || base_type->category == INTRO_UNION) {
-                IntroStruct * s = base_type->i_struct;
+            if (decl.base->category == INTRO_STRUCT || decl.base->category == INTRO_UNION) {
+                IntroStruct * s = decl.base->i_struct;
                 for (int i=0; i < s->count_members; i++) {
                     arrput(members, s->members[i]);
                 }
@@ -219,7 +240,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 IntroMember member = {0};
 
                 Token name_tk;
-                IntroType * type = parse_type_annex(ctx, base_type, o_s, &name_tk);
+                IntroType * type = parse_type_annex(ctx, decl.base, o_s, &name_tk);
                 member.name = copy_and_terminate(name_tk.start, name_tk.length);
                 if (!type) return -1;
 
@@ -229,9 +250,9 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 }
                 member.type = type;
 
-                if (base_type->name == NULL) {
+                if (decl.base->name == NULL) {
                     NestInfo info = {0};
-                    info.key = base_type;
+                    info.key = decl.base;
                     info.member_index = arrlen(members);
                     IntroType * tt = type;
                     while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
@@ -451,55 +472,8 @@ parse_enum(ParseContext * ctx, char ** o_s) {
     return 0;
 }
 
-static int
-parse_typedef(ParseContext * ctx, char ** o_s) {
-    Token type_tk = {0};
-    (void) type_tk;
-    IntroType * base = parse_type_base(ctx, o_s, &type_tk);
-    if (!base) return -1;
-
-    while (1) {
-        Token name_tk = {0};
-        IntroType * type = parse_type_annex(ctx, base, o_s, &name_tk);
-        if (!type) return -1;
-        if (name_tk.start == NULL) {
-            parse_error(ctx, &type_tk, "typedef has no name.");
-            return -1;
-        }
-        char * name = copy_and_terminate(name_tk.start, name_tk.length);
-        if (shgeti(ctx->ignore_typedefs, name) >= 0) {
-            return 0;
-        }
-        IntroType * prev = shget(ctx->type_map, name);
-        if (prev) {
-            if (prev->parent != type) {
-                parse_error(ctx, &name_tk, "Redefinition does not match previous definition.");
-                return -1;
-            }
-        } else {
-            IntroType new_type = *type;
-            new_type.name = name;
-            bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
-            if (!new_type_is_indirect) {
-                new_type.parent = type;
-            }
-            store_type(ctx, &new_type);
-        }
-        Token tk = next_token(o_s);
-        if (tk.type == TK_SEMICOLON) {
-            break;
-        } else if (tk.type == TK_COMMA) {
-        } else {
-            parse_error(ctx, &tk, "Expected ',' or ';'.");
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-static IntroType *
-parse_type_base(ParseContext * ctx, char ** o_s, Token * o_tk) {
+int
+parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     IntroType type = {0};
     char * type_name = NULL;
     bool is_typedef = false;
@@ -521,9 +495,9 @@ parse_type_base(ParseContext * ctx, char ** o_s, Token * o_tk) {
     }
     if (first.type != TK_IDENTIFIER) {
         *o_s = first.start;
-        return NULL;
+        return RET_NOT_TYPE;
     }
-    *o_tk = first;
+    decl->base_tk = first;
     strputf(&type_name, "%.*s", first.length, first.start);
 
     if (first_keyword == KEYW_STRUCT
@@ -542,18 +516,20 @@ parse_type_base(ParseContext * ctx, char ** o_s, Token * o_tk) {
             Token tk = next_token(o_s);
             strputf(&type_name, " %.*s", tk.length, tk.start);
 
-            o_tk->length = tk.start - first.start + tk.length;
+            decl->base_tk.length = tk.start - first.start + tk.length;
         } else if (error != 0) {
-            return NULL;
+            return -1;
         } else {
             ptrdiff_t last_index = hmtemp(ctx->type_set);
-            return ctx->type_set[last_index].value;
+            decl->base = ctx->type_set[last_index].value;
+            if (is_typedef) decl->state = DECL_TYPEDEF;
+            return 0;
         }
     } else {
 #define CHECK_INT(x) \
     if (x) { \
         parse_error(ctx, &tk, "Invalid."); \
-        return NULL; \
+        return -1; \
     }
         Token tk = first, ltk = first;
         while (1) {
@@ -630,25 +606,28 @@ parse_type_base(ParseContext * ctx, char ** o_s, Token * o_tk) {
             }
         }
 
-        o_tk->length = tk.start - first.start + tk.length;
+        decl->base_tk.length = tk.start - first.start + tk.length;
     }
+
+    if (is_typedef) decl->state = DECL_TYPEDEF;
 
     strputnull(type_name);
     IntroType * t = shget(ctx->type_map, type_name);
     if (t) {
         arrfree(type_name);
-        return t;
+        decl->base = t;
     } else {
         if (type.category || is_typedef) {
             type.name = type_name;
             IntroType * stored = store_type(ctx, &type);
             arrfree(type_name);
-            return stored;
+            decl->base = stored;
         } else {
-            parse_error(ctx, o_tk, "Undeclared type.");
-            return NULL;
+            parse_error(ctx, &decl->base_tk, "Undeclared type.");
+            return -1;
         }
     }
+    return 0;
 }
 
 static IntroType *
@@ -752,15 +731,83 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
     return last_type;
 }
 
-#if 0
-int
-parse_declaration(ParseContext * ctx, char ** o_s) {
-    Token tk = next_token(o_s);
+static int
+parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
+    if (decl->base == NULL) parse_type_base(ctx, o_s, decl);
+    if (decl->base == NULL) return -1;
 
-    return 0;
+    decl->type = parse_type_annex(ctx, decl->base, o_s, &decl->name_tk);
+    if (decl->type == NULL) return -1;
 
+    if (decl->state == DECL_TYPEDEF) {
+        if (decl->name_tk.start == NULL) {
+            parse_error(ctx, &decl->base_tk, "typedef has no name.");
+            return -1;
+        }
+        char * name = copy_and_terminate(decl->name_tk.start, decl->name_tk.length);
+        if (shgeti(ctx->ignore_typedefs, name) >= 0) {
+            return 0;
+        }
+        IntroType * prev = shget(ctx->type_map, name);
+        if (prev) {
+            if (prev->parent != decl->type) {
+                parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
+                return -1;
+            }
+        } else {
+            IntroType new_type = *decl->type;
+            new_type.name = name;
+            bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
+            if (!new_type_is_indirect) {
+                new_type.parent = decl->type;
+            }
+            store_type(ctx, &new_type);
+        }
+    }
+
+    bool in_expr = false;
+    while (1) {
+        Token tk = next_token(o_s);
+        if (tk.type == TK_COMMA) {
+            return RET_DECL_CONTINUE;
+        } else if (tk.type == TK_SEMICOLON) {
+            decl->base = NULL;
+            if (decl->state == DECL_TYPEDEF) decl->state = DECL_NORMAL;
+            return RET_DECL_FINISHED;
+        } else if (tk.type == TK_EQUAL) {
+            in_expr = true;
+        } else {
+            bool do_find_closing = false;
+            if (in_expr) {
+                if (tk.type == TK_L_BRACE || tk.type == TK_L_BRACKET || tk.type == TK_L_PARENTHESIS) {
+                    do_find_closing = true;
+                } else {
+                    continue;
+                }
+            }
+            if (tk.type == TK_L_BRACE && decl->type->category == INTRO_FUNCTION) {
+                do_find_closing = true;
+            }
+            if (do_find_closing) {
+                *o_s = find_closing(tk.start);
+                if (!*o_s) {
+                    parse_error(ctx, &tk, "No closing '}' for function body.");
+                    return -1;
+                }
+                *o_s += 1;
+                tk = next_token(o_s);
+                if (tk.type == TK_END) {
+                    return RET_FOUND_END;
+                }
+                *o_s = tk.start;
+                memset(decl, 0, sizeof(*decl));
+                return RET_DECL_FINISHED;
+            }
+            parse_error(ctx, &tk, "Invalid symbol in declaration. Expected ',' or ';'.");
+            return -1;
+        }
+    }
 }
-#endif
 
 #if 0
 int
@@ -846,20 +893,6 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     sh_new_arena(ctx->type_map);
     sh_new_arena(ctx->name_set);
 
-    static const IntroType known_types [] = {
-        {"void",     NULL, INTRO_UNKNOWN},
-        {"uint8_t",  NULL, INTRO_U8 },
-        {"uint16_t", NULL, INTRO_U16},
-        {"uint32_t", NULL, INTRO_U32},
-        {"uint64_t", NULL, INTRO_U64},
-        {"int8_t",   NULL, INTRO_S8 },
-        {"int16_t",  NULL, INTRO_S16},
-        {"int32_t",  NULL, INTRO_S32},
-        {"int64_t",  NULL, INTRO_S64},
-        {"float",    NULL, INTRO_F32},
-        {"double",   NULL, INTRO_F64},
-        {"_Bool",    NULL, INTRO_U8 },
-    };
     for (int i=0; i < LENGTH(known_types); i++) {
         store_type(ctx, &known_types[i]);
         shputs(ctx->ignore_typedefs, (NameSet){known_types[i].name});
@@ -876,6 +909,8 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         {"volatile", KEYW_VOLATILE},
         {"inline",   KEYW_INLINE},
         {"restrict", KEYW_RESTRICT},
+        {"extern",   KEYW_EXTERN},
+        {"__inline__", KEYW_GNU_INLINE},
 
         {"unsigned", KEYW_UNSIGNED},
         {"signed",   KEYW_SIGNED},
@@ -895,36 +930,16 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
 
     create_initial_attributes();
 
+    DeclState decl = {0};
+
     char * s = buffer;
     while (1) {
-        Token tk = next_token(&s);
+        int ret = parse_declaration(ctx, &s, &decl);
 
-        if (tk.type == TK_END) {
+        if (ret < 0) {
+            return 1;
+        } else if (ret == RET_FOUND_END) {
             break;
-        } else if (tk.type == TK_IDENTIFIER) {
-            int error = 0;
-            if (tk_equal(&tk, "struct") || tk_equal(&tk, "union")) {
-                s = tk.start;
-                error = parse_struct(ctx, &s);
-                if (error == RET_NOT_DEFINITION) error = 0;
-            } else if (tk_equal(&tk, "enum")) {
-                error = parse_enum(ctx, &s);
-                if (error == RET_NOT_DEFINITION) error = 0;
-            } else if (tk_equal(&tk, "typedef")) {
-                s = tk.start;
-                error = parse_typedef(ctx, &s);
-            }
-
-            if (error) {
-                return error;
-            }
-        } else if (tk.type == TK_L_BRACE) {
-            s = find_closing(tk.start);
-            if (!s) {
-                parse_error(ctx, &tk, "Failed to find closing '}'.");
-                return -1;
-            }
-            s++;
         }
     }
 

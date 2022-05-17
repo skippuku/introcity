@@ -67,11 +67,12 @@ enum ReturnCode {
     RET_IRRELEVANT_ERROR = -1,
     RET_OK = 0,
 
-    RET_FILE_NOT_FOUND  = 2,
-
+    RET_FILE_NOT_FOUND = 2,
     RET_NOT_DEFINITION = 3,
-    RET_DECL_CONTINUE  = 4,
-    RET_DECL_FINISHED  = 5,
+    RET_DECL_CONTINUE = 4,
+    RET_DECL_FINISHED = 5,
+    RET_FOUND_END = 6,
+    RET_NOT_TYPE = 7,
 };
 
 typedef struct {
@@ -99,6 +100,8 @@ typedef enum {
     KEYW_VOLATILE,
     KEYW_INLINE,
     KEYW_RESTRICT,
+    KEYW_EXTERN,
+    KEYW_GNU_INLINE,
 
     KEYW_UNSIGNED,
     KEYW_SIGNED,
@@ -129,8 +132,19 @@ typedef struct {
     ExprContext * expr_ctx;
 } ParseContext;
 
-static IntroType * parse_type_base(ParseContext *, char **, Token *);
-static IntroType * parse_type_annex(ParseContext *, IntroType *, char **, Token *);
+typedef struct {
+    IntroType * base;
+    IntroType * type;
+    Token base_tk;
+    Token name_tk;
+
+    enum {
+        DECL_NORMAL = 0,
+        DECL_TYPEDEF,
+    } state;
+} DeclState;
+
+static int parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl);
 
 #if defined(__has_attribute)
   #if defined(__MINGW32__)
