@@ -75,6 +75,7 @@ enum ReturnCode {
     RET_DECL_FINISHED = 5,
     RET_FOUND_END = 6,
     RET_NOT_TYPE = 7,
+    RET_DECL_VA_LIST = 8,
 };
 
 typedef struct {
@@ -145,6 +146,7 @@ typedef struct {
         DECL_NORMAL = 0,
         DECL_TYPEDEF,
         DECL_CAST,
+        DECL_ARGS,
     } state;
 } DeclState;
 

@@ -1222,6 +1222,7 @@ static char intro_defs [] =
 "  #define_forced __THROW \n"
 "#endif\n"
 "#define_forced __inline inline\n"
+"#define_forced __restrict restrict\n"
 
 // MINGW
 "#define _VA_LIST_DEFINED 1\n"

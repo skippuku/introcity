@@ -15,6 +15,7 @@ static const IntroType known_types [] = {
     {"float",    NULL, INTRO_F32},
     {"double",   NULL, INTRO_F64},
     {"_Bool",    NULL, INTRO_U8 },
+    {"va_list",  NULL, INTRO_VA_LIST},
 };
 
 static void
@@ -498,9 +499,28 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             }
         } else if (first.type == TK_END) {
             return RET_FOUND_END;
+        } else {
+            break;
         }
     }
     if (first.type != TK_IDENTIFIER) {
+        if (decl->state == DECL_ARGS && first.type == TK_PERIOD) {
+            for (int i=0; i < 2; i++) {
+                Token next = next_token(o_s);
+                if (next.type != TK_PERIOD) {
+                    parse_error(ctx, &first, "Invalid symbol in parameter list.");
+                    return -1;
+                }
+            }
+            static const IntroType i_va_list = {
+                .name = "...",
+                .category = INTRO_VA_LIST,
+            };
+            decl->base = (IntroType *)&i_va_list;
+            decl->base_tk.start = first.start;
+            decl->base_tk.length = 3;
+            return RET_DECL_VA_LIST;
+        }
         *o_s = first.start;
         return RET_NOT_TYPE;
     }
@@ -643,13 +663,17 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     return 0;
 }
 
+static IntroArgument * parse_function_arguments(ParseContext * ctx, char ** o_s);
+
 static IntroType *
 parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token * o_name_tk) {
     int32_t * indirection = NULL;
     int32_t * temp = NULL;
+    IntroArgument ** func_args_stack = NULL;
     char * paren;
 
     const int32_t POINTER = -1;
+    const int32_t FUNCTION = -2;
     Token tk;
     char * end = *o_s;
     do {
@@ -679,6 +703,14 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
         }
 
         arrsetlen(temp, 0);
+        if (tk.type == TK_L_PARENTHESIS) {
+            *o_s = tk.start;
+            IntroArgument * args = parse_function_arguments(ctx, o_s);
+            arrpush(func_args_stack, args);
+            arrput(temp, FUNCTION);
+            tk = next_token(o_s);
+        }
+
         while (tk.type == TK_L_BRACKET) {
             char * closing_bracket = find_closing(tk.start);
             int32_t num;
@@ -711,35 +743,27 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
     for (int i=0; i < arrlen(indirection); i++) {
         int32_t it = indirection[i];
         IntroType new_type = {0};
-        new_type.parent = last_type;
         if (it == POINTER) {
             new_type.category = INTRO_POINTER;
+            new_type.parent = last_type;
+        } else if (it == FUNCTION) {
+            new_type.category = INTRO_FUNCTION;
+            IntroArgument * args = arrpop(func_args_stack);
+            IntroFunction * func = calloc(1, sizeof(*func) + arrlen(args) * sizeof(args[0]));
+            func->return_type = last_type;
+            func->count_arguments = arrlen(args);
+            memcpy(func->arguments, args, arrlen(args) * sizeof(args[0]));
+            new_type.function = func;
         } else {
             new_type.category = INTRO_ARRAY;
+            new_type.parent = last_type;
             new_type.array_size = it;
         }
         last_type = store_type(ctx, &new_type);
     }
     arrfree(indirection);
+    arrfree(func_args_stack);
 
-    *o_s = end;
-    tk = next_token(o_s);
-    if (tk.type == TK_L_PARENTHESIS) {
-        end = find_closing(tk.start);
-        if (!end) {
-            parse_error(ctx, &tk, "Failed to find closing ')'");
-            return NULL;
-        }
-        end += 1;
-
-        // make function type TODO: arguments
-        IntroType func = {0};
-        func.parent = base_type;
-        func.category = INTRO_FUNCTION;
-
-        last_type = store_type(ctx, &func);
-    }
-    
     *o_s = end;
     return last_type;
 }
@@ -749,6 +773,23 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     int ret = 0;
     if (decl->base == NULL) ret = parse_type_base(ctx, o_s, decl);
     if (ret < 0 || ret == RET_FOUND_END) return ret;
+    if (ret == RET_NOT_TYPE) {
+        Token tk = next_token(o_s);
+        if (tk.type == TK_R_PARENTHESIS) {
+            decl->base = NULL;
+            return RET_DECL_FINISHED;
+        } else {
+            parse_error(ctx, &tk, "Invalid type.");
+            return -1;
+        }
+    } else if (ret == RET_DECL_VA_LIST) {
+        Token tk = next_token(o_s);
+        if (tk.type != TK_R_PARENTHESIS) {
+            parse_error(ctx, &tk, "Expected ')' after va_list.");
+            return -1;
+        }
+        return RET_DECL_FINISHED;
+    }
 
     decl->type = parse_type_annex(ctx, decl->base, o_s, &decl->name_tk);
     if (decl->type == NULL) return -1;
@@ -784,6 +825,9 @@ find_end: ;
     while (1) {
         Token tk = next_token(o_s);
         if (tk.type == TK_COMMA) {
+            if (decl->state == DECL_ARGS) {
+                decl->base = NULL;
+            }
             return RET_DECL_CONTINUE;
         } else if (tk.type == TK_SEMICOLON) {
             decl->base = NULL;
@@ -805,7 +849,7 @@ find_end: ;
                 do_find_closing = true;
                 func_body = true;
             }
-            if (decl->state == DECL_CAST && tk.type == TK_R_PARENTHESIS) {
+            if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {
                 return RET_DECL_FINISHED;
             }
             if (do_find_closing) {
@@ -825,8 +869,10 @@ find_end: ;
                 tk = next_token(o_s);
                 if (tk.type == TK_END) {
                     return RET_FOUND_END;
+                } else if (tk.type == TK_SEMICOLON || tk.type == TK_COMMA) {
+                } else {
+                    *o_s = tk.start;
                 }
-                *o_s = tk.start;
                 memset(decl, 0, sizeof(*decl));
                 return RET_DECL_FINISHED;
             }
@@ -836,77 +882,39 @@ find_end: ;
     }
 }
 
-#if 0
-int
-maybe_parse_function(ParseContext * ctx, char ** o_s) {
-    Token type_tk, name_tk;
-    IntroType * return_base = parse_type_base(ctx, o_s, &type_tk);
-    if (!return_base) return -1;
+static IntroArgument *
+parse_function_arguments(ParseContext * ctx, char ** o_s) {
+    Token open = next_token(o_s);
+    assert(open.type == TK_L_PARENTHESIS);
 
-    IntroType * return_type = parse_type_annex(ctx, return_base, o_s, &name_tk);
-    if (!return_type) return -1;
+    IntroArgument * args = NULL;
 
-    if (return_type->category == INTRO_UNKNOWN) {
-        parse_error(ctx, &type_tk, "Type is unknown.");
-    }
-
-    Token tk = next_token(o_s);
-    if (tk.type != TK_L_PARENTHESIS) {
-        find_declaration_end(o_s);
-        return 0;
-    }
-
-    IntroArgument * arguments = NULL;
-    tk = next_token(o_s);
-    if (tk.type == TK_R_PARENTHESIS) {
-        goto after_args;
-    } else {
-        *o_s = tk.start;
-    }
+    DeclState decl = {.state = DECL_ARGS};
     while (1) {
-        Token arg_type_tk, arg_name_tk;
-        IntroType * arg_base = parse_type_base(ctx, o_s, &arg_type_tk);
-        if (!arg_base) return -1;
-
-        IntroType * arg_type = parse_type_annex(ctx, arg_base, o_s, &arg_name_tk);
-        if (!arg_type) return -1;
-
-        IntroArgument arg = {0};
-        arg.name = copy_and_terminate(name_tk.start, name_tk.length);
-        arg.type = arg_type;
-        arrput(arguments, arg);
-
-        tk = next_token(o_s);
-        if (tk.type == TK_R_PARENTHESIS) {
+        int ret = parse_declaration(ctx, o_s, &decl);
+        if (ret == RET_DECL_FINISHED) {
             break;
-        } else  if (tk.type != TK_COMMA) {
-            parse_error(ctx, &tk, "Expected ','.");
-            return -1;
+        } else if (ret < 0) {
+            exit(1);
         }
+
+        if (decl.type->category == INTRO_UNKNOWN && 0==strcmp(decl.type->name, "void")) {
+            break;
+        }
+
+        char * name = (decl.name_tk.start)
+                       ? copy_and_terminate(decl.name_tk.start, decl.name_tk.length)
+                       : NULL;
+
+        IntroArgument arg = {
+            .name = name,
+            .type = decl.type,
+        };
+        arrput(args, arg);
     }
-after_args: ;
-    
-    IntroFunction * func = malloc(sizeof(*func) + arrlen(arguments) * sizeof(*arguments));
-    memset(func, 0, sizeof(*func));
-    memcpy(func->arguments, arguments, arrlen(arguments) * sizeof(*arguments));
 
-    arrfree(arguments);
-
-    func->return_type = return_type;
-    func->count_arguments = arrlen(arguments);
-
-    IntroType type = {0};
-    type.name = copy_and_terminate(name_tk.start, name_tk.length);
-    type.category = INTRO_FUNCTION;
-    type.function = func;
-
-    store_type(ctx, &type);
-
-    find_declaration_end(o_s);
-
-    return 0;
+    return args;
 }
-#endif
 
 int
 parse_preprocessed_text(char * buffer, IntroInfo * o_info) {

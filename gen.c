@@ -81,6 +81,7 @@ category_str(int category) {
     case INTRO_ENUM: return "INTRO_ENUM";
     case INTRO_STRUCT: return "INTRO_STRUCT";
     case INTRO_UNION: return "INTRO_UNION";
+    case INTRO_FUNCTION: return "INTRO_FUNCTION";
     }
 }
 

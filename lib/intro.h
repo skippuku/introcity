@@ -36,6 +36,7 @@ typedef enum IntroCategory {
     INTRO_UNION   = 0x71,
 
     INTRO_FUNCTION = 0x80,
+    INTRO_VA_LIST = 0x81,
 } IntroCategory;
 
 typedef enum {
