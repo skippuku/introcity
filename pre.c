@@ -1216,17 +1216,15 @@ preprocess_filename(PreContext * ctx, char * filename) {
 static char intro_defs [] =
 "#define __INTRO__ 1\n"
 
-// MINGW
-"#define _VA_LIST_DEFINED 1\n"
-
-// MSVC
-"#if defined _WIN32\n"
 "#define_forced __unaligned \n"
 "#if !defined __GNUC__\n"
 "  #define_forced __forceinline inline\n"
+"  #define_forced __THROW \n"
 "#endif\n"
 "#define_forced __inline inline\n"
-"#endif\n"
+
+// MINGW
+"#define _VA_LIST_DEFINED 1\n"
 
 // GNU
 "#if defined __GNUC__\n"
@@ -1235,7 +1233,6 @@ static char intro_defs [] =
 "#define_forced __extension__ \n"
 "#define_forced __asm__(x) \n"
 "#define_forced __volatile__(x) \n"
-"#define_forced __THROW \n"
 "#endif\n"
 ;
 
