@@ -58,13 +58,15 @@ typedef struct {
 } NestInfo;
 
 typedef struct IntroInfo {
-    uint32_t count_types;
     IntroType ** types;
     IndexByPtrMap * index_by_ptr_map;
     NestInfo * nest_map;
     uint8_t * value_buffer;
-    uint32_t count_arg_lists;
     IntroTypePtrList ** arg_lists;
+    IntroFunction ** functions;
+    uint32_t count_types;
+    uint32_t count_arg_lists;
+    uint32_t count_functions;
 } IntroInfo;
 
 enum ReturnCode {
@@ -138,6 +140,7 @@ typedef struct {
     ExprContext * expr_ctx;
 
     struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
+    struct {char * key; IntroFunction * value;} * function_map;
 } ParseContext;
 
 typedef struct {
@@ -149,21 +152,23 @@ typedef struct {
 typedef struct {
     IntroType * base;
     IntroType * type;
-    Token base_tk;
-    Token name_tk;
-
-    AttributeSpecifier * attribute_specifiers;
-
-    int32_t member_index;
-    uint8_t bitfield;
     bool reuse_base;
     enum {
-        DECL_NORMAL = 0,
+        DECL_GLOBAL = 1,
         DECL_TYPEDEF,
         DECL_CAST,
         DECL_ARGS,
         DECL_MEMBERS,
     } state;
+    Token base_tk;
+    Token name_tk;
+
+    union {
+        AttributeSpecifier * attribute_specifiers;
+        char ** arg_names;
+    };
+    int32_t member_index;
+    uint8_t bitfield;
 } DeclState;
 
 static int parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl);

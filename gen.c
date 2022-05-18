@@ -108,7 +108,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
 
     char * s = NULL;
 
-    const char * tab = "    ";
+    const char * tab = "";
 
     char * header_def = NULL;
     arrsetcap(header_def, strlen(output_filename) + 2);
@@ -232,6 +232,23 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
             IntroType * arg_type = args->types[arg_i];
             int arg_type_index = hmget(info->index_by_ptr_map, arg_type);
             strputf(&s, "%s&__intro_types[%i],\n", tab, arg_type_index);
+        }
+        strputf(&s, "}};\n\n");
+    }
+
+    // function info
+    for (int func_i=0; func_i < info->count_functions; func_i++) {
+        IntroFunction * func = info->functions[func_i];
+        int return_type_index = hmget(info->index_by_ptr_map, func->type);
+        strputf(&s, "IntroFunction __intro_fn_%04x = {\"%s\", &__intro_types[%i], %u, {\n",
+                 func_i, func->name, return_type_index, func->has_body);
+        for (int name_i=0; name_i < func->type->args->count; name_i++) {
+            const char * name = func->arg_names[name_i];
+            if (name) {
+                strputf(&s, "%s\"%s\",\n", tab, name);
+            } else {
+                strputf(&s, "%s0,\n", tab);
+            }
         }
         strputf(&s, "}};\n\n");
     }

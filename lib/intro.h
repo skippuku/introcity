@@ -126,6 +126,8 @@ struct IntroTypePtrList {
 typedef struct IntroFunction {
     const char * name;
     IntroType * type;
+    bool has_body;
+    const char * arg_names [];
 } IntroFunction;
 
 typedef struct IntroContext {
@@ -173,7 +175,7 @@ typedef struct {
 } IntroPrintOptions;
 
 int intro_size(const IntroType * type);
-const IntroType * intro_base(const IntroType * type, int * o_depth);
+const IntroType * intro_origin(const IntroType * type, int * o_depth);
 const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
 bool intro_attribute_flag(const IntroMember * m, int32_t attr_type);

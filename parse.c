@@ -185,9 +185,6 @@ parse_constant_expression(ParseContext * ctx, char ** o_s) {
     return result;
 }
 
-static int parse_type_base(ParseContext *, char **, DeclState * decl);
-static IntroType * parse_type_annex(ParseContext *, IntroType *, char **, Token *);
-
 static int
 parse_struct(ParseContext * ctx, char ** o_s) {
     Token tk = next_token(o_s), name_tk = {0};
@@ -663,10 +660,10 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     return 0;
 }
 
-static IntroType ** parse_function_arguments(ParseContext * ctx, char ** o_s);
+static IntroType ** parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_decl);
 
-static IntroType *
-parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token * o_name_tk) {
+static int
+parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
     int32_t * indirection = NULL;
     int32_t * temp = NULL;
     IntroType *** func_args_stack = NULL;
@@ -676,7 +673,7 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
     const int32_t FUNCTION = -2;
     Token tk;
     char * end = *o_s;
-    memset(o_name_tk, 0, sizeof(*o_name_tk));
+    memset(&decl->name_tk, 0, sizeof(decl->name_tk));
     do {
         paren = NULL;
 
@@ -699,14 +696,14 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
         }
 
         if (tk.type == TK_IDENTIFIER) {
-            *o_name_tk = tk;
+            decl->name_tk = tk;
             tk = next_token(o_s);
         }
 
         arrsetlen(temp, 0);
         if (tk.type == TK_L_PARENTHESIS) {
             *o_s = tk.start;
-            IntroType ** arg_types = parse_function_arguments(ctx, o_s);
+            IntroType ** arg_types = parse_function_arguments(ctx, o_s, decl);
             arrpush(func_args_stack, arg_types);
             arrput(temp, FUNCTION);
             tk = next_token(o_s);
@@ -721,7 +718,7 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
                 num = (int32_t)parse_constant_expression(ctx, o_s);
                 if (num < 0) {
                     parse_error(ctx, &tk, "Invalid array size.");
-                    return NULL;
+                    return -1;
                 }
             }
             arrput(temp, num);
@@ -740,7 +737,7 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
     } while ((*o_s = paren) != NULL);
     arrfree(temp);
 
-    IntroType * last_type = base_type;
+    IntroType * last_type = decl->base;
     for (int i=0; i < arrlen(indirection); i++) {
         int32_t it = indirection[i];
         IntroType new_type = {0};
@@ -766,7 +763,8 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
     arrfree(func_args_stack);
 
     *o_s = end;
-    return last_type;
+    decl->type = last_type;
+    return 0;
 }
 
 static int
@@ -776,10 +774,9 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     if (ret < 0 || ret == RET_FOUND_END) return ret;
     if (ret == RET_NOT_TYPE) {
         Token tk = next_token(o_s);
-        if (tk.type == TK_R_PARENTHESIS
-         || tk.type == TK_SEMICOLON
-         || (decl->state == DECL_MEMBERS && tk.type == TK_R_BRACE)) {
-            decl->base = NULL;
+        if ((tk.type == TK_R_PARENTHESIS)
+         || (tk.type == TK_SEMICOLON)
+         || (tk.type == TK_R_BRACE)) {
             return RET_DECL_FINISHED;
         } else {
             parse_error(ctx, &tk, "Invalid type.");
@@ -794,8 +791,8 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         return RET_DECL_FINISHED;
     }
 
-    decl->type = parse_type_annex(ctx, decl->base, o_s, &decl->name_tk);
-    if (decl->type == NULL) return -1;
+    ret = parse_type_annex(ctx, o_s, decl);
+    if (ret < 0) return -1;
 
     if (decl->state == DECL_TYPEDEF) {
         if (decl->name_tk.start == NULL) {
@@ -823,6 +820,36 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         }
     }
 
+    IntroFunction * func = NULL;
+    if (decl->type->category == INTRO_FUNCTION) {
+        STACK_TERMINATE(terminated_name, decl->name_tk.start, decl->name_tk.length);
+        IntroFunction * prev = shget(ctx->function_map, terminated_name);
+        int32_t count_args = decl->type->args->count;
+        if (prev) {
+            if (intro_origin(prev->type, 0) != intro_origin(decl->type, 0)) {
+                parse_error(ctx, &decl->name_tk, "Function declaration does not match previous.");
+                return -1;
+            } else {
+                //if (prev->has_body) {
+                //    parse_warning(ctx, &decl->name_tk, "Function is redeclared after definition.");
+                //}
+                func = prev;
+                for (int i=0; i < prev->type->args->count; i++) {
+                    if (prev->arg_names[i]) free((void *)prev->arg_names[i]);
+                }
+            }
+        } else {
+            func = calloc(1, sizeof(*func) + count_args * sizeof(func->arg_names[0]));
+            func->name = copy_and_terminate(decl->name_tk.start, decl->name_tk.length);
+            func->type = decl->type;
+            shput(ctx->function_map, func->name, func);
+        }
+        if (count_args > 0) {
+            memcpy(func->arg_names, decl->arg_names, count_args * sizeof(func->arg_names[0]));
+            arrfree(decl->arg_names);
+        }
+    }
+
 find_end: ;
     decl->bitfield = 0;
     bool in_expr = false;
@@ -838,7 +865,7 @@ find_end: ;
             return RET_DECL_CONTINUE;
         } else if (tk.type == TK_SEMICOLON) {
             decl->reuse_base = false;
-            if (decl->state == DECL_TYPEDEF) decl->state = DECL_NORMAL;
+            if (decl->state == DECL_TYPEDEF) decl->state = DECL_GLOBAL;
             return RET_DECL_CONTINUE;
         } else if (tk.type == TK_EQUAL) {
             in_expr = true;
@@ -859,9 +886,12 @@ find_end: ;
             if (tk.type == TK_L_BRACE && decl->type->category == INTRO_FUNCTION) {
                 do_find_closing = true;
                 func_body = true;
+                assert(func != NULL);
+                func->has_body = true;
             }
             if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {
-                return RET_DECL_FINISHED;
+                *o_s = tk.start;
+                return RET_DECL_CONTINUE;
             }
             if (do_find_closing) {
                 *o_s = find_closing(tk.start);
@@ -885,7 +915,8 @@ find_end: ;
                     *o_s = tk.start;
                 }
                 memset(decl, 0, sizeof(*decl));
-                return RET_DECL_FINISHED;
+                *o_s = tk.start;
+                return RET_DECL_CONTINUE;
             }
             parse_error(ctx, &tk, "Invalid symbol in declaration. Expected ',' or ';'.");
             return -1;
@@ -894,7 +925,7 @@ find_end: ;
 }
 
 static IntroType **
-parse_function_arguments(ParseContext * ctx, char ** o_s) {
+parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_decl) {
     Token open = next_token(o_s);
     assert(open.type == TK_L_PARENTHESIS);
 
@@ -911,16 +942,15 @@ parse_function_arguments(ParseContext * ctx, char ** o_s) {
         }
 
         if (decl.type->category == INTRO_UNKNOWN && 0==strcmp(decl.type->name, "void")) {
-            break;
+            continue;
         }
 
-#if 0
         char * name = (decl.name_tk.start)
                        ? copy_and_terminate(decl.name_tk.start, decl.name_tk.length)
                        : NULL;
-#endif
 
         arrput(arg_types, decl.type);
+        arrput(parent_decl->arg_names, name);
     }
 
     return arg_types;
@@ -976,7 +1006,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
 
     create_initial_attributes();
 
-    DeclState decl = {0};
+    DeclState decl = {.state = DECL_GLOBAL};
 
     char * s = buffer;
     while (1) {
@@ -1004,6 +1034,12 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         arg_lists[i] = ctx->arg_list_by_hash[i].value;
     }
 
+    uint32_t count_functions = shlen(ctx->function_map);
+    IntroFunction ** functions = malloc(count_functions * sizeof(void *));
+    for (int i=0; i < count_functions; i++) {
+        functions[i] = ctx->function_map[i].value;
+    }
+
     o_info->count_types = arrlen(type_list);
     o_info->types = type_list;
     o_info->index_by_ptr_map = index_by_ptr;
@@ -1011,5 +1047,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
     o_info->value_buffer = ctx->value_buffer;
     o_info->count_arg_lists = count_arg_lists;
     o_info->arg_lists = arg_lists;
+    o_info->count_functions = count_functions;
+    o_info->functions = functions;
     return 0;
 }

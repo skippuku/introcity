@@ -37,13 +37,12 @@ intro_size(const IntroType * type) {
 }
 
 const IntroType *
-intro_base(const IntroType * type, int * o_depth) {
+intro_origin(const IntroType * type, int * o_depth) {
     int depth = 0;
-    while (type->category == INTRO_ARRAY || type->category == INTRO_POINTER) {
+    while (type->parent && type->category != INTRO_ARRAY && type->category != INTRO_POINTER) {
         type = type->parent;
         depth++;
     }
-
     if (o_depth) *o_depth = depth;
     return type;
 }
@@ -320,9 +319,8 @@ intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * 
             case INTRO_POINTER: { // TODO
                 void * ptr = *(void **)m_data;
                 if (ptr) {
-                    int depth;
-                    const IntroType * base = intro_base(m->type, &depth);
-                    if (depth == 1 && intro_is_scalar(base)) {
+                    const IntroType * base = m->type->parent;
+                    if (!base->parent && intro_is_scalar(base)) {
                         int64_t length;
                         if (intro_attribute_length(data, type, m, &length)) {
                             intro_print_basic_array(ptr, base, length);
