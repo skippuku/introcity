@@ -1,21 +1,21 @@
 attribute:
-    as_enum for when you want an integer to be treated like an enum
-        type attribute value type
+    attribute type: type
+        as_enum for when you want an integer to be treated like an enum
+            (or maybe just a general 'as')
     struct/union values
-    stb_ds array attribute
+    somehow handle data at an offset to a pointer ex. stb_ds
     members of complex type can specify an attribute as a value: I(default default)
     noserialize (for pointers)
     nodisplay
     ability to apply attributes to types
     ability to remove an attribute
-    expression/condition attribute type
-    length: allow expression? ex. I(length map_width * map_height)
-    stb_ds hash map attribute?
+    expression attribute type
+        select: attribute describes when a member is valid, ex. unions
+        length: change to expression ex. I(length map_width * map_height)
 
 parse:
     !! sizeof structs/enums in expressions
     !! fix needing enum name before I(attribute)
-    give c int types a parent based on size and signedness
     add way to change c type sizes for different platforms
     track type declaration file location?
     functions
@@ -44,6 +44,7 @@ city:
 
 lib:
     accurate type display
+    a little dubious and evil: ability to create types at runtime
     IntroVariant?
     sprint/mprint version of everything that uses stdout
     single header?

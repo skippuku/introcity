@@ -578,7 +578,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     }
         Token tk = first, ltk = first;
         while (1) {
-            bool is_first = (tk.start == first.start);
+            bool add_to_name = (tk.start != first.start);
             bool break_loop = false;
             int keyword = get_keyword(ctx, tk);
             switch(keyword) {
@@ -622,7 +622,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             case KEYW_CHAR: {
                 CHECK_INT((type.category & 0x0f));
                 type.category |= 0x01;
-                if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
+                break_loop = true;
                 break;
             }break;
 
@@ -632,17 +632,18 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 if ((type.category & 0x0f) == 0) {
                     type.category |= 0x04;
                 }
-                if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
+                break_loop = true;
                 break;
             }break;
 
             default:
-                if (!is_first) *o_s = tk.start;
+                if (add_to_name) *o_s = tk.start;
                 tk = ltk;
                 break_loop = true;
+                add_to_name = false;
             }
+            if (add_to_name) strputf(&type_name, " %.*s", tk.length, tk.start);
             if (break_loop) break;
-            if (!is_first) strputf(&type_name, " %.*s", tk.length, tk.start);
             ltk = tk;
             tk = next_token(o_s);
         }
@@ -655,6 +656,19 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             if ((type.category & 0x0f) == 0) {
                 type.category |= 0x04;
             }
+            int parent_index = 0;
+            switch(type.category) {
+            case INTRO_U8:  parent_index = 1; break;
+            case INTRO_U16: parent_index = 2; break;
+            case INTRO_U32: parent_index = 3; break;
+            case INTRO_U64: parent_index = 4; break;
+            case INTRO_S8:  parent_index = 5; break;
+            case INTRO_S16: parent_index = 6; break;
+            case INTRO_S32: parent_index = 7; break;
+            case INTRO_S64: parent_index = 8; break;
+            default: break;
+            }
+            type.parent = ctx->type_set[parent_index].value;
         }
 
         decl->base_tk.length = tk.start - first.start + tk.length;
