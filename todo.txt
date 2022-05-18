@@ -34,6 +34,7 @@ pre:
     internal: use context instead of globals
 
 gen:
+    option to flag types you care about and only output information nescessary for those types
     option to create typedefs for structs and enums
     typeof with _Generic?
 
@@ -44,7 +45,7 @@ city:
 lib:
     accurate type display
     IntroVariant?
-    don't use printf?
+    sprint/mprint version of everything that uses stdout
     single header?
 
 test:

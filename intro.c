@@ -6,6 +6,7 @@
 #include "parse.c"
 #include "gen.c"
 
+// Pretty annoying we have to include these massive headers just to turn on term color...
 #ifdef _WIN32
   #include <windef.h>
   #include <wingdi.h>

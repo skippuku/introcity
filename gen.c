@@ -131,7 +131,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "#include <stddef.h>\n\n");
 
     struct {
-        IntroStruct * key;
+        void * key;
         char * value;
     } * complex_type_map = NULL;
 
@@ -218,6 +218,24 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
         }
     }
 
+    // function argument types
+    for (int arg_list_i=0; arg_list_i < info->count_arg_lists; arg_list_i++) {
+        IntroTypePtrList * args = info->arg_lists[arg_list_i];
+
+        char * saved_name = malloc(16);
+        stbsp_snprintf(saved_name, 15, "arg_%04x", arg_list_i);
+
+        hmput(complex_type_map, args, saved_name);
+
+        strputf(&s, "IntroTypePtrList __intro_%s = {%u, {\n", saved_name, args->count);
+        for (int arg_i=0; arg_i < args->count; arg_i++) {
+            IntroType * arg_type = args->types[arg_i];
+            int arg_type_index = hmget(info->index_by_ptr_map, arg_type);
+            strputf(&s, "%s&__intro_types[%i],\n", tab, arg_type_index);
+        }
+        strputf(&s, "}};\n\n");
+    }
+
     // type list
     strputf(&s, "IntroType __intro_types [%u] = {\n", info->count_types);
     for (int type_index = 0; type_index < info->count_types; type_index++) {
@@ -235,10 +253,18 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
             strputf(&s, "0, ");
         }
         strputf(&s, "%s, ", category_str(t->category));
-        if (intro_is_complex(t)) {
+        if (intro_is_complex(t) || t->category == INTRO_FUNCTION) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
             if (saved_name) {
-                strputf(&s, ".%s=&__intro_%s},\n", (t->category == INTRO_ENUM)? "i_enum" : "i_struct", saved_name);
+                const char * union_member = "ERROR";
+                switch(t->category) {
+                case INTRO_STRUCT:
+                case INTRO_UNION:    union_member = "i_struct"; break;
+                case INTRO_ENUM:     union_member = "i_enum"; break;
+                case INTRO_FUNCTION: union_member = "args"; break;
+                default: break; // never reached
+                }
+                strputf(&s, ".%s=&__intro_%s},\n", union_member, saved_name);
             } else {
                 strputf(&s, "0},\n");
             }

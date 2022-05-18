@@ -42,6 +42,24 @@ cache_name(ParseContext * ctx, char * name) {
     return ctx->name_set[index].key;
 }
 
+// NOTE: technically possible for a collision to happen, this should be changed
+static IntroTypePtrList *
+store_arg_type_list(ParseContext * ctx, IntroType ** list) {
+    static const size_t hash_seed = 0xF58D6349C6431963; // this is just some random number
+
+    size_t count_list_bytes = arrlen(list) * sizeof(list[0]);
+    size_t hash = (list)? stbds_hash_bytes(list, count_list_bytes, hash_seed) : 0;
+    IntroTypePtrList * stored = hmget(ctx->arg_list_by_hash, hash);
+    if (!stored) {
+        stored = malloc(sizeof(*stored) + count_list_bytes);
+        stored->count = arrlen(list);
+        memcpy(stored->types, list, count_list_bytes);
+        stored = hmput(ctx->arg_list_by_hash, hash, stored);
+    }
+
+    return stored;
+}
+
 static IntroType *
 store_type(ParseContext * ctx, const IntroType * type) {
     IntroType * stored = malloc(sizeof(*stored));
@@ -663,13 +681,13 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     return 0;
 }
 
-static IntroArgument * parse_function_arguments(ParseContext * ctx, char ** o_s);
+static IntroType ** parse_function_arguments(ParseContext * ctx, char ** o_s);
 
 static IntroType *
 parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token * o_name_tk) {
     int32_t * indirection = NULL;
     int32_t * temp = NULL;
-    IntroArgument ** func_args_stack = NULL;
+    IntroType *** func_args_stack = NULL;
     char * paren;
 
     const int32_t POINTER = -1;
@@ -705,8 +723,8 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
         arrsetlen(temp, 0);
         if (tk.type == TK_L_PARENTHESIS) {
             *o_s = tk.start;
-            IntroArgument * args = parse_function_arguments(ctx, o_s);
-            arrpush(func_args_stack, args);
+            IntroType ** arg_types = parse_function_arguments(ctx, o_s);
+            arrpush(func_args_stack, arg_types);
             arrput(temp, FUNCTION);
             tk = next_token(o_s);
         }
@@ -747,13 +765,13 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
             new_type.category = INTRO_POINTER;
             new_type.parent = last_type;
         } else if (it == FUNCTION) {
+            IntroType ** arg_types = arrpop(func_args_stack);
+            IntroTypePtrList * stored_args = store_arg_type_list(ctx, arg_types);
+            arrfree(arg_types);
+
+            new_type.parent = last_type; // return type
             new_type.category = INTRO_FUNCTION;
-            IntroArgument * args = arrpop(func_args_stack);
-            IntroFunction * func = calloc(1, sizeof(*func) + arrlen(args) * sizeof(args[0]));
-            func->return_type = last_type;
-            func->count_arguments = arrlen(args);
-            memcpy(func->arguments, args, arrlen(args) * sizeof(args[0]));
-            new_type.function = func;
+            new_type.args = stored_args;
         } else {
             new_type.category = INTRO_ARRAY;
             new_type.parent = last_type;
@@ -882,12 +900,13 @@ find_end: ;
     }
 }
 
-static IntroArgument *
+static IntroType **
 parse_function_arguments(ParseContext * ctx, char ** o_s) {
     Token open = next_token(o_s);
     assert(open.type == TK_L_PARENTHESIS);
 
-    IntroArgument * args = NULL;
+    // TODO: get names
+    IntroType ** arg_types = NULL;
 
     DeclState decl = {.state = DECL_ARGS};
     while (1) {
@@ -902,18 +921,16 @@ parse_function_arguments(ParseContext * ctx, char ** o_s) {
             break;
         }
 
+#if 0
         char * name = (decl.name_tk.start)
                        ? copy_and_terminate(decl.name_tk.start, decl.name_tk.length)
                        : NULL;
+#endif
 
-        IntroArgument arg = {
-            .name = name,
-            .type = decl.type,
-        };
-        arrput(args, arg);
+        arrput(arg_types, decl.type);
     }
 
-    return args;
+    return arg_types;
 }
 
 int
@@ -988,10 +1005,18 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         hmput(index_by_ptr, (void *)type_ptr, i);
     }
 
+    uint32_t count_arg_lists = hmlen(ctx->arg_list_by_hash);
+    IntroTypePtrList ** arg_lists = malloc(count_arg_lists * sizeof(void *));
+    for (int i=0; i < count_arg_lists; i++) {
+        arg_lists[i] = ctx->arg_list_by_hash[i].value;
+    }
+
     o_info->count_types = arrlen(type_list);
     o_info->types = type_list;
     o_info->index_by_ptr_map = index_by_ptr;
     o_info->nest_map = ctx->nest_map;
     o_info->value_buffer = ctx->value_buffer;
+    o_info->count_arg_lists = count_arg_lists;
+    o_info->arg_lists = arg_lists;
     return 0;
 }

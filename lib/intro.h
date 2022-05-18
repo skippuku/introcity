@@ -47,8 +47,8 @@ typedef enum {
 
 typedef struct IntroStruct IntroStruct;
 typedef struct IntroEnum IntroEnum;
-typedef struct IntroFunction IntroFunction;
 typedef struct IntroType IntroType;
+typedef struct IntroTypePtrList IntroTypePtrList;
 
 struct IntroType {
     const char * name;
@@ -58,7 +58,7 @@ struct IntroType {
         uint32_t array_size;
         IntroStruct * i_struct;
         IntroEnum * i_enum;
-        IntroFunction * function;
+        IntroTypePtrList * args;
     };
 };
 
@@ -118,16 +118,15 @@ struct IntroEnum {
     IntroEnumValue members [];
 };
 
-typedef struct IntroArgument {
+struct IntroTypePtrList {
+    uint32_t count;
+    IntroType * types [];
+};
+
+typedef struct IntroFunction {
     const char * name;
     IntroType * type;
-} IntroArgument;
-
-struct IntroFunction {
-    IntroType * return_type;
-    uint32_t count_arguments;
-    IntroArgument arguments [];
-};
+} IntroFunction;
 
 typedef struct IntroContext {
     IntroType * types;

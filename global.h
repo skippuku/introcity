@@ -63,6 +63,8 @@ typedef struct IntroInfo {
     IndexByPtrMap * index_by_ptr_map;
     NestInfo * nest_map;
     uint8_t * value_buffer;
+    uint32_t count_arg_lists;
+    IntroTypePtrList ** arg_lists;
 } IntroInfo;
 
 enum ReturnCode {
@@ -134,6 +136,8 @@ typedef struct {
     DifferedDefault * differed_length_defaults;
 
     ExprContext * expr_ctx;
+
+    struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
 } ParseContext;
 
 typedef struct {
