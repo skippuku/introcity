@@ -72,8 +72,13 @@ is_digit(char c) {
 }
 
 static bool
+is_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static bool
 is_iden(char c) {
-    return is_digit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+    return is_digit(c) || is_alpha(c) || c == '_';
 }
 
 static bool // TODO(remove) i don't thing this is useful actually

@@ -56,16 +56,25 @@ typedef struct {
     char ** o_s;
 } ExpandContext;
 
+enum TargetMode {
+    MT_NORMAL = 0,
+    MT_SPACE,
+    MT_NEWLINE,
+};
+
 typedef struct {
     char * result_buffer;
     FileBuffer * current_file;
     struct {
+        char * custom_target;
+        char * filename;
         bool enabled;
         bool D;
         bool G;
+        bool P;
         bool no_sys;
-        char * custom_target;
-        char * filename;
+        bool use_msys_path;
+        int8_t target_mode;
     } m_options;
     NameSet * dependency_set;
     ExprContext * expr_ctx;
@@ -1229,6 +1238,7 @@ static char intro_defs [] =
 
 // GNU
 "#if defined __GNUC__\n"
+"#define_forced __restrict__ restrict\n"
 "#define_forced __inline__ inline\n"
 "#define_forced __attribute__(x) \n"
 "#define_forced __extension__ \n"
@@ -1346,11 +1356,35 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
                 }break;
 
                 case 'T': {
-                    ctx->m_options.custom_target = argv[++i];
+                    if (arg[3]) {
+                        if (arg[3] == '_') {
+                            ctx->m_options.target_mode = MT_SPACE;
+                        } else if (arg[3] == 'n') {
+                            ctx->m_options.target_mode = MT_NEWLINE;
+                        } else {
+                            goto unknown_option;
+                        }
+                        break;
+                    } else {
+                        ctx->m_options.target_mode = MT_NORMAL;
+                        ctx->m_options.custom_target = argv[++i];
+                    }
                 }break;
 
                 case 'F' :{
                     ctx->m_options.filename = argv[++i];
+                }break;
+
+                case 's': {
+                    if (0==strcmp(arg+3, "ys")) { // -Msys
+                        ctx->m_options.use_msys_path = true;
+                    } else {
+                        goto unknown_option;
+                    }
+                }break;
+
+                case 'P': {
+                    ctx->m_options.P = true;
                 }break;
 
                 default: goto unknown_option;
@@ -1373,6 +1407,19 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
             }
         }
         #undef ADJACENT
+    }
+
+    // option error checking
+    if (ctx->m_options.enabled && ctx->m_options.target_mode == MT_NEWLINE) {
+        struct stat out_stat;
+        fstat(fileno(stdout), &out_stat);
+        if (S_ISFIFO(out_stat.st_mode) && !isatty(fileno(stdout))) {
+            fprintf(stderr, "WARNING: Newline separation '-MTn' may cause unexpected behavior. Consider using space separation '-MT_'.\n");
+        }
+    }
+    if (ctx->m_options.target_mode != MT_NORMAL && ctx->m_options.P) {
+        fprintf(stderr, "Error: Cannot use '-MT_' or -'MTn' with '-MP'.\n");
+        exit(1);
     }
 
     if (!no_sys) {
@@ -1465,16 +1512,43 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         }
 
         char * rule = NULL;
-        if (ctx->m_options.custom_target) {
-            strputf(&rule, "%s:", ctx->m_options.custom_target);
-        } else {
-            strputf(&rule, "%.*s.o:", len_basename, filepath);
+        char * dummy_rules = NULL;
+        if (ctx->m_options.target_mode == MT_NORMAL) {
+            if (ctx->m_options.custom_target) {
+                strputf(&rule, "%s: ", ctx->m_options.custom_target);
+            } else {
+                strputf(&rule, "%.*s.o: ", len_basename, filepath);
+            }
         }
-        strputf(&rule, " %s", filepath);
+        const char * sep = " ";
+        if (ctx->m_options.target_mode == MT_NEWLINE) {
+            sep = "\n";
+        }
+        strputf(&rule, "%s", filepath);
         for (int i=0; i < shlen(ctx->dependency_set); i++) {
-            strputf(&rule, " %s", ctx->dependency_set[i].key);
+            char buf [1024];
+            const char * path = ctx->dependency_set[i].key;
+            if (ctx->m_options.use_msys_path) {
+                // NOTE: paths should already be using forward slashes at this point
+                strcpy(buf, ctx->dependency_set[i].key);
+                char drive_char = buf[0];
+                if (is_alpha(drive_char) && buf[1] == ':' && buf[2] == '/') {
+                    buf[0] = '/';
+                    // captials work in msys, but lower case feels more idiomatic
+                    if (drive_char < 'a') drive_char += ('a' - 'A');
+                    buf[1] = drive_char;
+                }
+                path = buf;
+            }
+            strputf(&rule, "%s%s", sep, path);
+            if (ctx->m_options.P) {
+                strputf(&dummy_rules, "%s:\n", path);
+            }
         }
         arrput(rule, '\n');
+        if (dummy_rules != NULL) {
+            strputf(&rule, "%.*s", (int)arrlen(dummy_rules), dummy_rules);
+        }
         strputnull(rule);
 
         if (preprocess_only && !ctx->m_options.filename) {
