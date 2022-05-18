@@ -775,7 +775,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     if (ret < 0 || ret == RET_FOUND_END) return ret;
     if (ret == RET_NOT_TYPE) {
         Token tk = next_token(o_s);
-        if (tk.type == TK_R_PARENTHESIS) {
+        if (tk.type == TK_R_PARENTHESIS || tk.type == TK_SEMICOLON) {
             decl->base = NULL;
             return RET_DECL_FINISHED;
         } else {
