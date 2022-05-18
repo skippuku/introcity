@@ -101,12 +101,6 @@ store_type(ParseContext * ctx, const IntroType * type) {
     return stored;
 }
 
-typedef struct {
-    char * location;
-    int32_t i;
-    Token tk;
-} AttributeSpecifier;
-
 int
 maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk, AttributeSpecifier ** p_attribute_specifiers) {
     if (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
@@ -231,82 +225,56 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     }
 
     IntroMember * members = NULL;
-    AttributeSpecifier * attribute_specifiers = NULL;
     NestInfo * nests = NULL;
-    DeclState decl = {0};
+    DeclState decl = {.state = DECL_MEMBERS};
     while (1) {
-        Token type_tk = {0};
-        Token tk = next_token(o_s);
-        if (tk.type == TK_R_BRACE) {
-            break;
+        decl.member_index = arrlen(members);
+        int ret = parse_declaration(ctx, o_s, &decl);
+        if (ret != RET_DECL_CONTINUE) {
+            if (ret == RET_DECL_FINISHED) {
+                break;
+            }
+            if (ret >= 0 && decl.base_tk.start) {
+                parse_error(ctx, &decl.base_tk, "Invalid.");
+            }
+            return -1;
         }
-        *o_s = tk.start;
-        int base_ret = parse_type_base(ctx, o_s, &decl);
-        if (base_ret != 0) {
+        if (decl.type->category == INTRO_UNKNOWN) {
+            parse_error(ctx, &decl.base_tk, "Unknown type.");
             return -1;
         }
 
-        tk = next_token(o_s);
-        if (tk.type == TK_SEMICOLON) {
-            if (decl.base->category == INTRO_STRUCT || decl.base->category == INTRO_UNION) {
+        IntroMember member = {0};
+        if (!decl.name_tk.start) {
+            if (decl.type->category == INTRO_STRUCT || decl.type->category == INTRO_UNION) {
                 IntroStruct * s = decl.base->i_struct;
                 for (int i=0; i < s->count_members; i++) {
                     arrput(members, s->members[i]);
                 }
                 continue;
             } else {
-                parse_error(ctx, &tk, "Struct member has no name or type is unknown.");
+                parse_error(ctx, &tk, "Struct member has no name, or type is unknown.");
                 return -1;
             }
-        } else {
-            *o_s = tk.start;
-            while (1) {
-                IntroMember member = {0};
-
-                Token name_tk;
-                IntroType * type = parse_type_annex(ctx, decl.base, o_s, &name_tk);
-                member.name = copy_and_terminate(name_tk.start, name_tk.length);
-                if (!type) return -1;
-
-                if (type->category == INTRO_UNKNOWN) {
-                    parse_error(ctx, &type_tk, "Unknown type.");
-                    return -1;
-                }
-                member.type = type;
-
-                if (decl.base->name == NULL) {
-                    NestInfo info = {0};
-                    info.key = decl.base;
-                    info.member_index = arrlen(members);
-                    IntroType * tt = type;
-                    while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
-                        tt = tt->parent;
-                        info.indirection_level++;
-                    }
-                    arrput(nests, info);
-                }
-
-                tk = next_token(o_s);
-                int error = maybe_expect_attribute(ctx, o_s, arrlen(members), &tk, &attribute_specifiers);
-                if (error) return error;
-
-                if (tk.type == TK_COLON) {
-                    intmax_t bitfield = parse_constant_expression(ctx, o_s);
-                    member.bitfield = (uint8_t)bitfield;
-                    tk = next_token(o_s);
-                }
-
-                arrput(members, member);
-
-                if (tk.type == TK_SEMICOLON) {
-                    break;
-                } else if (tk.type == TK_COMMA) {
-                } else {
-                    parse_error(ctx, &tk, "Expected ';' or ','.");
-                    return -1;
-                }
-            }
         }
+
+        member.name = copy_and_terminate(decl.name_tk.start, decl.name_tk.length);
+        member.type = decl.type;
+        member.bitfield = decl.bitfield;
+
+        if (decl.base->name == NULL) {
+            NestInfo info = {0};
+            info.key = decl.base;
+            info.member_index = arrlen(members);
+            IntroType * tt = decl.type;
+            while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
+                tt = tt->parent;
+                info.indirection_level++;
+            }
+            arrput(nests, info);
+        }
+
+        arrput(members, member);
     }
 
     IntroStruct * result = calloc(1, sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
@@ -332,18 +300,18 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrfree(nests);
     }
 
-    if (attribute_specifiers) {
+    if (decl.attribute_specifiers) {
         IntroAttributeData * d;
         uint32_t count;
-        for (int i=0; i < arrlen(attribute_specifiers); i++) {
-            int member_index = attribute_specifiers[i].i;
-            char * location = attribute_specifiers[i].location;
+        for (int i=0; i < arrlen(decl.attribute_specifiers); i++) {
+            int member_index = decl.attribute_specifiers[i].i;
+            char * location = decl.attribute_specifiers[i].location;
             int error = parse_attributes(ctx, location, result, member_index, &d, &count);
             if (error) return error;
             result->members[member_index].attributes = d;
             result->members[member_index].count_attributes = count;
         }
-        arrfree(attribute_specifiers);
+        arrfree(decl.attribute_specifiers);
 
         handle_differed_defaults(ctx, result);
     }
@@ -708,6 +676,7 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
     const int32_t FUNCTION = -2;
     Token tk;
     char * end = *o_s;
+    memset(o_name_tk, 0, sizeof(*o_name_tk));
     do {
         paren = NULL;
 
@@ -803,11 +772,13 @@ parse_type_annex(ParseContext * ctx, IntroType * base_type, char ** o_s, Token *
 static int
 parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     int ret = 0;
-    if (decl->base == NULL) ret = parse_type_base(ctx, o_s, decl);
+    if (!decl->reuse_base) ret = parse_type_base(ctx, o_s, decl);
     if (ret < 0 || ret == RET_FOUND_END) return ret;
     if (ret == RET_NOT_TYPE) {
         Token tk = next_token(o_s);
-        if (tk.type == TK_R_PARENTHESIS || tk.type == TK_SEMICOLON) {
+        if (tk.type == TK_R_PARENTHESIS
+         || tk.type == TK_SEMICOLON
+         || (decl->state == DECL_MEMBERS && tk.type == TK_R_BRACE)) {
             decl->base = NULL;
             return RET_DECL_FINISHED;
         } else {
@@ -853,20 +824,28 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     }
 
 find_end: ;
+    decl->bitfield = 0;
     bool in_expr = false;
     while (1) {
         Token tk = next_token(o_s);
+        if (decl->state == DECL_MEMBERS) {
+            maybe_expect_attribute(ctx, o_s, decl->member_index, &tk, &decl->attribute_specifiers);
+        }
         if (tk.type == TK_COMMA) {
-            if (decl->state == DECL_ARGS) {
-                decl->base = NULL;
+            if (decl->state != DECL_ARGS) {
+                decl->reuse_base = true;
             }
             return RET_DECL_CONTINUE;
         } else if (tk.type == TK_SEMICOLON) {
-            decl->base = NULL;
+            decl->reuse_base = false;
             if (decl->state == DECL_TYPEDEF) decl->state = DECL_NORMAL;
-            return RET_DECL_FINISHED;
+            return RET_DECL_CONTINUE;
         } else if (tk.type == TK_EQUAL) {
             in_expr = true;
+        } else if (tk.type == TK_COLON && decl->state == DECL_MEMBERS) {
+            intmax_t bitfield = parse_constant_expression(ctx, o_s);
+            decl->bitfield = (uint8_t)bitfield;
+            continue;
         } else {
             bool do_find_closing = false;
             bool func_body = false;
@@ -1004,7 +983,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
         int ret = parse_declaration(ctx, &s, &decl);
 
         if (ret < 0) {
-            return 1;
+            return -1;
         } else if (ret == RET_FOUND_END) {
             break;
         }

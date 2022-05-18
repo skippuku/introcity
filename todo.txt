@@ -13,24 +13,34 @@ attribute:
         select: attribute describes when a member is valid, ex. unions
         length: change to expression ex. I(length map_width * map_height)
 
+config:
+    change c type sizes for different platforms
+    add Makefile target to generate config files
+        windows batch script also?
+    static assert in .intro file if types don't match
+
 parse:
-    !! sizeof structs/enums in expressions
+    !! sizeof struct/union in expression
+        i don't like any of my options for fixing this...
     !! fix needing enum name before I(attribute)
-    add way to change c type sizes for different platforms
+        attributes should be allowed anywhere gcc accepts __attribute__
     track type declaration file location?
     functions
-    function pointers
     handle bit field accessing
     handle strings next to each other
     const flag?
     parse float expressions
     rudimentary C++ support
+        operator overloads
+        function overloads
+        member functions
+        namespaces
+        ignore templates
 
 pre:
-    !! fix highlighting of expanded macros
+    more context for errors in macros
     parse #line directives
     create #line directives?
-    better config system for system headers and defines
     internal: use context instead of globals
 
 gen:
@@ -54,6 +64,7 @@ test:
     should tests and examples be separate things?
 
 doc:
+    man page
 
 misc:
     use enum error codes instead of magic numbers

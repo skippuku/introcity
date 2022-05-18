@@ -141,16 +141,28 @@ typedef struct {
 } ParseContext;
 
 typedef struct {
+    char * location;
+    int32_t i;
+    Token tk;
+} AttributeSpecifier;
+
+typedef struct {
     IntroType * base;
     IntroType * type;
     Token base_tk;
     Token name_tk;
 
+    AttributeSpecifier * attribute_specifiers;
+
+    int32_t member_index;
+    uint8_t bitfield;
+    bool reuse_base;
     enum {
         DECL_NORMAL = 0,
         DECL_TYPEDEF,
         DECL_CAST,
         DECL_ARGS,
+        DECL_MEMBERS,
     } state;
 } DeclState;
 
