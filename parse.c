@@ -325,16 +325,20 @@ parse_enum(ParseContext * ctx, char ** o_s) {
     char * complex_type_name = NULL;
     Token tk = next_token(o_s), name_tk = {0};
     if (tk.type == TK_IDENTIFIER) {
-        name_tk = tk;
-        tk = next_token(o_s);
+        Token next = next_token(o_s);
+        if (next.type != TK_L_PARENTHESIS) {
+            name_tk = tk;
+            strputf(&complex_type_name, "enum %.*s", name_tk.length, name_tk.start);
+            strputnull(complex_type_name);
 
-        strputf(&complex_type_name, "enum %.*s", name_tk.length, name_tk.start);
-        strputnull(complex_type_name);
-
-        if (shgeti(ctx->type_map, complex_type_name) < 0) {
-            IntroType temp_type = {0};
-            temp_type.name = complex_type_name;
-            store_type(ctx, &temp_type);
+            if (shgeti(ctx->type_map, complex_type_name) < 0) {
+                IntroType temp_type = {0};
+                temp_type.name = complex_type_name;
+                store_type(ctx, &temp_type);
+            }
+            tk = next;
+        } else {
+            *o_s = next.start;
         }
     }
 

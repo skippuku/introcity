@@ -22,14 +22,11 @@ config:
 parse:
     !! sizeof struct/union in expression
         i don't like any of my options for fixing this...
-    !! fix needing enum name before I(attribute)
-        attributes should be allowed anywhere gcc accepts __attribute__
     track type declaration file location?
-    functions
     handle bit field accessing
     handle strings next to each other
     const flag?
-    parse float expressions
+    parse float expressions (for value attributes)
     rudimentary C++ support
         operator overloads
         function overloads

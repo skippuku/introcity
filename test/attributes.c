@@ -2,7 +2,7 @@
 #include <intro.h>
 #include <ext/stb_ds.h>
 
-typedef enum CustomAttributes I(attribute) {
+typedef enum I(attribute) {
     ATTR_JOINT I(member joint),
     ATTR_HANDLE I(flag handle),
 } CustomAttributes;
