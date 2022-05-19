@@ -134,10 +134,12 @@ typedef struct IntroContext {
     IntroType * types;
     const char ** notes;
     uint8_t * values;
+    IntroFunction ** functions;
 
     uint32_t count_types;
     uint32_t count_notes;
     uint32_t size_values;
+    uint32_t count_functions;
 } IntroContext;
 
 #ifndef INTRO_CTX

@@ -253,6 +253,12 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
         strputf(&s, "}};\n\n");
     }
 
+    strputf(&s, "IntroFunction * __intro_fns [%u] = {\n", info->count_functions);
+    for (int func_i=0; func_i < info->count_functions; func_i++) {
+        strputf(&s, "&__intro_fn_%04x,\n", func_i);
+    }
+    strputf(&s, "};\n\n");
+
     // type list
     strputf(&s, "IntroType __intro_types [%u] = {\n", info->count_types);
     for (int type_index = 0; type_index < info->count_types; type_index++) {
@@ -328,9 +334,11 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "%s__intro_types,\n", tab);
     strputf(&s, "%s__intro_notes,\n", tab);
     strputf(&s, "%s__intro_values,\n", tab);
+    strputf(&s, "%s__intro_fns,\n", tab);
     strputf(&s, "%s%u,\n", tab, info->count_types);
     strputf(&s, "%s%i,\n", tab, (int)arrlenu(note_set));
     strputf(&s, "%s%i,\n", tab, (int)arrlenu(info->value_buffer));
+    strputf(&s, "%s%u,\n", tab, info->count_functions);
     strputf(&s, "};\n");
 
     strputf(&s, "#endif\n");
