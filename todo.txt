@@ -8,10 +8,14 @@ attribute:
     noserialize (for pointers)
     nodisplay
     ability to apply attributes to types
-    ability to remove an attribute
+        ability to remove an attribute
     expression attribute type
         select: attribute describes when a member is valid, ex. unions
         length: change to expression ex. I(length map_width * map_height)
+
+city:
+    ability to use id instead of member name
+    stbd_ds arrays (requires stb_ds attribute)
 
 config:
     change c type sizes for different platforms
@@ -45,11 +49,8 @@ gen:
     option to create typedefs for structs and enums
     typeof with _Generic?
 
-city:
-    ability to use id instead of member name
-    stbd_ds arrays (requires stb_ds attribute)
-
 lib:
+    fix @testfail in test/simple.c
     accurate type display
     a little dubious and evil: ability to create types at runtime
     IntroVariant?
@@ -58,12 +59,12 @@ lib:
 
 test:
     test for failures that should happen
-    should tests and examples be separate things?
+    separate boring tests from cool examples
+    more rigerous tests
 
 doc:
     man page
 
 misc:
-    use enum error codes instead of magic numbers
     parse program options and pass only relevant ones to sub-processes
-    strange mixture of text parsing and token list parsing is becoming a problem
+    maybe the preprocessor should output tokens instead of text
