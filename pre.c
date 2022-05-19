@@ -7,15 +7,6 @@
 
 static char * filename_stdin = "__stdin__";
 
-typedef struct {
-    char * filename;
-    char * buffer;
-    size_t buffer_size;
-    time_t mtime;
-    bool once;
-} FileBuffer;
-static FileBuffer ** file_buffers = NULL;
-
 typedef enum {
     MACRO_NOT_SPECIAL = 0,
     MACRO_defined,
@@ -43,17 +34,10 @@ typedef struct {
 static Define * defines = NULL;
 
 typedef struct {
-    size_t offset;
-    char * filename;
-    size_t file_offset;
-    int line;
-} FileLoc;
-FileLoc * file_location_lookup = NULL;
-
-typedef struct {
     int * macro_index_stack;
     Token * list;
     char ** o_s;
+    char * last_macro_name;
 } ExpandContext;
 
 enum TargetMode {
@@ -79,6 +63,7 @@ typedef struct {
     NameSet * dependency_set;
     ExprContext * expr_ctx;
     ExpandContext expand_ctx;
+    LocationContext loc;
 
     const char * base_file;
     int counter;
@@ -92,7 +77,7 @@ typedef struct {
 
 typedef struct {
     PreContext * ctx;
-    FileBuffer * last_file;
+    FileBuffer * chunk_file;
     char * begin_chunk;
 } PasteState;
 
@@ -128,30 +113,46 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
 }
 
 static int
-get_line(char * buffer_begin, char ** o_pos, char ** o_start_of_line, char ** o_filename) {
-    FileLoc * loc = NULL;
-    for (int i = arrlen(file_location_lookup)-1; i >= 0; i--) {
+get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, char ** o_start_of_line, char ** o_filename) {
+    FileLoc pos_loc;
+    int loc_index = -1;
+    int max = (lctx->count)? lctx->count : arrlen(lctx->list);
+    for (int i=lctx->index; i < max; i++) {
+        FileLoc loc = lctx->list[i];
         ptrdiff_t offset = *o_pos - buffer_begin;
-        if (offset >= file_location_lookup[i].offset) {
-            loc = &file_location_lookup[i];
+        if (offset < loc.offset) {
+            loc_index = i-1;
+            pos_loc = lctx->list[loc_index];
             break;
+        } else {
+            switch(loc.mode) {
+            case LOC_NONE:
+                break;
+            case LOC_FILE:
+            case LOC_MACRO:
+                if (loc.file) lctx->file = loc.file;
+                arrput(lctx->stack, i);
+                break;
+            case LOC_POP:
+                assert(arrlen(lctx->stack) > 0);
+                (void)arrpop(lctx->stack);
+                int last_stack = lctx->stack[arrlen(lctx->stack) - 1];
+                lctx->file = lctx->list[last_stack].file;
+                continue;
+            }
         }
     }
-    if (loc == NULL) return -1;
-    char * file_buffer = NULL;
-    for (int i=0; i < arrlen(file_buffers); i++) {
-        if (strcmp(loc->filename, file_buffers[i]->filename) == 0) {
-            file_buffer = file_buffers[i]->buffer;
-        }
-    }
+    if (loc_index < 0) return -1;
+    char * file_buffer = lctx->file->buffer;
     if (!file_buffer) {
-        file_buffer = *o_pos;
+        fprintf(stderr, "Internal error: failed to find file for error report.");
+        exit(-1);
     }
-    *o_pos = file_buffer + (loc->file_offset + ((*o_pos - buffer_begin) - loc->offset));
+    *o_pos = file_buffer + (pos_loc.file_offset + ((*o_pos - buffer_begin) - pos_loc.offset));
     char * last_line;
     int line_num = count_newlines_in_range(file_buffer, *o_pos, &last_line);
     *o_start_of_line = last_line;
-    *o_filename = loc->filename;
+    *o_filename = lctx->file->filename;
     return line_num;
 }
 
@@ -191,13 +192,25 @@ message_internal(char * start_of_line, char * filename, int line, char * hl_star
 }
 
 void
-parse_msg_internal(char * buffer, const Token * tk, char * message, int message_type) {
+parse_msg_internal(LocationContext * lctx, char * buffer, const Token * tk, char * message, int message_type) {
     char * start_of_line = NULL;
     char * filename = "?";
     char * hl_start = tk->start;
-    int line_num = get_line(buffer, &hl_start, &start_of_line, &filename);
+    int line_num = get_line(lctx, buffer, &hl_start, &start_of_line, &filename);
+    assert(start_of_line != NULL);
     char * hl_end = hl_start + tk->length;
     message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, message_type);
+    for (int i=arrlen(lctx->stack) - 1; i >= 0; i--) {
+        FileLoc l = lctx->list[lctx->stack[i]];
+        if (l.mode == LOC_FILE) {
+            fprintf(stderr, "In file: '%s'\n", l.file->filename);
+        } else if (l.mode == LOC_MACRO) {
+            hl_start = l.file->buffer + l.file_offset;
+            hl_end = hl_start + strlen(l.macro_name);
+            line_num = count_newlines_in_range(l.file->buffer, hl_start, &start_of_line);
+            message_internal(start_of_line, filename, line_num, hl_start, hl_end, "In expansion", message_type);
+        }
+    }
 }
 
 static void
@@ -328,21 +341,24 @@ path_extension(char * dest, const char * path) {
 }
 
 static void
-ignore_section(PasteState * state, FileBuffer * file, char * begin_ignored, char * end_ignored) {
-    // save last chunk location
+ignore_section(PasteState * state, char * begin_ignored, char * end_ignored) {
+    // save chunk location
     FileLoc loc = {
         .offset      = arrlen(state->ctx->result_buffer),
-        .filename    = state->last_file->filename,
-        .file_offset = state->begin_chunk - file->buffer,
+        .file_offset = state->begin_chunk - state->chunk_file->buffer,
     };
-    arrput(file_location_lookup, loc);
-
-    // insert last chunk into buffer
+    FileLoc * plast = &arrlast(state->ctx->loc.list);
+    if ((loc.offset == plast->offset) && (plast->mode == LOC_NONE)) {
+        *plast = loc;
+    } else {
+        arrput(state->ctx->loc.list, loc);
+    }
+    // paste chunk
     int size_chunk = begin_ignored - state->begin_chunk;
     char * out = arraddnptr(state->ctx->result_buffer, size_chunk);
     memcpy(out, state->begin_chunk, size_chunk);
     state->begin_chunk = end_ignored;
-    state->last_file = file;
+    state->chunk_file = state->ctx->current_file;
 }
 
 void
@@ -727,6 +743,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     (void)arrpop(ctx->expand_ctx.macro_index_stack);
 
     ctx->expand_ctx.list[macro_tk_index].preceding_space = preceding_space;
+    ctx->expand_ctx.last_macro_name = macro->key;
 
     if (free_replace_list) arrfree(replace_list);
     return true;
@@ -878,9 +895,17 @@ preprocess_buffer(PreContext * ctx) {
 
     PasteState paste_ = {
         .ctx = ctx,
-        .last_file = ctx->current_file,
+        .chunk_file = ctx->current_file,
         .begin_chunk = s,
     }, *paste = &paste_;
+
+    FileLoc loc_push_file = {
+        .offset = arrlen(ctx->result_buffer),
+        .file_offset = 0,
+        .file = file,
+        .mode = LOC_FILE,
+    };
+    arrput(ctx->loc.list, loc_push_file);
 
     while (1) {
         char * start_of_line = s;
@@ -1054,7 +1079,7 @@ preprocess_buffer(PreContext * ctx) {
             // find next line
             while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
 
-            if (!ctx->minimal_parse) ignore_section(paste, file, start_of_line, s);
+            if (!ctx->minimal_parse) ignore_section(paste, start_of_line, s);
 
             if (inc_file.exists) {
                 STACK_TERMINATE(inc_filename, inc_file.tk.start + 1, inc_file.tk.length - 2);
@@ -1122,7 +1147,7 @@ preprocess_buffer(PreContext * ctx) {
                 if (error < 0) return -1;
             }
         } else if (tk.type == TK_END) {
-            if (!ctx->minimal_parse) ignore_section(paste, file, s, NULL);
+            if (!ctx->minimal_parse) ignore_section(paste, s, NULL);
             break;
         } else {
             if (ctx->minimal_parse) {
@@ -1130,37 +1155,54 @@ preprocess_buffer(PreContext * ctx) {
                 while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
             } else {
                 if (tk.type == TK_COMMENT) {
-                    ignore_section(paste, file, tk.start, s);
+                    ignore_section(paste, tk.start, s);
                 } else if (tk.type == TK_IDENTIFIER) {
                     ctx->expand_ctx.o_s = &s;
                     ctx->expand_ctx.list[0] = tk;
                     if (macro_scan(ctx, 0)) {
                         const Token * list = ctx->expand_ctx.list;
-                        ignore_section(paste, file, tk.start, s);
+                        ignore_section(paste, tk.start, s);
+
+                        FileLoc loc_push_macro = {
+                            .offset = arrlen(ctx->result_buffer),
+                            .file_offset = tk.start - file_buffer,
+                            .file = file,
+                            .macro_name = ctx->expand_ctx.last_macro_name,
+                            .mode = LOC_MACRO,
+                        };
+                        arrput(ctx->loc.list, loc_push_macro);
 
                         if (arrlen(list) > 0) {
                             FileBuffer * last_origin = ctx->current_file;
                             ptrdiff_t last_file_offset = -1;
                             for (int i=0; i < arrlen(list); i++) {
-                                Token tk = list[i];
-                                FileBuffer * origin = find_origin(last_origin, tk.start);
-                                ptrdiff_t file_offset = (origin)? tk.start - origin->buffer : 0;
-                                if (file_offset != last_file_offset || origin != last_origin) {
-                                    FileLoc loc = {
-                                        .offset = arrlen(ctx->result_buffer) + 1,
-                                        .filename = (origin)? origin->filename : "__GENERATED__",
-                                        .file_offset = file_offset,
-                                    };
-                                    arrput(file_location_lookup, loc);
-                                    last_origin = origin;
-                                    last_file_offset = file_offset;
+                                Token mtk = list[i];
+                                FileBuffer * origin = find_origin(last_origin, mtk.start);
+                                if (origin) {
+                                    ptrdiff_t file_offset = mtk.start - origin->buffer;
+                                    if (file_offset != last_file_offset || origin != last_origin) {
+                                        FileLoc loc = {
+                                            .offset = arrlen(ctx->result_buffer) + 1*mtk.preceding_space,
+                                            .file_offset = file_offset,
+                                        };
+                                        if (origin) loc.file = origin;
+                                        arrput(ctx->loc.list, loc);
+                                        last_origin = origin;
+                                        last_file_offset = file_offset;
+                                    }
                                 }
-                                if (tk.preceding_space) {
+                                if (mtk.preceding_space) {
                                     arrput(ctx->result_buffer, ' ');
                                 }
-                                memcpy(arraddnptr(ctx->result_buffer, tk.length), tk.start, tk.length);
+                                memcpy(arraddnptr(ctx->result_buffer, mtk.length), mtk.start, mtk.length);
                             }
                         }
+
+                        FileLoc pop_macro = {
+                            .offset = arrlen(ctx->result_buffer),
+                            .mode = LOC_POP,
+                        };
+                        arrput(ctx->loc.list, pop_macro);
 
                         arrsetlen(ctx->expand_ctx.list, 1);
                         arrsetlen(ctx->expand_ctx.macro_index_stack, 0);
@@ -1169,6 +1211,12 @@ preprocess_buffer(PreContext * ctx) {
             }
         }
     }
+
+    FileLoc pop_file = {
+        .offset = arrlen(ctx->result_buffer),
+        .mode = LOC_POP,
+    };
+    arrput(ctx->loc.list, pop_file);
 
     return 0;
 }
@@ -1223,7 +1271,7 @@ preprocess_filename(PreContext * ctx, char * filename) {
 }
 
 static char intro_defs [] =
-"#define __INTRO__ 1\n"
+"#define_forced __INTRO__ 1\n"
 
 "#define_forced __unaligned \n"
 "#if !defined __GNUC__\n"
@@ -1247,8 +1295,8 @@ static char intro_defs [] =
 "#endif\n"
 ;
 
-char *
-run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
+PreInfo
+run_preprocessor(int argc, char ** argv) {
     sh_new_arena(defines);
 
     // init pre context
@@ -1256,6 +1304,8 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
     ctx->expr_ctx = calloc(1, sizeof(*ctx->expr_ctx));
     ctx->expr_ctx->mode = MODE_PRE;
     ctx->expr_ctx->arena = new_arena();
+
+    PreInfo info = {0};
 
     static const struct{char * name; SpecialMacro value;} special_macros [] = {
         {"defined", MACRO_defined},
@@ -1275,8 +1325,6 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         special.special = special_macros[i].value;
         shputs(defines, special);
     }
-
-    *o_output_filepath = NULL;
 
     bool preprocess_only = false;
     bool no_sys = false;
@@ -1326,7 +1374,7 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
             }break;
 
             case 'o': {
-                *o_output_filepath = argv[++i];
+                info.output_filename = argv[++i];
             }break;
 
             case 0: {
@@ -1487,9 +1535,9 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         fputs("No filename given.\n", stderr);
         exit(1);
     }
-    if (*o_output_filepath == NULL) {
-        strputf(o_output_filepath, "%s.intro", filepath);
-        strputnull(*o_output_filepath);
+    if (info.output_filename == NULL) {
+        strputf(&info.output_filename, "%s.intro", filepath);
+        strputnull(info.output_filename);
     }
 
     int error = preprocess_filename(ctx, filepath);
@@ -1497,7 +1545,8 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         if (error == RET_FILE_NOT_FOUND) {
             fprintf(stderr, "File not found.\n");
         }
-        return NULL;
+        info.ret = -1;
+        return info;
     }
 
     strputnull(ctx->result_buffer);
@@ -1569,5 +1618,9 @@ run_preprocessor(int argc, char ** argv, char ** o_output_filepath) {
         exit(0);
     }
 
-    return ctx->result_buffer;
+    info.loc = ctx->loc;
+    info.loc.index = 0;
+    info.loc.count = arrlen(ctx->loc.list);
+    info.result_buffer = ctx->result_buffer;
+    return info;
 }

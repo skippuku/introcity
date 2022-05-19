@@ -32,30 +32,29 @@ int
 main(int argc, char * argv []) {
     enable_windows_console_color();
 
-    char * output_filename = NULL;
-    char * preprocessed_buffer = run_preprocessor(argc, argv, &output_filename);
-    if (!preprocessed_buffer) {
+    PreInfo pre_info = run_preprocessor(argc, argv);
+    if (!pre_info.result_buffer || pre_info.ret != 0) {
         fprintf(stderr, "preprocessor failed.\n");
-        return -1;
+        return 1;
     }
 
-    IntroInfo info = {0};
-    int error = parse_preprocessed_text(preprocessed_buffer, &info);
+    IntroInfo parse_info = {0};
+    int error = parse_preprocessed_text(&pre_info, &parse_info);
     if (error) {
         fprintf(stderr, "parse failed.\n");
-        return error;
+        return 2;
     }
 
-    char * header = generate_c_header(&info, output_filename);
+    char * header = generate_c_header(&parse_info, pre_info.output_filename);
     if (!header) {
         fprintf(stderr, "generator failed.\n");
-        return -2;
+        return 3;
     }
 
-    error = intro_dump_file(output_filename, header, strlen(header));
+    error = intro_dump_file(pre_info.output_filename, header, strlen(header));
     if (error) {
-        fprintf(stderr, "failed to write to file '%s'.\n", output_filename);
-        return error;
+        fprintf(stderr, "failed to write to file '%s'.\n", pre_info.output_filename);
+        return 4;
     }
 
     return 0;

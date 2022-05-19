@@ -38,7 +38,7 @@ parse:
         ignore templates
 
 pre:
-    more context for errors in macros
+    save location of includes and defines
     parse #line directives
     create #line directives?
     internal: use context instead of globals

@@ -20,12 +20,12 @@ static const IntroType known_types [] = {
 
 static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
-    parse_msg_internal(ctx->buffer, tk, message, 0);
+    parse_msg_internal(&ctx->loc, ctx->buffer, tk, message, 0);
 }
 
 static void UNUSED
 parse_warning(ParseContext * ctx, Token * tk, char * message) {
-    parse_msg_internal(ctx->buffer, tk, message, 1);
+    parse_msg_internal(&ctx->loc, ctx->buffer, tk, message, 1);
 }
 
 static intmax_t parse_constant_expression(ParseContext * ctx, char ** o_s);
@@ -216,7 +216,9 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     }
 
     if (tk.type != TK_L_BRACE) {
-        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return RET_NOT_DEFINITION;
+        if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) {
+            return RET_NOT_DEFINITION;
+        }
         parse_error(ctx, &tk, "Expected '{'.");
         return -1;
     }
@@ -588,7 +590,6 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 CHECK_INT((type.category & 0x0f));
                 type.category |= 0x01;
                 break_loop = true;
-                break;
             }break;
 
             case KEYW_MS_INT32:
@@ -598,14 +599,14 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                     type.category |= 0x04;
                 }
                 break_loop = true;
-                break;
             }break;
 
-            default:
+            default: {
                 if (add_to_name) *o_s = tk.start;
                 tk = ltk;
                 break_loop = true;
                 add_to_name = false;
+            }break;
             }
             if (add_to_name) strputf(&type_name, " %.*s", tk.length, tk.start);
             if (break_loop) break;
@@ -957,13 +958,14 @@ parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_dec
 }
 
 int
-parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
+parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     ParseContext * ctx = calloc(1, sizeof(ParseContext));
-    ctx->buffer = buffer;
+    ctx->buffer = pre_info->result_buffer;
     ctx->expr_ctx = calloc(1, sizeof(ExprContext));
     ctx->expr_ctx->arena = new_arena();
     ctx->expr_ctx->mode = MODE_PARSE;
     ctx->expr_ctx->ctx = ctx;
+    ctx->loc = pre_info->loc;
 
     sh_new_arena(ctx->type_map);
     sh_new_arena(ctx->name_set);
@@ -1008,7 +1010,7 @@ parse_preprocessed_text(char * buffer, IntroInfo * o_info) {
 
     DeclState decl = {.state = DECL_GLOBAL};
 
-    char * s = buffer;
+    char * s = pre_info->result_buffer;
     while (1) {
         int ret = parse_declaration(ctx, &s, &decl);
 

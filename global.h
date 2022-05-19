@@ -40,6 +40,45 @@
 #define HERE() fprintf(stderr, "here: %s:%i\n", __FILE__, __LINE__)
 
 typedef struct {
+    char * filename;
+    char * buffer;
+    size_t buffer_size;
+    time_t mtime;
+    bool once;
+} FileBuffer;
+FileBuffer ** file_buffers = NULL;
+
+typedef enum {
+    LOC_NONE = 0,
+    LOC_FILE,
+    LOC_MACRO,
+    LOC_POP,
+} LocationEnum;
+
+typedef struct {
+    size_t offset;
+    size_t file_offset;
+    FileBuffer * file;
+    char * macro_name;
+    LocationEnum mode;
+} FileLoc;
+
+typedef struct {
+    FileLoc * list;
+    int64_t count;
+    int64_t index;
+    FileBuffer * file;
+    int * stack;
+} LocationContext;
+
+typedef struct {
+    char * result_buffer;
+    char * output_filename;
+    LocationContext loc;
+    int ret;
+} PreInfo;
+
+typedef struct {
     const char * key;
 } NameSet;
 
@@ -138,6 +177,7 @@ typedef struct {
     DifferedDefault * differed_length_defaults;
 
     ExprContext * expr_ctx;
+    LocationContext loc;
 
     struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
     struct {char * key; IntroFunction * value;} * function_map;

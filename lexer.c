@@ -145,6 +145,7 @@ pre_next_token(char ** o_s) {
                 return tk;
             } else if (!is_space(*s)) {
                 tk.type = TK_BACKSLASH;
+                s = *o_s;
                 goto end;
             } else if (*s == '\0') {
                 return tk;
@@ -377,12 +378,10 @@ find_closing(char * s) {
     s++;
     Token tk;
     while ((tk = next_token(&s)).type != TK_END) {
-        if (tk.length == 1) {
-            if (*tk.start == o) {
-                depth++;
-            } else if (*tk.start == c) {
-                if (--depth == 0) return tk.start;
-            }
+        if (*tk.start == o) {
+            depth++;
+        } else if (*tk.start == c) {
+            if (--depth == 0) return tk.start;
         }
     }
     return NULL;
