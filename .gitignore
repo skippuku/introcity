@@ -10,3 +10,4 @@ test/interactive_test
 .intro_inc
 .intro_def
 test/log.txt
+test/intro.odin
