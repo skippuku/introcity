@@ -932,7 +932,7 @@ find_end: ;
 static IntroType **
 parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_decl) {
     Token open = next_token(o_s);
-    assert(open.type == TK_L_PARENTHESIS);
+    db_assert(open.type == TK_L_PARENTHESIS);
 
     // TODO: get names
     IntroType ** arg_types = NULL;
@@ -1005,9 +1005,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     };
     for (int i=0; i < LENGTH(keywords); i++) {
         shputs(ctx->keyword_set, (NameSet){keywords[i].key});
-#if DEBUG
-        assert(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
-#endif
+        db_assert(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
     }
 
     create_initial_attributes();

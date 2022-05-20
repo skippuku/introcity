@@ -343,22 +343,28 @@ path_extension(char * dest, const char * path) {
 static void
 ignore_section(PasteState * state, char * begin_ignored, char * end_ignored) {
     // save chunk location
-    FileLoc loc = {
-        .offset      = arrlen(state->ctx->result_buffer),
-        .file_offset = state->begin_chunk - state->chunk_file->buffer,
-    };
-    FileLoc * plast = &arrlast(state->ctx->loc.list);
-    if ((loc.offset == plast->offset) && (plast->mode == LOC_NONE)) {
-        *plast = loc;
-    } else {
-        arrput(state->ctx->loc.list, loc);
+    PreContext * ctx = state->ctx;
+
+    if (state->begin_chunk != NULL) {
+        ptrdiff_t signed_file_offset = state->begin_chunk - state->chunk_file->buffer;
+        db_assert(signed_file_offset >= 0);
+        FileLoc loc = {
+            .offset      = arrlen(ctx->result_buffer),
+            .file_offset = (size_t)signed_file_offset,
+        };
+        FileLoc * plast = &arrlast(ctx->loc.list);
+        if ((loc.offset == plast->offset) && (plast->mode == LOC_NONE)) {
+            *plast = loc;
+        } else {
+            arrput(ctx->loc.list, loc);
+        }
+        // paste chunk
+        int size_chunk = begin_ignored - state->begin_chunk;
+        char * out = arraddnptr(ctx->result_buffer, size_chunk);
+        memcpy(out, state->begin_chunk, size_chunk);
     }
-    // paste chunk
-    int size_chunk = begin_ignored - state->begin_chunk;
-    char * out = arraddnptr(state->ctx->result_buffer, size_chunk);
-    memcpy(out, state->begin_chunk, size_chunk);
     state->begin_chunk = end_ignored;
-    state->chunk_file = state->ctx->current_file;
+    state->chunk_file = ctx->current_file;
 }
 
 void
@@ -691,7 +697,10 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     for (int i=0; i < arrlen(replace_list); i++) {
         Token tk = replace_list[i];
         if (tk.type == TK_D_HASH) {
-            assert(i > 0 && i+1 < arrlen(replace_list));
+            if (!(i > 0 && i+1 < arrlen(replace_list))) {
+                preprocess_error(&tk, "Invalid concat operator.");
+                exit(1);
+            }
             Token result = {0};
             Token last_tk = replace_list[i-1];
             Token next_tk = replace_list[i+1];
@@ -1139,6 +1148,7 @@ preprocess_buffer(PreContext * ctx) {
 
                 ctx->is_sys_header = prev;
                 ctx->include_level--;
+                ctx->current_file = file;
 
                 if (error == RET_FILE_NOT_FOUND) {
                     preprocess_error(&inc_file.tk, "Failed to read file.");
@@ -1148,6 +1158,11 @@ preprocess_buffer(PreContext * ctx) {
             }
         } else if (tk.type == TK_END) {
             if (!ctx->minimal_parse) ignore_section(paste, s, NULL);
+            FileLoc pop_file = {
+                .offset = arrlen(ctx->result_buffer),
+                .mode = LOC_POP,
+            };
+            arrlast(ctx->loc.list) = pop_file;
             break;
         } else {
             if (ctx->minimal_parse) {
@@ -1212,12 +1227,6 @@ preprocess_buffer(PreContext * ctx) {
         }
     }
 
-    FileLoc pop_file = {
-        .offset = arrlen(ctx->result_buffer),
-        .mode = LOC_POP,
-    };
-    arrput(ctx->loc.list, pop_file);
-
     return 0;
 }
 
@@ -1259,8 +1268,8 @@ preprocess_filename(PreContext * ctx, char * filename) {
         new_buf->buffer = file_buffer;
         new_buf->buffer_size = file_size;
         new_buf->mtime = mtime;
+        ctx->current_file = new_buf;
         arrput(file_buffers, new_buf);
-        ctx->current_file = arrlast(file_buffers);
     }
 
     if (ctx->include_level == 0) {
@@ -1605,8 +1614,11 @@ run_preprocessor(int argc, char ** argv) {
             exit(0);
         }
 
-        assert(ctx->m_options.filename != NULL
-               /* I don't know how you did this, but the program can't figure out where you want the dependencies. */);
+        if (ctx->m_options.filename == NULL) {
+            fprintf(stderr, "Somehow, intro cannot figure out what to do with the dependency information.\n"
+                            "Congratulations, you confused not only the program, but also me personally. -cyman\n");
+            exit(1);
+        }
         int error = intro_dump_file(ctx->m_options.filename, rule, arrlen(rule) - 1);
         if (error < 0) {
             fprintf(stderr, "Failed to write dependencies to '%s'\n", ctx->m_options.filename);

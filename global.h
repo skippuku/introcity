@@ -1,5 +1,5 @@
-#ifndef UTIL_H
-#define UTIL_H
+#ifndef GLOBAL_H
+#define GLOBAL_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +37,21 @@
   #define UNUSED
 #endif
 
-#define HERE() fprintf(stderr, "here: %s:%i\n", __FILE__, __LINE__)
+#define db_here() fprintf(stderr, "here: %s:%i\n", __FILE__, __LINE__)
+
+#ifdef DEBUG
+  #if (defined __GNUC__ || defined __clang__) && (defined __x86_64__ || defined __i386__)
+    #define db_break() do{__asm__ __volatile__ ("int $3\n\t");}while(0)
+  #elif defined __MSVC__
+    #define db_break() __debugbreak()
+  #endif
+  #define db_assert(x) assert(x)
+#else
+  #define db_assert(x)
+#endif
+#ifndef db_break
+  #define db_break()
+#endif
 
 typedef struct {
     char * filename;
