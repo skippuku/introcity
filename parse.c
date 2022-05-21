@@ -92,7 +92,11 @@ store_type(ParseContext * ctx, const IntroType * type, char * pos) {
     if (pos) {
         IntroLocation loc = {0};
         char * start_of_line;
-        loc.line = get_line(&ctx->loc, ctx->buffer, &pos, &start_of_line, (char **)&loc.path);
+        FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
+        if (file->gen) {
+            stored->flags |= INTRO_EXPLICITLY_GENERATED;
+        }
+        loc.path = file->filename;
         loc.column = pos - start_of_line;
         db_assert(loc.line >= 0);
         db_assert(loc.column >= 0);
@@ -881,6 +885,18 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
             func = calloc(1, sizeof(*func) + count_args * sizeof(func->arg_names[0]));
             func->name = copy_and_terminate(decl->name_tk.start, decl->name_tk.length);
             func->type = decl->type;
+            {
+                IntroLocation loc = {0};
+                char * pos = decl->name_tk.start;
+                char * start_of_line;
+                FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
+                if (file->gen) {
+                    func->flags |= INTRO_EXPLICITLY_GENERATED;
+                }
+                loc.path = file->filename;
+                loc.column = pos - start_of_line;
+                func->location = loc;
+            }
             shput(ctx->function_map, func->name, func);
         }
         if (count_args > 0) {
@@ -992,6 +1008,29 @@ parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_dec
     return arg_types;
 }
 
+static void
+add_to_gen_info(ParseContext * ctx, IntroInfo * info, IntroType * type) {
+    ptrdiff_t map_index = hmgeti(info->index_by_ptr_map, type);
+    if (map_index < 0) {
+        arrput(info->types, type);
+        hmput(info->index_by_ptr_map, (void *)type, arrlen(info->types) - 1);
+
+        if (type->parent) {
+            add_to_gen_info(ctx, info, type->parent);
+        }
+        if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
+            for (int mi=0; mi < type->i_struct->count_members; mi++) {
+                const IntroMember * m = &type->i_struct->members[mi];
+                add_to_gen_info(ctx, info, m->type);
+            }
+        } else if (type->category == INTRO_FUNCTION) {
+            for (int arg_i=0; arg_i < type->args->count; arg_i++) {
+                add_to_gen_info(ctx, info, type->args->types[arg_i]);
+            }
+        }
+    }
+}
+
 int
 parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     ParseContext * ctx = calloc(1, sizeof(ParseContext));
@@ -1054,13 +1093,13 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         }
     }
 
-    IntroType ** type_list = NULL;
-    arrsetcap(type_list, hmlen(ctx->type_set));
-    IndexByPtrMap * index_by_ptr = NULL;
+    o_info->types = NULL;
+    o_info->index_by_ptr_map = NULL;
     for (int i=0; i < hmlen(ctx->type_set); i++) {
         IntroType * type_ptr = ctx->type_set[i].value;
-        arrput(type_list, type_ptr);
-        hmput(index_by_ptr, (void *)type_ptr, i);
+        if (i < LENGTH(known_types) || (type_ptr->flags & INTRO_EXPLICITLY_GENERATED)) {
+            add_to_gen_info(ctx, o_info, type_ptr);
+        }
     }
 
     uint32_t count_arg_lists = hmlen(ctx->arg_list_by_hash);
@@ -1069,20 +1108,23 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         arg_lists[i] = ctx->arg_list_by_hash[i].value;
     }
 
-    uint32_t count_functions = shlen(ctx->function_map);
-    IntroFunction ** functions = malloc(count_functions * sizeof(void *));
-    for (int i=0; i < count_functions; i++) {
-        functions[i] = ctx->function_map[i].value;
+    uint32_t count_all_functions = shlen(ctx->function_map);
+    uint32_t count_gen_functions = 0;
+    IntroFunction ** functions = malloc(count_all_functions * sizeof(void *));
+    for (int i=0; i < count_all_functions; i++) {
+        IntroFunction * func = ctx->function_map[i].value;
+        if ((func->flags & INTRO_EXPLICITLY_GENERATED)) {
+            functions[count_gen_functions++] = func;
+            add_to_gen_info(ctx, o_info, func->type);
+        }
     }
 
-    o_info->count_types = arrlen(type_list);
-    o_info->types = type_list;
-    o_info->index_by_ptr_map = index_by_ptr;
+    o_info->count_types = arrlen(o_info->types);
     o_info->nest_map = ctx->nest_map;
     o_info->value_buffer = ctx->value_buffer;
     o_info->count_arg_lists = count_arg_lists;
     o_info->arg_lists = arg_lists;
-    o_info->count_functions = count_functions;
+    o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
     return 0;
 }

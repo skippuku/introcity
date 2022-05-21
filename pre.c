@@ -112,8 +112,8 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
     return result;
 }
 
-int
-get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, char ** o_start_of_line, char ** o_filename) {
+FileInfo *
+get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_line, char ** o_start_of_line) {
     FileLoc pos_loc;
     int loc_index = -1;
     int max = (lctx->count)? lctx->count : arrlen(lctx->list);
@@ -142,7 +142,7 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, char ** o_s
             }
         }
     }
-    if (loc_index < 0) return -1;
+    if (loc_index < 0) return NULL;
     char * file_buffer = lctx->file->buffer;
     if (!file_buffer) {
         fprintf(stderr, "Internal error: failed to find file for error report.");
@@ -150,10 +150,9 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, char ** o_s
     }
     *o_pos = file_buffer + (pos_loc.file_offset + ((*o_pos - buffer_begin) - pos_loc.offset));
     char * last_line;
-    int line_num = count_newlines_in_range(file_buffer, *o_pos, &last_line);
+    *o_line = count_newlines_in_range(file_buffer, *o_pos, &last_line);
     *o_start_of_line = last_line;
-    *o_filename = lctx->file->filename;
-    return line_num;
+    return lctx->file;
 }
 
 static FileInfo *
@@ -196,7 +195,9 @@ parse_msg_internal(LocationContext * lctx, char * buffer, const Token * tk, char
     char * start_of_line = NULL;
     char * filename = "?";
     char * hl_start = tk->start;
-    int line_num = get_line(lctx, buffer, &hl_start, &start_of_line, &filename);
+    int line_num = -1;
+    FileInfo * file = get_line(lctx, buffer, &hl_start, &line_num, &start_of_line);
+    filename = file->filename;
     assert(start_of_line != NULL);
     char * hl_end = hl_start + tk->length;
     message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, message_type);

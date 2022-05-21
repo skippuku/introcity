@@ -56,6 +56,7 @@ typedef enum IntroFlags {
     INTRO_CONST = 0x01,
     INTRO_STATIC = 0x02,
     INTRO_INLINE = 0x04,
+    INTRO_EXPLICITLY_GENERATED = 0x08,
 } IntroFlags;
 
 typedef struct IntroType IntroType;
@@ -141,6 +142,8 @@ struct IntroTypePtrList {
 typedef struct IntroFunction {
     const char * name;
     IntroType * type;
+    IntroLocation location;
+    uint32_t flags;
     bool has_body;
     const char * arg_names [];
 } IntroFunction;

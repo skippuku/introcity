@@ -240,8 +240,10 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     for (int func_i=0; func_i < info->count_functions; func_i++) {
         IntroFunction * func = info->functions[func_i];
         int return_type_index = hmget(info->index_by_ptr_map, func->type);
-        strputf(&s, "IntroFunction __intro_fn_%04x = {\"%s\", &__intro_types[%i], %u, {\n",
-                 func_i, func->name, return_type_index, func->has_body);
+        strputf(&s, "IntroFunction __intro_fn_%04x = {\"%s\", &__intro_types[%i], {\"%s\", %u, %u}, %i, %u, {\n",
+                func_i, func->name, return_type_index,
+                func->location.path, func->location.line, func->location.column,
+                func->flags, func->has_body);
         for (int name_i=0; name_i < func->type->args->count; name_i++) {
             const char * name = func->arg_names[name_i];
             if (name) {
