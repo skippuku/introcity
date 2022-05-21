@@ -1,4 +1,4 @@
-IMGUI_INCLUDE = -I../modules/imgui/
+IMGUI_PATH := ../modules/imgui/
 EXE = intro
 
 GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
@@ -6,9 +6,14 @@ GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
 CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
 CFLAGS += -MMD
 
+SRC := intro.c lib/introlib.c lib/intro_imgui.cpp
+OBJ := lib/introlib.o
+
 ifeq (release,$(MAKECMDGOALS))
   CFLAGS += -O2
   LDFLAGS += -s
+else ifeq (profile,$(MAKECMDGOALS))
+  CFLAGS += -O2 -g
 else
   ifeq (sanitize,$(MAKECMDGOALS))
     SANITIZE_FLAGS := -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
@@ -17,11 +22,8 @@ else
   LDFLAGS += $(SANITIZE_FLAGS)
 endif
 
-CXXFLAGS := $(CFLAGS) -std=c++11 $(IMGUI_INCLUDE)
+CXXFLAGS := $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
 CFLAGS += -std=gnu99
-
-SRC = intro.c lib/introlib.c lib/intro_imgui.cpp
-OBJ := $(addsuffix .o,$(basename $(SRC)))
 
 .PHONY: release debug test install clean cleanall sanitize
 
@@ -29,9 +31,10 @@ all: $(EXE)
 release: $(EXE)
 debug: $(EXE)
 sanitize: $(EXE)
+profile: $(EXE)
 
-$(EXE): %: %.o lib/introlib.o
-	$(CC) $(LDFLAGS) -o $@ $^
+$(EXE): %: %.o $(OBJ)
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 PREFIX = /usr/local
 
