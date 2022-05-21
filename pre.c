@@ -290,7 +290,7 @@ path_normalize(char * dest) {
                         depth -= 1;
                     } else {
                         depth = 0;
-                        memcpy(dest, src, 3);
+                        memmove(dest, src, 3);
                         dest += 3;
                     }
                     src += 3;
@@ -360,8 +360,10 @@ ignore_section(PasteState * state, char * begin_ignored, char * end_ignored) {
         }
         // paste chunk
         int size_chunk = begin_ignored - state->begin_chunk;
-        char * out = arraddnptr(ctx->result_buffer, size_chunk);
-        memcpy(out, state->begin_chunk, size_chunk);
+        if (size_chunk > 0) {
+            char * out = arraddnptr(ctx->result_buffer, size_chunk);
+            memcpy(out, state->begin_chunk, size_chunk);
+        }
     }
     state->begin_chunk = end_ignored;
     state->chunk_file = ctx->current_file;
@@ -451,8 +453,10 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
     arrsetcap(unexpanded_list, arrlen(arg_list));
     for (int arg_i=0; arg_i < arrlen(arg_list); arg_i++) {
         Token * tks = NULL;
-        arraddnptr(tks, arrlen(arg_list[arg_i]));
-        memcpy(tks, arg_list[arg_i], arrlen(arg_list[arg_i]) * sizeof(*arg_list[arg_i]));
+        if (arrlen(arg_list[arg_i]) > 0) {
+            arraddnptr(tks, arrlen(arg_list[arg_i]));
+            memcpy(tks, arg_list[arg_i], arrlen(arg_list[arg_i]) * sizeof(*arg_list[arg_i]));
+        }
         arrput(unexpanded_list, tks);
     }
 

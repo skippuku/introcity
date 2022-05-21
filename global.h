@@ -53,6 +53,16 @@
   #define db_break()
 #endif
 
+#if defined __clang__
+  #define COMPILER_STR "clang"
+#elif defined __GNUC__
+  #define COMPILER_STR "gcc"
+#elif defined _MSC_VER
+  #define COMPILER_STR "msvc"
+#else
+  #define COMPILER_STR "compiler"
+#endif
+
 typedef struct {
     char * filename;
     char * buffer;

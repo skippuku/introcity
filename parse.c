@@ -53,7 +53,9 @@ store_arg_type_list(ParseContext * ctx, IntroType ** list) {
     if (!stored) {
         stored = malloc(sizeof(*stored) + count_list_bytes);
         stored->count = arrlen(list);
-        memcpy(stored->types, list, count_list_bytes);
+        if (count_list_bytes > 0) {
+            memcpy(stored->types, list, count_list_bytes);
+        }
         stored = hmput(ctx->arg_list_by_hash, hash, stored);
     }
 
@@ -707,7 +709,6 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
 
         arrsetlen(temp, 0);
         if (tk.type == TK_L_PARENTHESIS) {
-            *o_s = tk.start;
             IntroType ** arg_types = parse_function_arguments(ctx, o_s, decl);
             arrpush(func_args_stack, arg_types);
             arrput(temp, FUNCTION);
@@ -774,6 +775,7 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
 
 static int
 parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
+    IntroFunction * func = NULL;
     int ret = 0;
     if (!decl->reuse_base) ret = parse_type_base(ctx, o_s, decl);
     if (ret < 0 || ret == RET_FOUND_END) return ret;
@@ -825,7 +827,6 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         }
     }
 
-    IntroFunction * func = NULL;
     if (decl->type->category == INTRO_FUNCTION) {
         STACK_TERMINATE(terminated_name, decl->name_tk.start, decl->name_tk.length);
         IntroFunction * prev = shget(ctx->function_map, terminated_name);
@@ -931,9 +932,6 @@ find_end: ;
 
 static IntroType **
 parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_decl) {
-    Token open = next_token(o_s);
-    db_assert(open.type == TK_L_PARENTHESIS);
-
     // TODO: get names
     IntroType ** arg_types = NULL;
 
