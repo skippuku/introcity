@@ -45,21 +45,36 @@ typedef enum {
     INTRO_FLOATING = 0x30,
 } IntroCategoryFlags;
 
+typedef struct IntroLocation {
+    const char * path;
+    int32_t line;
+    int32_t column;
+} IntroLocation;
+
+typedef enum IntroFlags {
+    INTRO_NONE = 0,
+    INTRO_CONST = 0x01,
+    INTRO_STATIC = 0x02,
+    INTRO_INLINE = 0x04,
+} IntroFlags;
+
+typedef struct IntroType IntroType;
 typedef struct IntroStruct IntroStruct;
 typedef struct IntroEnum IntroEnum;
-typedef struct IntroType IntroType;
 typedef struct IntroTypePtrList IntroTypePtrList;
 
 struct IntroType {
     const char * name;
     IntroType * parent;
     IntroCategory category;
+    uint32_t flags; // not currently implemented
     union {
         uint32_t array_size;
         IntroStruct * i_struct;
         IntroEnum * i_enum;
         IntroTypePtrList * args;
     };
+    IntroLocation location;
 };
 
 typedef enum IntroAttribute {

@@ -275,7 +275,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
         } else {
             strputf(&s, "0, ");
         }
-        strputf(&s, "%s, ", category_str(t->category));
+        strputf(&s, "%s, %u, ", category_str(t->category), t->flags);
         if (intro_is_complex(t) || t->category == INTRO_FUNCTION) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
             if (saved_name) {
@@ -287,16 +287,21 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
                 case INTRO_FUNCTION: union_member = "args"; break;
                 default: break; // never reached
                 }
-                strputf(&s, ".%s=&__intro_%s},\n", union_member, saved_name);
+                strputf(&s, ".%s=&__intro_%s", union_member, saved_name);
             } else {
-                strputf(&s, "0},\n");
+                strputf(&s, "0");
             }
         } else {
             if (t->category == INTRO_ARRAY) {
-                strputf(&s, "%u},\n", t->array_size);
+                strputf(&s, "%u", t->array_size);
             } else {
-                strputf(&s, "0},\n");
+                strputf(&s, "0");
             }
+        }
+        if (t->location.path) {
+            strputf(&s, ", {\"%s\", %u, %u}},\n", t->location.path, t->location.line, t->location.column);
+        } else {
+            strputf(&s, "},\n");
         }
     }
     strputf(&s, "};\n\n");

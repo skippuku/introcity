@@ -26,7 +26,6 @@ config:
 parse:
     !! sizeof struct/union in expression
         i don't like any of my options for fixing this...
-    track type declaration file location?
     handle bit field accessing
     handle strings next to each other
     const flag?

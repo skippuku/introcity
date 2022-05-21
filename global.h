@@ -188,26 +188,7 @@ typedef enum {
     KEYW_COUNT
 } Keyword;
 
-typedef struct {
-    char * buffer;
-    NameSet * ignore_typedefs;
-    struct{char * key; IntroType * value;} * type_map;
-    struct{IntroType key; IntroType * value;} * type_set;
-    NameSet * keyword_set;
-    NameSet * name_set;
-    NestInfo * nest_map;
-
-    uint8_t * value_buffer;
-    PtrStore * ptr_stores;
-
-    DifferedDefault * differed_length_defaults;
-
-    ExprContext * expr_ctx;
-    LocationContext loc;
-
-    struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
-    struct {char * key; IntroFunction * value;} * function_map;
-} ParseContext;
+typedef struct ParseContext ParseContext;
 
 typedef struct {
     char * location;

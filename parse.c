@@ -18,6 +18,27 @@ static const IntroType known_types [] = {
     {"va_list",  NULL, INTRO_VA_LIST},
 };
 
+typedef struct ParseContext {
+    char * buffer;
+    NameSet * ignore_typedefs;
+    struct{char * key; IntroType * value;} * type_map;
+    struct{IntroType key; IntroType * value; FileLoc * loc;} * type_set;
+    NameSet * keyword_set;
+    NameSet * name_set;
+    NestInfo * nest_map;
+
+    uint8_t * value_buffer;
+    PtrStore * ptr_stores;
+
+    DifferedDefault * differed_length_defaults;
+
+    ExprContext * expr_ctx;
+    LocationContext loc;
+
+    struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
+    struct {char * key; IntroFunction * value;} * function_map;
+} ParseContext;
+
 static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
     parse_msg_internal(&ctx->loc, ctx->buffer, tk, message, 0);
@@ -63,10 +84,20 @@ store_arg_type_list(ParseContext * ctx, IntroType ** list) {
 }
 
 static IntroType *
-store_type(ParseContext * ctx, const IntroType * type) {
+store_type(ParseContext * ctx, const IntroType * type, char * pos) {
     IntroType * stored = malloc(sizeof(*stored));
     memcpy(stored, type, sizeof(*stored));
     IntroType * original = NULL;
+
+    if (pos) {
+        IntroLocation loc = {0};
+        char * start_of_line;
+        loc.line = get_line(&ctx->loc, ctx->buffer, &pos, &start_of_line, (char **)&loc.path);
+        loc.column = pos - start_of_line;
+        db_assert(loc.line >= 0);
+        db_assert(loc.column >= 0);
+        stored->location = loc;
+    }
     if (stored->name) {
         ptrdiff_t index = shgeti(ctx->type_map, stored->name);
         if (index >= 0) {
@@ -199,6 +230,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     } else {
         return -1;
     }
+    char * position = tk.start;
 
     char * complex_type_name = NULL;
     tk = next_token(o_s);
@@ -213,7 +245,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         if (shgeti(ctx->type_map, complex_type_name) < 0) {
             IntroType temp_type = {0};
             temp_type.name = complex_type_name;
-            store_type(ctx, &temp_type);
+            store_type(ctx, &temp_type, NULL);
         }
     }
 
@@ -290,7 +322,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
         type.i_struct = result;
         
-        IntroType * stored = store_type(ctx, &type);
+        IntroType * stored = store_type(ctx, &type, position);
         arrfree(complex_type_name);
 
         for (int i=0; i < arrlen(nests); i++) {
@@ -324,6 +356,7 @@ static int
 parse_enum(ParseContext * ctx, char ** o_s) {
     IntroEnum enum_ = {0};
 
+    char * position = *o_s;
     char * complex_type_name = NULL;
     Token tk = next_token(o_s), name_tk = {0};
     if (tk.type == TK_IDENTIFIER) {
@@ -336,7 +369,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             if (shgeti(ctx->type_map, complex_type_name) < 0) {
                 IntroType temp_type = {0};
                 temp_type.name = complex_type_name;
-                store_type(ctx, &temp_type);
+                store_type(ctx, &temp_type, NULL);
             }
             tk = next;
         } else {
@@ -454,7 +487,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         type.category = INTRO_ENUM;
         type.i_enum = result;
 
-        store_type(ctx, &type);
+        store_type(ctx, &type, position);
         arrfree(complex_type_name);
     }
 
@@ -656,7 +689,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     } else {
         if (type.category || is_typedef) {
             type.name = type_name;
-            IntroType * stored = store_type(ctx, &type);
+            IntroType * stored = store_type(ctx, &type, NULL);
             arrfree(type_name);
             decl->base = stored;
         } else {
@@ -763,7 +796,7 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
             new_type.parent = last_type;
             new_type.array_size = it;
         }
-        last_type = store_type(ctx, &new_type);
+        last_type = store_type(ctx, &new_type, NULL);
     }
     arrfree(indirection);
     arrfree(func_args_stack);
@@ -823,7 +856,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
             if (!new_type_is_indirect) {
                 new_type.parent = decl->type;
             }
-            store_type(ctx, &new_type);
+            store_type(ctx, &new_type, decl->name_tk.start);
         }
     }
 
@@ -973,7 +1006,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     sh_new_arena(ctx->name_set);
 
     for (int i=0; i < LENGTH(known_types); i++) {
-        store_type(ctx, &known_types[i]);
+        store_type(ctx, &known_types[i], NULL);
         shputs(ctx->ignore_typedefs, (NameSet){known_types[i].name});
     }
 

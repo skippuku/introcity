@@ -112,7 +112,7 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
     return result;
 }
 
-static int
+int
 get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, char ** o_start_of_line, char ** o_filename) {
     FileLoc pos_loc;
     int loc_index = -1;
@@ -1276,6 +1276,9 @@ preprocess_filename(PreContext * ctx, char * filename) {
         new_buf->buffer = file_buffer;
         new_buf->buffer_size = file_size;
         new_buf->mtime = mtime;
+        if (!ctx->is_sys_header) {
+            new_buf->gen = true;
+        }
         ctx->current_file = new_buf;
         arrput(ctx->loc.file_buffers, new_buf);
     }
