@@ -5,7 +5,7 @@
 #include "global.h"
 #include "lexer.c"
 
-static char * filename_stdin = "__stdin__";
+static const char * filename_stdin = "__stdin__";
 
 typedef enum {
     MACRO_NOT_SPECIAL = 0,
@@ -31,7 +31,6 @@ typedef struct {
     bool variadic;
     bool forced;
 } Define; // TODO: rename to Macro
-static Define * defines = NULL;
 
 typedef struct {
     int * macro_index_stack;
@@ -48,7 +47,8 @@ enum TargetMode {
 
 typedef struct {
     char * result_buffer;
-    FileBuffer * current_file;
+    FileInfo * current_file;
+    Define * defines;
     struct {
         char * custom_target;
         char * filename;
@@ -77,7 +77,7 @@ typedef struct {
 
 typedef struct {
     PreContext * ctx;
-    FileBuffer * chunk_file;
+    FileInfo * chunk_file;
     char * begin_chunk;
 } PasteState;
 
@@ -156,17 +156,17 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, char ** o_s
     return line_num;
 }
 
-static FileBuffer *
-find_origin(FileBuffer * current, char * ptr) {
-    int i = arrlen(file_buffers);
-    FileBuffer * file = (current)? current : file_buffers[--i];
+static FileInfo *
+find_origin(LocationContext * lctx, FileInfo * current, char * ptr) {
+    int i = arrlen(lctx->file_buffers);
+    FileInfo * file = (current)? current : lctx->file_buffers[--i];
     while (1) {
         if (ptr >= file->buffer && ptr < (file->buffer + file->buffer_size)) {
             return file;
         }
 
         if (--i >= 0) {
-            file = file_buffers[i];
+            file = lctx->file_buffers[i];
         } else {
             break;
         }
@@ -214,8 +214,8 @@ parse_msg_internal(LocationContext * lctx, char * buffer, const Token * tk, char
 }
 
 static void
-preprocess_message_internal(FileBuffer * file, const Token * tk, char * message, int msg_type) {
-    file = find_origin(file, tk->start);
+preprocess_message_internal(LocationContext * lctx, const Token * tk, char * message, int msg_type) {
+    FileInfo * file = find_origin(lctx, lctx->file, tk->start);
     int line_num = 0;
     char * start_of_line = tk->start;
     char * filename = "__GENERATED__";
@@ -226,8 +226,8 @@ preprocess_message_internal(FileBuffer * file, const Token * tk, char * message,
     message_internal(start_of_line, filename, line_num, tk->start, tk->start + tk->length, message, msg_type);
 }
 
-#define preprocess_error(tk, message)   preprocess_message_internal(ctx->current_file, tk, message, 0)
-#define preprocess_warning(tk, message) preprocess_message_internal(ctx->current_file, tk, message, 1)
+#define preprocess_error(tk, message)   preprocess_message_internal(&ctx->loc, tk, message, 0)
+#define preprocess_warning(tk, message) preprocess_message_internal(&ctx->loc, tk, message, 1)
 
 static Token
 create_stringized(Token * list) {
@@ -500,11 +500,11 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     Token * macro_tk = &ctx->expand_ctx.list[macro_tk_index];
     STACK_TERMINATE(terminated_tk, macro_tk->start, macro_tk->length);
 
-    ptrdiff_t macro_index = shgeti(defines, terminated_tk);
+    ptrdiff_t macro_index = shgeti(ctx->defines, terminated_tk);
     if (macro_index < 0) {
         return false;
     }
-    Define * macro = &defines[macro_index];
+    Define * macro = &ctx->defines[macro_index];
     if (macro->special != MACRO_NOT_SPECIAL) {
         char * buf = NULL; // TODO: leak
         int token_type = TK_STRING;
@@ -525,7 +525,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 exit(1);
             }
             STACK_TERMINATE(defined_iden, tk.start, tk.length);
-            char * replace = (shgeti(defines, defined_iden) >= 0)? "1" : "0";
+            char * replace = (shgeti(ctx->defines, defined_iden) >= 0)? "1" : "0";
             if (is_paren) {
                 tk = internal_macro_next_token(ctx, &index);
                 if (*tk.start != ')') {
@@ -549,7 +549,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         }break;
 
         case MACRO_LINE: {
-            const FileBuffer * current_file = find_origin(ctx->current_file, macro_tk->start); // TODO: use parent macro if there is one
+            const FileInfo * current_file = find_origin(&ctx->loc, ctx->loc.file, macro_tk->start); // TODO: use parent macro if there is one
             int line_num = 0;
             if (current_file) {
                 char * start_of_line_;
@@ -892,7 +892,7 @@ int preprocess_filename(PreContext * ctx, char * filename);
 
 int
 preprocess_buffer(PreContext * ctx) {
-    FileBuffer * file = ctx->current_file;
+    FileInfo * file = ctx->current_file;
     char * file_buffer = file->buffer;
     char * filename = file->filename;
 
@@ -1029,7 +1029,7 @@ preprocess_buffer(PreContext * ctx) {
                     def.variadic = variadic;
                 }
                 // TODO: detect redefinitions
-                Define * prevdef = shgetp_null(defines, def.key);
+                Define * prevdef = shgetp_null(ctx->defines, def.key);
                 if (prevdef) {
                     if (prevdef->forced) {
                         preprocess_warning(&macro_name, "Attempted consesquent #define of forced define.");
@@ -1040,13 +1040,13 @@ preprocess_buffer(PreContext * ctx) {
                         //       are against the C standard. So something is amok.
                     }
                 }
-                shputs(defines, def);
+                shputs(ctx->defines, def);
             } else if (tk_equal(&directive, "undef")) {
                 Token def = pre_next_token(&s);
                 STACK_TERMINATE(iden, def.start, def.length);
-                Define * macro = shgetp(defines, iden);
+                Define * macro = shgetp(ctx->defines, iden);
                 if (!macro->forced) {
-                    (void) shdel(defines, iden);
+                    (void) shdel(ctx->defines, iden);
                 } else {
                     preprocess_warning(&def, "Attempted #undef of forced define.");
                 }
@@ -1058,14 +1058,14 @@ preprocess_buffer(PreContext * ctx) {
             } else if (tk_equal(&directive, "ifdef")) {
                 tk = pre_next_token(&s);
                 STACK_TERMINATE(name, tk.start, tk.length);
-                int def_index = shgeti(defines, name);
+                int def_index = shgeti(ctx->defines, name);
                 if (def_index < 0) {
                     pre_skip(ctx, &s, true);
                 }
             } else if (tk_equal(&directive, "ifndef")) {
                 tk = pre_next_token(&s);
                 STACK_TERMINATE(name, tk.start, tk.length);
-                int def_index = shgeti(defines, name);
+                int def_index = shgeti(ctx->defines, name);
                 if (def_index >= 0) {
                     pre_skip(ctx, &s, true);
                 }
@@ -1196,11 +1196,11 @@ preprocess_buffer(PreContext * ctx) {
                         arrput(ctx->loc.list, loc_push_macro);
 
                         if (arrlen(list) > 0) {
-                            FileBuffer * last_origin = ctx->current_file;
+                            FileInfo * last_origin = ctx->current_file;
                             ptrdiff_t last_file_offset = -1;
                             for (int i=0; i < arrlen(list); i++) {
                                 Token mtk = list[i];
-                                FileBuffer * origin = find_origin(last_origin, mtk.start);
+                                FileInfo * origin = find_origin(&ctx->loc, ctx->loc.file, mtk.start);
                                 if (origin) {
                                     ptrdiff_t file_offset = mtk.start - origin->buffer;
                                     if (file_offset != last_file_offset || origin != last_origin) {
@@ -1244,8 +1244,8 @@ preprocess_filename(PreContext * ctx, char * filename) {
     size_t file_size;
 
     // search for buffer or create it if it doesn't exist
-    for (int i=0; i < arrlen(file_buffers); i++) {
-        FileBuffer * fb = file_buffers[i];
+    for (int i=0; i < arrlen(ctx->loc.file_buffers); i++) {
+        FileInfo * fb = ctx->loc.file_buffers[i];
         if (strcmp(filename, fb->filename) == 0) {
             if (fb->once) {
                 return 0;
@@ -1271,13 +1271,13 @@ preprocess_filename(PreContext * ctx, char * filename) {
         if (!file_buffer) {
             return RET_FILE_NOT_FOUND;
         }
-        FileBuffer * new_buf = calloc(1, sizeof(*new_buf));
+        FileInfo * new_buf = calloc(1, sizeof(*new_buf));
         new_buf->filename = filename;
         new_buf->buffer = file_buffer;
         new_buf->buffer_size = file_size;
         new_buf->mtime = mtime;
         ctx->current_file = new_buf;
-        arrput(file_buffers, new_buf);
+        arrput(ctx->loc.file_buffers, new_buf);
     }
 
     if (ctx->include_level == 0) {
@@ -1314,8 +1314,6 @@ static char intro_defs [] =
 
 PreInfo
 run_preprocessor(int argc, char ** argv) {
-    sh_new_arena(defines);
-
     // init pre context
     PreContext ctx_ = {0}, *ctx = &ctx_;
     ctx->expr_ctx = calloc(1, sizeof(*ctx->expr_ctx));
@@ -1323,6 +1321,8 @@ run_preprocessor(int argc, char ** argv) {
     ctx->expr_ctx->arena = new_arena();
 
     PreInfo info = {0};
+
+    sh_new_arena(ctx->defines);
 
     static const struct{char * name; SpecialMacro value;} special_macros [] = {
         {"defined", MACRO_defined},
@@ -1340,7 +1340,7 @@ run_preprocessor(int argc, char ** argv) {
         Define special = {0};
         special.key = special_macros[i].name;
         special.special = special_macros[i].value;
-        shputs(defines, special);
+        shputs(ctx->defines, special);
     }
 
     bool preprocess_only = false;
@@ -1373,12 +1373,12 @@ run_preprocessor(int argc, char ** argv) {
                 new_def.key = ADJACENT();
                 new_def.replace_list = default_replace_list;
                 // TODO: define option
-                shputs(defines, new_def);
+                shputs(ctx->defines, new_def);
             }break;
 
             case 'U': {
                 const char * iden = ADJACENT();
-                (void)shdel(defines, iden);
+                (void)shdel(ctx->defines, iden);
             }break;
 
             case 'I': {
@@ -1399,7 +1399,7 @@ run_preprocessor(int argc, char ** argv) {
                     fprintf(stderr, "Error: Cannot use terminal as file input.\n");
                     exit(1);
                 }
-                filepath = filename_stdin;
+                filepath = (char *)filename_stdin;
             }break;
 
             case 'M': {
@@ -1526,7 +1526,7 @@ run_preprocessor(int argc, char ** argv) {
         const char * sys_def_path = ".intro_def";
         path_join(path, program_dir, sys_def_path);
         char * def_buffer = intro_read_file(path, NULL);
-        FileBuffer temp_file = {0};
+        FileInfo temp_file = {0};
         if (def_buffer) {
             temp_file.buffer = def_buffer;
             temp_file.filename = path;

@@ -70,8 +70,8 @@ typedef struct {
     size_t buffer_size;
     time_t mtime;
     bool once;
-} FileBuffer;
-FileBuffer ** file_buffers = NULL;
+    bool gen; // whether type info should be generated for types declared in this file
+} FileInfo;
 
 typedef enum {
     LOC_NONE = 0,
@@ -83,16 +83,17 @@ typedef enum {
 typedef struct {
     size_t offset;
     size_t file_offset;
-    FileBuffer * file;
+    FileInfo * file;
     char * macro_name;
     LocationEnum mode;
 } FileLoc;
 
 typedef struct {
+    FileInfo ** file_buffers;
     FileLoc * list;
     int64_t count;
     int64_t index;
-    FileBuffer * file;
+    FileInfo * file;
     int * stack;
 } LocationContext;
 
