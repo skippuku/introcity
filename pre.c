@@ -1166,7 +1166,11 @@ preprocess_buffer(PreContext * ctx) {
                 .offset = arrlen(ctx->result_buffer),
                 .mode = LOC_POP,
             };
-            arrlast(ctx->loc.list) = pop_file;
+            if (arrlast(ctx->loc.list).mode == LOC_FILE) {
+                (void)arrpop(ctx->loc.list);
+            } else {
+                arrlast(ctx->loc.list) = pop_file;
+            }
             break;
         } else {
             if (ctx->minimal_parse) {

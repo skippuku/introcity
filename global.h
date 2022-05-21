@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 
 #include "lib/intro.h"
 #include "lib/ext/stb_ds.h"

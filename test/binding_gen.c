@@ -11,7 +11,7 @@ static const char * tab = "  ";
 
 void
 do_indent(FILE * out, int count) {
-    for (int i=0; i < count; i++) fprintf(out, tab);
+    for (int i=0; i < count; i++) fputs(tab, out);
 }
 
 void
@@ -94,7 +94,7 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth) {
                             len_prefix += 1;
                         }
                     }
-                    fprintf(out, "enum {\n", type->name);
+                    fprintf(out, "enum {\n");
                     for (int i=0; i < type->i_enum->count_members; i++) {
                         IntroEnumValue v = type->i_enum->members[i];
                         do_indent(out, depth + 1);
