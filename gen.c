@@ -122,7 +122,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
             arrput(header_def, '_');
         }
     }
-    strputnull(header_def);
+    arrput(header_def, 0);
 
     strputf(&s, "/* Generated with intro %s */\n\n", VERSION);
     strputf(&s, "#ifndef %s\n"
@@ -349,7 +349,6 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "};\n");
 
     strputf(&s, "#endif\n");
-    strputnull(s);
 
     hmfree(complex_type_map);
 

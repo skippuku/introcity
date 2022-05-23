@@ -95,8 +95,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
     strputf(p_s, "%.*s\n", (int)(segment_end - highlight_end), highlight_end);
     for (int i=0; i < highlight_start - segment_start; i++) arrput(*p_s, ' ');
     for (int i=0; i < highlight_end - highlight_start; i++) arrput(*p_s, '~');
-    arrput(*p_s, '\n');
-    strputnull(*p_s);
+    strputf(p_s, "\n");
 }
 
 static int
@@ -121,6 +120,7 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
         FileLoc loc = lctx->list[i];
         ptrdiff_t offset = *o_pos - buffer_begin;
         if (offset < loc.offset) {
+            lctx->index = i;
             loc_index = i-1;
             pos_loc = lctx->list[loc_index];
             break;
@@ -185,7 +185,6 @@ message_internal(char * start_of_line, char * filename, int line, char * hl_star
     const char * color = (message_type == 1)? BOLD_YELLOW : BOLD_RED;
     strputf(&s, "%s%s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n\n", color, message_type_string, filename, line, message);
     strput_code_segment(&s, start_of_line, end_of_line, hl_start, hl_end, color);
-    strputnull(s);
     fputs(s, stderr);
     arrfree(s);
 }
@@ -250,12 +249,11 @@ create_stringized(Token * list) {
         }
         strputf(&buf, "%.*s", tk.length, tk.start);
     }
-    arrput(buf, '"');
-    strputnull(buf);
+    strputf(&buf, "\"");
 
     Token result = {
         .start = buf, // TODO: leak
-        .length = arrlen(buf) - 1,
+        .length = arrlen(buf),
         .type = TK_STRING,
     };
     return result;
@@ -616,10 +614,9 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         }break;
         }
 
-        strputnull(buf);
         Token replace_tk = {
             .start = buf,
-            .length = arrlen(buf) - 1,
+            .length = arrlen(buf),
             .type = token_type,
             .preceding_space = macro_tk->preceding_space,
         };
@@ -719,9 +716,8 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 if (next_tk.type != TK_PLACEHOLDER) {
                     strputf(&buf, "%.*s", next_tk.length, next_tk.start);
                 }
-                strputnull(buf);
                 result.start = buf;
-                result.length = arrlen(buf) - 1;
+                result.length = arrlen(buf);
                 result.preceding_space = last_tk.preceding_space;
                 if (is_iden(result.start[0])) { // TODO: handle this more gracefully
                     result.type = TK_IDENTIFIER;
@@ -1558,7 +1554,6 @@ run_preprocessor(int argc, char ** argv) {
     }
     if (info.output_filename == NULL) {
         strputf(&info.output_filename, "%s.intro", filepath);
-        strputnull(info.output_filename);
     }
 
     int error = preprocess_filename(ctx, filepath);
@@ -1569,8 +1564,7 @@ run_preprocessor(int argc, char ** argv) {
         info.ret = -1;
         return info;
     }
-
-    strputnull(ctx->result_buffer);
+    arrput(ctx->result_buffer, 0);
 
     if (ctx->m_options.enabled) {
         char * ext = strrchr(filepath, '.');
@@ -1619,7 +1613,6 @@ run_preprocessor(int argc, char ** argv) {
         if (dummy_rules != NULL) {
             strputf(&rule, "%.*s", (int)arrlen(dummy_rules), dummy_rules);
         }
-        strputnull(rule);
 
         if (preprocess_only && !ctx->m_options.filename) {
             fputs(rule, stdout);
@@ -1631,7 +1624,7 @@ run_preprocessor(int argc, char ** argv) {
                             "Congratulations, you confused not only the program, but also me personally. -cyman\n");
             exit(1);
         }
-        int error = intro_dump_file(ctx->m_options.filename, rule, arrlen(rule) - 1);
+        int error = intro_dump_file(ctx->m_options.filename, rule, arrlen(rule));
         if (error < 0) {
             fprintf(stderr, "Failed to write dependencies to '%s'\n", ctx->m_options.filename);
             exit(1);

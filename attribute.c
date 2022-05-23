@@ -85,7 +85,6 @@ parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk
         if (attribute_map[i].type == type) {
             char * msg = NULL;
             strputf(&msg, "Attribute type (%i) is reserved by attribute '%s'.", type, attribute_map[i].key);
-            strputnull(msg);
             parse_error(ctx, type_tk, msg);
             arrfree(msg);
             return 2;
@@ -160,7 +159,7 @@ parse_escaped_string(Token * str_tk, size_t * o_length) {
         }
         src++;
     }
-    strputnull(result);
+    arrput(result, 0);
 
     char * ret = malloc(arrlen(result));
     memcpy(ret, result, arrlen(result));

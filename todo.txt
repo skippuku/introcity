@@ -63,5 +63,6 @@ doc:
     man page
 
 misc:
+    use custum allocators more + cleanup
     parse program options and pass only relevant ones to sub-processes
     maybe the preprocessor should output tokens instead of text

@@ -19,7 +19,6 @@
 #define MIN(a,b) (((a)<(b))? (a) : (b))
 #endif
 
-#define strputnull(a) arrput(a,0)
 // index of last put or get
 #define shtemp(t) stbds_temp((t)-1)
 #define hmtemp(t) stbds_temp((t)-1)
@@ -220,6 +219,22 @@ typedef struct {
 
 static int parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl);
 
+static char *
+strput_callback(const char * buf, void * user, int len) {
+    char ** pstr = (char **)user;
+
+    int str_len = arrlen(*pstr) + len;
+    arrsetlen(*pstr, str_len);
+    int prev_cap = arrcap(*pstr);
+
+    if (prev_cap - str_len < STB_SPRINTF_MIN + 1) {
+        arrsetcap(*pstr, str_len + STB_SPRINTF_MIN + 1);
+    }
+    char * out = *pstr + str_len;
+
+    return out;
+}
+
 #if defined(__has_attribute)
   #if defined(__MINGW32__)
     #define STRPUTF_FORMAT __MINGW_PRINTF_FORMAT
@@ -229,38 +244,14 @@ static int parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl);
 __attribute__ ((format (STRPUTF_FORMAT, 2, 3)))
 #endif
 static void
-strputf(char ** p_str, const char * format, ...) {
-    va_list args_original;
-    va_start(args_original, format);
+strputf(char ** pstr, const char * format, ...) {
+    va_list args;
+    va_start(args, format);
 
-    while (1) {
-        va_list args;
-        va_copy(args, args_original);
+    stbsp_vsprintfcb(strput_callback, pstr, strput_callback(NULL, pstr, 0), format, args);
+    (*pstr)[arrlen(*pstr)] = '\0'; // terminator does not add to length, so it is overwritten by subsequent calls
 
-        if (*p_str == NULL) arrsetcap(*p_str, 128);
-
-        char * loc = *p_str + arrlen(*p_str);
-        size_t n = arrcap(*p_str) - arrlen(*p_str);
-        size_t pn;
-        if (n > 0) {
-            pn = stbsp_vsnprintf(loc, n, format, args);
-        } else {
-            // NOTE: this is here due to strange behavior of stbsp when n == 0 (the byte before loc is set to 0)
-            // this might be a bug with stbsp
-            pn = 1;
-        }
-        if (pn < n) {
-            arrsetlen(*p_str, arrlen(*p_str) + pn);
-            break;
-        } else {
-            size_t prev_cap = arrcap(*p_str);
-            arrsetcap(*p_str, prev_cap << 1);
-        }
-
-        va_end(args);
-    }
-
-    va_end(args_original);
+    va_end(args);
 }
 
 #ifdef DEBUG

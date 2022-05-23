@@ -18,7 +18,7 @@ static const IntroType known_types [] = {
     {"va_list",  NULL, INTRO_VA_LIST},
 };
 
-typedef struct ParseContext {
+struct ParseContext {
     char * buffer;
     NameSet * ignore_typedefs;
     struct{char * key; IntroType * value;} * type_map;
@@ -37,7 +37,7 @@ typedef struct ParseContext {
 
     struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
     struct {char * key; IntroFunction * value;} * function_map;
-} ParseContext;
+};
 
 static void
 parse_error(ParseContext * ctx, Token * tk, char * message) {
@@ -246,7 +246,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         strputf(&complex_type_name, "%s %.*s",
                 (is_union)? "union" : "struct", name_tk.length, name_tk.start);
-        strputnull(complex_type_name);
 
         if (shgeti(ctx->type_map, complex_type_name) < 0) {
             IntroType temp_type = {0};
@@ -370,7 +369,6 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         if (next.type != TK_L_PARENTHESIS) {
             name_tk = tk;
             strputf(&complex_type_name, "enum %.*s", name_tk.length, name_tk.start);
-            strputnull(complex_type_name);
 
             if (shgeti(ctx->type_map, complex_type_name) < 0) {
                 IntroType temp_type = {0};
@@ -687,7 +685,6 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
 
     if (is_typedef) decl->state = DECL_TYPEDEF;
 
-    strputnull(type_name);
     IntroType * t = shget(ctx->type_map, type_name);
     if (t) {
         arrfree(type_name);
