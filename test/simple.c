@@ -69,9 +69,15 @@ main(int argc, char ** argv) {
 
     /*====================*/
 
+#define ABS(x) (((x) < 0)? -1 * (x) : (x))
+#define EPSILON 0.0001
+#define CLOSE_ENOUGH(a,b) (ABS((a) - (b)) < EPSILON)
+
     Dumb dumb;
-    printf("dumb = ");
+    memset(&dumb, 0xff, sizeof(dumb));
+
     intro_set_defaults(&dumb, ITYPE(Dumb));
+    printf("dumb = ");
     intro_print(&dumb, ITYPE(Dumb), NULL);
     printf("\n\n");
 
@@ -82,13 +88,12 @@ main(int argc, char ** argv) {
     for (int i=0; i < LENGTH(dumb.strange_array); i++) {
         assert(dumb.strange_array[i] == 0);
     }
-#if 0 // @testfail anon_struct_array initialization
+
     for (int i=0; i < 4; i++) {
         assert(dumb.anon_struct_array[i].a == 3);
         assert(dumb.anon_struct_array[i].b == 4);
-        assert(dumb.anon_struct_array[i].b == 5);
+        assert(dumb.anon_struct_array[i].u == 5);
     }
-#endif
 
     return 0;
 }

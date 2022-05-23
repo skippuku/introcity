@@ -181,6 +181,13 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
             memcpy(dest + m->offset, value_ptr, size);
             intro_offset_pointers(dest + m->offset, m->type, ctx->values);
         }
+    // TODO: this seems inelegant
+    } else if (m->type->category == INTRO_ARRAY && m->type->parent->category == INTRO_STRUCT) {
+        int elem_size = intro_size(m->type->parent);
+        for (int i=0; i < m->type->array_size; i++) {
+            void * elem_address = dest + m->offset + i * elem_size;
+            intro_set_values_ctx(ctx, elem_address, m->type->parent, value_attribute);
+        }
     } else {
         memset(dest + m->offset, 0, size);
     }

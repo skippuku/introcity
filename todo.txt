@@ -14,8 +14,8 @@ attribute:
         length: change to expression ex. I(length map_width * map_height)
 
 city:
-    ability to use id instead of member name
-    stbd_ds arrays (requires stb_ds attribute)
+    !! ability to use id instead of member name
+    stb_ds arrays (requires stb_ds attribute)
 
 config:
     change c type sizes for different platforms
@@ -41,7 +41,6 @@ pre:
     save location of includes and defines
     parse #line directives
     create #line directives?
-    internal: use context instead of globals
 
 gen:
     option to flag types you care about and only output information nescessary for those types
@@ -49,7 +48,6 @@ gen:
     typeof with _Generic?
 
 lib:
-    fix @testfail in test/simple.c
     accurate type display
     a little dubious and evil: ability to create types at runtime
     IntroVariant?
