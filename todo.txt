@@ -24,7 +24,7 @@ config:
     static assert in .intro file if types don't match
 
 parse:
-    !! sizeof struct/union in expression
+    !! handle sizeof struct/union in expression
         i don't like any of my options for fixing this...
     handle bit field accessing
     handle strings next to each other

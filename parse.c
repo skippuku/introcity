@@ -63,7 +63,6 @@ cache_name(ParseContext * ctx, char * name) {
     return ctx->name_set[index].key;
 }
 
-// NOTE: technically possible for a collision to happen, this should be changed
 static IntroTypePtrList *
 store_arg_type_list(ParseContext * ctx, IntroType ** list) {
     static const size_t hash_seed = 0xF58D6349C6431963; // this is just some random number
@@ -71,7 +70,10 @@ store_arg_type_list(ParseContext * ctx, IntroType ** list) {
     size_t count_list_bytes = arrlen(list) * sizeof(list[0]);
     size_t hash = (list)? stbds_hash_bytes(list, count_list_bytes, hash_seed) : 0;
     IntroTypePtrList * stored = hmget(ctx->arg_list_by_hash, hash);
-    if (!stored) {
+    if (stored) {
+        // TODO: actually handle this somehow instead of aborting
+        assert(0 == memcmp(stored->types, list, count_list_bytes));
+    } else {
         stored = malloc(sizeof(*stored) + count_list_bytes);
         stored->count = arrlen(list);
         if (count_list_bytes > 0) {
@@ -1026,6 +1028,7 @@ add_to_gen_info(ParseContext * ctx, IntroInfo * info, IntroType * type) {
         } else if (type->category == INTRO_FUNCTION) {
             for (int arg_i=0; arg_i < type->args->count; arg_i++) {
                 add_to_gen_info(ctx, info, type->args->types[arg_i]);
+                arrput(info->arg_lists, type->args);
             }
         }
     }
@@ -1102,12 +1105,6 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         }
     }
 
-    uint32_t count_arg_lists = hmlen(ctx->arg_list_by_hash);
-    IntroTypePtrList ** arg_lists = malloc(count_arg_lists * sizeof(void *));
-    for (int i=0; i < count_arg_lists; i++) {
-        arg_lists[i] = ctx->arg_list_by_hash[i].value;
-    }
-
     uint32_t count_all_functions = shlen(ctx->function_map);
     uint32_t count_gen_functions = 0;
     IntroFunction ** functions = malloc(count_all_functions * sizeof(void *));
@@ -1122,8 +1119,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     o_info->count_types = arrlen(o_info->types);
     o_info->nest_map = ctx->nest_map;
     o_info->value_buffer = ctx->value_buffer;
-    o_info->count_arg_lists = count_arg_lists;
-    o_info->arg_lists = arg_lists;
+    o_info->count_arg_lists = arrlen(o_info->arg_lists);
     o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
     return 0;
