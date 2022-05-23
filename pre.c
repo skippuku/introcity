@@ -1347,8 +1347,10 @@ run_preprocessor(int argc, char ** argv) {
     bool no_sys = false;
     char * filepath = NULL;
 
+    Token *const undef_replace_list = NULL; // reserve an address. remains unused
     Token * default_replace_list = NULL;
     arrput(default_replace_list, ((Token){.start = "1", .length = 1}));
+    Define * deferred_defines = NULL;
 
     for (int i=1; i < argc; i++) {
         #define ADJACENT() ((strlen(arg) == 2)? argv[++i] : arg+2)
@@ -1373,12 +1375,14 @@ run_preprocessor(int argc, char ** argv) {
                 new_def.key = ADJACENT();
                 new_def.replace_list = default_replace_list;
                 // TODO: define option
-                shputs(ctx->defines, new_def);
+                arrput(deferred_defines, new_def);
             }break;
 
             case 'U': {
-                const char * iden = ADJACENT();
-                (void)shdel(ctx->defines, iden);
+                Define undef;
+                undef.key = ADJACENT();
+                undef.replace_list = undef_replace_list;
+                arrput(deferred_defines, undef);
             }break;
 
             case 'I': {
@@ -1547,6 +1551,16 @@ run_preprocessor(int argc, char ** argv) {
         }
         ctx->minimal_parse = false;
     }
+
+    for (int i=0; i < arrlen(deferred_defines); i++) {
+        Define def = deferred_defines[i];
+        if (def.replace_list == undef_replace_list) {
+            (void)shdel(ctx->defines, def.key);
+        } else {
+            shputs(ctx->defines, def);
+        }
+    }
+    arrfree(deferred_defines);
 
     if (!filepath) {
         fputs("No filename given.\n", stderr);
