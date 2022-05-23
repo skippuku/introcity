@@ -254,6 +254,62 @@ strputf(char ** pstr, const char * format, ...) {
     va_end(args);
 }
 
+typedef struct {
+    int current;
+    int current_used;
+    int capacity;
+    struct {
+        void * data;
+    } buckets [256]; // should be enough for anyone
+} MemArena;
+
+static void *
+arena_alloc(MemArena * arena, size_t amount) {
+    if (arena->current_used + amount > arena->capacity) {
+        if (arena->buckets[++arena->current].data == NULL) {
+            arena->buckets[arena->current].data = calloc(1, arena->capacity);
+        }
+        arena->current_used = 0;
+    }
+    void * result = arena->buckets[arena->current].data + arena->current_used;
+    arena->current_used += amount;
+    arena->current_used += 16 - (arena->current_used & 15);
+    return result;
+}
+
+static MemArena *
+new_arena(int capacity) {
+    MemArena * arena = calloc(1, sizeof(MemArena));
+    arena->capacity = capacity;
+    arena->buckets[0].data = calloc(1, arena->capacity);
+    return arena;
+}
+
+static void
+reset_arena(MemArena * arena) {
+    for (int i=0; i <= arena->current; i++) {
+        memset(arena->buckets[i].data, 0, arena->capacity);
+    }
+    arena->current = 0;
+    arena->current_used = 0;
+}
+
+static void
+free_arena(MemArena * arena) {
+    for (int i=0; i < LENGTH(arena->buckets); i++) {
+        if (arena->buckets[i].data) free(arena->buckets[i].data);
+    }
+    free(arena);
+}
+
+static char *
+copy_and_terminate(MemArena * arena, char * str, int length) {
+    char * result = arena_alloc(arena, length + 1);
+    memcpy(result, str, length);
+    result[length] = '\0';
+    return result;
+}
+
 #ifdef DEBUG
 // this is so i can get array and map length in gdb
 int

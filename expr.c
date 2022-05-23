@@ -1,14 +1,7 @@
 #include "lexer.c"
 #include "global.h"
 
-#define BUCKET_CAP (1<<12)
-typedef struct {
-    int current;
-    int current_used;
-    struct {
-        void * data;
-    } buckets [64];
-} MemArena;
+#define EXPR_BUCKET_CAP (1<<12)
 
 typedef enum {
     OP_INT = 0x00,
@@ -93,42 +86,6 @@ typedef struct {
     int count_instructions;
     ExprInstruction instructions [];
 } ExprProcedure;
-
-static void *
-arena_alloc(MemArena * arena, size_t amount) {
-    if (arena->current_used + amount > BUCKET_CAP) {
-        if (arena->buckets[++arena->current].data == NULL) {
-            arena->buckets[arena->current].data = calloc(1, BUCKET_CAP);
-        }
-    }
-    void * result = arena->buckets[arena->current].data + arena->current_used;
-    arena->current_used += amount;
-    return result;
-}
-
-static MemArena *
-new_arena() {
-    MemArena * arena = calloc(1, sizeof(MemArena));
-    arena->buckets[0].data = calloc(1, BUCKET_CAP);
-    return arena;
-}
-
-static void
-reset_arena(MemArena * arena) {
-    for (int i=0; i <= arena->current; i++) {
-        memset(arena->buckets[i].data, 0, BUCKET_CAP);
-    }
-    arena->current = 0;
-    arena->current_used = 0;
-}
-
-static void
-free_arena(MemArena * arena) {
-    for (int i=0; i < LENGTH(arena->buckets); i++) {
-        if (arena->buckets[i].data) free(arena->buckets[i].data);
-    }
-    free(arena);
-}
 
 static void
 free_expr_context(ExprContext * ectx) {
@@ -386,7 +343,9 @@ post_reverse: ;
 }
 
 #pragma GCC diagnostic push
+#ifndef __clang__
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 intmax_t
 run_expression(ExprProcedure * proc) {
     intmax_t stack [proc->stack_size + 1]; // +1: no undefined behavior
@@ -474,7 +433,7 @@ expr_test() {
 
     ExprContext ectx = {
         .mode = MODE_PRE,
-        .arena = new_arena(),
+        .arena = new_arena(EXPR_BUCKET_CAP),
     };
     ExprNode * tree = build_expression_tree(&ectx, tks, arrlen(tks), NULL);
     ExprProcedure * expr = build_expression_procedure(tree);

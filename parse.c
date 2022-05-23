@@ -20,11 +20,12 @@ static const IntroType known_types [] = {
 
 struct ParseContext {
     char * buffer;
+    MemArena * arena;
     NameSet * ignore_typedefs;
     struct{char * key; IntroType * value;} * type_map;
     struct{IntroType key; IntroType * value; FileLoc * loc;} * type_set;
     NameSet * keyword_set;
-    NameSet * name_set;
+    NameSet * enum_name_set;
     NestInfo * nest_map;
 
     uint8_t * value_buffer;
@@ -37,6 +38,7 @@ struct ParseContext {
 
     struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
     struct {char * key; IntroFunction * value;} * function_map;
+    struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
 };
 
 static void
@@ -54,13 +56,17 @@ static intmax_t parse_constant_expression(ParseContext * ctx, char ** o_s);
 #include "attribute.c"
 
 static const char *
-cache_name(ParseContext * ctx, char * name) {
-    ptrdiff_t index = shgeti(ctx->name_set, name);
+register_enum_name(ParseContext * ctx, Token tk) {
+    STACK_TERMINATE(name, tk.start, tk.length);
+    ptrdiff_t index = shgeti(ctx->enum_name_set, name);
     if (index < 0) {
-        shputs(ctx->name_set, (NameSet){name});
-        index = shtemp(ctx->name_set);
+        shputs(ctx->enum_name_set, (NameSet){name});
+        index = shtemp(ctx->enum_name_set);
+        return ctx->enum_name_set[index].key;
+    } else {
+        parse_error(ctx, &tk, "Enum name is reserved.");
+        exit(1);
     }
-    return ctx->name_set[index].key;
 }
 
 static IntroTypePtrList *
@@ -74,7 +80,7 @@ store_arg_type_list(ParseContext * ctx, IntroType ** list) {
         // TODO: actually handle this somehow instead of aborting
         assert(0 == memcmp(stored->types, list, count_list_bytes));
     } else {
-        stored = malloc(sizeof(*stored) + count_list_bytes);
+        stored = arena_alloc(ctx->arena, sizeof(*stored) + count_list_bytes);
         stored->count = arrlen(list);
         if (count_list_bytes > 0) {
             memcpy(stored->types, list, count_list_bytes);
@@ -86,57 +92,64 @@ store_arg_type_list(ParseContext * ctx, IntroType ** list) {
 }
 
 static IntroType *
-store_type(ParseContext * ctx, const IntroType * type, char * pos) {
-    IntroType * stored = malloc(sizeof(*stored));
-    memcpy(stored, type, sizeof(*stored));
-    IntroType * original = NULL;
+store_type(ParseContext * ctx, IntroType type, char * pos) {
+    IntroType * stored = NULL;
+    bool replaced = false;
 
     if (pos) {
         IntroLocation loc = {0};
         char * start_of_line;
         FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
         if (file->gen) {
-            stored->flags |= INTRO_EXPLICITLY_GENERATED;
+            type.flags |= INTRO_EXPLICITLY_GENERATED;
         }
         loc.path = file->filename;
         loc.column = pos - start_of_line;
         db_assert(loc.line >= 0);
         db_assert(loc.column >= 0);
-        stored->location = loc;
+        type.location = loc;
     }
-    if (stored->name) {
-        ptrdiff_t index = shgeti(ctx->type_map, stored->name);
+
+    if (type.name) {
+        ptrdiff_t index = shgeti(ctx->type_map, type.name);
         if (index >= 0) {
-            original = ctx->type_map[index].value;
+            stored = ctx->type_map[index].value;
+
+            (void) hmdel(ctx->type_set, *stored);
+
+            type.name = stored->name; // retain allocated key string
+            replaced = true;
         }
-        shput(ctx->type_map, stored->name, stored);
-        index = shtemp(ctx->type_map);
-        stored->name = ctx->type_map[index].key;
     }
-    if (original) {
-        (void) hmdel(ctx->type_set, *original);
-        free(original);
-    }
-    ptrdiff_t set_index = hmgeti(ctx->type_set, *stored);
+
+    ptrdiff_t set_index = hmgeti(ctx->type_set, type);
     if (set_index < 0) {
-        hmput(ctx->type_set, *stored, stored);
-    } else {
-        free(stored);
-        stored = ctx->type_set[set_index].value;
-    }
-    // TODO: i am not a fan of this
-    if (original && intro_is_complex(type)) {
-        for (int i=LENGTH(known_types); i < hmlen(ctx->type_set); i++) {
-            IntroType * t = ctx->type_set[i].value;
-            if (t->parent == original) {
-                if (t->category == INTRO_UNKNOWN) {
-                    t->i_struct = stored->i_struct; // covers i_enum
-                    t->category = stored->category;
-                }
-                t->parent = stored;
+        if (!stored) {
+            stored = arena_alloc(ctx->arena, sizeof(*stored));
+            if (type.name) {
+                shput(ctx->type_map, type.name, stored);
+                type.name = ctx->type_map[shtemp(ctx->type_map)].key;
             }
         }
+        hmput(ctx->type_set, type, stored);
+        *stored = type;
+    } else {
+        stored = ctx->type_set[set_index].value;
     }
+
+    if (replaced) {
+        IntroType ** typedef_deps = hmget(ctx->incomplete_typedefs, stored);
+        if (typedef_deps) {
+            for (int i=0; i < stbds_header(typedef_deps)->length; i++) {
+                IntroType * t = typedef_deps[i];
+                t->category = type.category;
+                t->i_struct = type.i_struct; // covers i_enum
+            }
+            arrfree(typedef_deps);
+            (void) hmdel(ctx->incomplete_typedefs, stored);
+        }
+    }
+
     return stored;
 }
 
@@ -250,7 +263,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         if (shgeti(ctx->type_map, complex_type_name) < 0) {
             IntroType temp_type = {0};
             temp_type.name = complex_type_name;
-            store_type(ctx, &temp_type, NULL);
+            store_type(ctx, temp_type, NULL);
         }
     }
 
@@ -296,7 +309,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             }
         }
 
-        member.name = copy_and_terminate(decl.name_tk.start, decl.name_tk.length);
+        member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
         member.type = decl.type;
         member.bitfield = decl.bitfield;
 
@@ -315,7 +328,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrput(members, member);
     }
 
-    IntroStruct * result = calloc(1, sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
+    IntroStruct * result = arena_alloc(ctx->arena, sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
     result->count_members = arrlen(members);
     result->is_union = is_union;
     memcpy(result->members, members, sizeof(IntroMember) * arrlen(members));
@@ -327,7 +340,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
         type.i_struct = result;
         
-        IntroType * stored = store_type(ctx, &type, position);
+        IntroType * stored = store_type(ctx, type, position);
         arrfree(complex_type_name);
 
         for (int i=0; i < arrlen(nests); i++) {
@@ -373,7 +386,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             if (shgeti(ctx->type_map, complex_type_name) < 0) {
                 IntroType temp_type = {0};
                 temp_type.name = complex_type_name;
-                store_type(ctx, &temp_type, NULL);
+                store_type(ctx, temp_type, NULL);
             }
             tk = next;
         } else {
@@ -425,12 +438,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             return -1;
         }
 
-        STACK_TERMINATE(new_name, name.start, name.length);
-        if (shgeti(ctx->name_set, new_name) >= 0) {
-            parse_error(ctx, &name, "Cannot define enumeration with reserved name.");
-            return -1;
-        }
-        v.name = cache_name(ctx, new_name);
+        v.name = register_enum_name(ctx, name);
 
         tk = next_token(o_s);
         if (is_attribute) {
@@ -449,7 +457,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             if (v.value != next_int) {
                 enum_.is_sequential = false;
             }
-            next_int = v.value + 1;
+            next_int = (v.value < INT32_MAX)? v.value + 1 : 0;
             set = true;
         } else if (tk.type == TK_R_BRACE) {
             v.value = next_int;
@@ -480,7 +488,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
     }
     enum_.count_members = arrlen(members);
 
-    IntroEnum * result = malloc(sizeof(IntroEnum) + sizeof(*members) * arrlen(members));
+    IntroEnum * result = arena_alloc(ctx->arena, sizeof(IntroEnum) + sizeof(*members) * arrlen(members));
     memcpy(result, &enum_, sizeof(IntroEnum));
     memcpy(result->members, members, sizeof(*members) * arrlen(members));
     arrfree(members);
@@ -491,7 +499,7 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         type.category = INTRO_ENUM;
         type.i_enum = result;
 
-        store_type(ctx, &type, position);
+        store_type(ctx, type, position);
         arrfree(complex_type_name);
     }
 
@@ -692,7 +700,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     } else {
         if (type.category || is_typedef) {
             type.name = type_name;
-            IntroType * stored = store_type(ctx, &type, NULL);
+            IntroType * stored = store_type(ctx, type, NULL);
             arrfree(type_name);
             decl->base = stored;
         } else {
@@ -799,7 +807,7 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
             new_type.parent = last_type;
             new_type.array_size = it;
         }
-        last_type = store_type(ctx, &new_type, NULL);
+        last_type = store_type(ctx, new_type, NULL);
     }
     arrfree(indirection);
     arrfree(func_args_stack);
@@ -842,7 +850,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
             parse_error(ctx, &decl->base_tk, "typedef has no name.");
             return -1;
         }
-        char * name = copy_and_terminate(decl->name_tk.start, decl->name_tk.length);
+        char * name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
         if (shgeti(ctx->ignore_typedefs, name) >= 0) {
             goto find_end;
         }
@@ -859,7 +867,12 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
             if (!new_type_is_indirect) {
                 new_type.parent = decl->type;
             }
-            store_type(ctx, &new_type, decl->name_tk.start);
+            IntroType * stored = store_type(ctx, new_type, decl->name_tk.start);
+            if (!new_type_is_indirect && decl->type->category == INTRO_UNKNOWN) {
+                IntroType ** list = hmget(ctx->incomplete_typedefs, decl->type);
+                arrput(list, stored);
+                hmput(ctx->incomplete_typedefs, decl->type, list);
+            }
         }
     }
 
@@ -876,13 +889,10 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 //    parse_warning(ctx, &decl->name_tk, "Function is redeclared after definition.");
                 //}
                 func = prev;
-                for (int i=0; i < prev->type->args->count; i++) {
-                    if (prev->arg_names[i]) free((void *)prev->arg_names[i]);
-                }
             }
         } else {
             func = calloc(1, sizeof(*func) + count_args * sizeof(func->arg_names[0]));
-            func->name = copy_and_terminate(decl->name_tk.start, decl->name_tk.length);
+            func->name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
             func->type = decl->type;
             {
                 IntroLocation loc = {0};
@@ -997,7 +1007,7 @@ parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_dec
         }
 
         char * name = (decl.name_tk.start)
-                       ? copy_and_terminate(decl.name_tk.start, decl.name_tk.length)
+                       ? copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length)
                        : NULL;
 
         arrput(arg_types, decl.type);
@@ -1035,17 +1045,18 @@ int
 parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     ParseContext * ctx = calloc(1, sizeof(ParseContext));
     ctx->buffer = pre_info->result_buffer;
+    ctx->arena = new_arena((1 << 20)); // 1mb buckets
     ctx->expr_ctx = calloc(1, sizeof(ExprContext));
-    ctx->expr_ctx->arena = new_arena();
+    ctx->expr_ctx->arena = new_arena(EXPR_BUCKET_CAP);
     ctx->expr_ctx->mode = MODE_PARSE;
     ctx->expr_ctx->ctx = ctx;
     ctx->loc = pre_info->loc;
 
     sh_new_arena(ctx->type_map);
-    sh_new_arena(ctx->name_set);
+    sh_new_arena(ctx->enum_name_set);
 
     for (int i=0; i < LENGTH(known_types); i++) {
-        store_type(ctx, &known_types[i], NULL);
+        store_type(ctx, known_types[i], NULL);
         shputs(ctx->ignore_typedefs, (NameSet){known_types[i].name});
     }
 
@@ -1104,7 +1115,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
 
     uint32_t count_all_functions = shlen(ctx->function_map);
     uint32_t count_gen_functions = 0;
-    IntroFunction ** functions = malloc(count_all_functions * sizeof(void *));
+    IntroFunction ** functions = arena_alloc(ctx->arena, count_all_functions * sizeof(void *));
     for (int i=0; i < count_all_functions; i++) {
         IntroFunction * func = ctx->function_map[i].value;
         if ((func->flags & INTRO_EXPLICITLY_GENERATED)) {

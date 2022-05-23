@@ -397,12 +397,4 @@ tk_equal(const Token * tk, const char * str) {
     if (str[tk->length] == '\0') return true;
     return false;
 }
-
-static char *
-copy_and_terminate(char * str, int length) {
-    char * result = malloc(length + 1);
-    memcpy(result, str, length);
-    result[length] = '\0';
-    return result;
-}
 #endif

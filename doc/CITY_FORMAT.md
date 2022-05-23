@@ -21,7 +21,7 @@ A city file has three sections:
 |16      |u32    |[Type Count](#type-count)    |
 
 ### Magic Number
-This is always ASCII `ICTY` (`49` `42` `54` `59` in hexadecimal)
+This is always ASCII `ICTY` (`0x49 0x42 0x54 0x59`)
 
 ### Version
 For version 0.1, **Version Major** is 0 and **Version Minor** is 1.   

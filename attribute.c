@@ -65,10 +65,10 @@ parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk
             parse_error(ctx, &tk0, "Unknown attribute value type.");
             return -1;
         }
-        name = copy_and_terminate(tk1.start, tk1.length);
+        name = copy_and_terminate(ctx->arena, tk1.start, tk1.length);
         name_ref = &tk1;
     } else if (tk1.type == TK_R_PARENTHESIS) {
-        name = copy_and_terminate(tk0.start, tk0.length);
+        name = copy_and_terminate(ctx->arena, tk0.start, tk0.length);
         name_ref = &tk0;
     } else {
         parse_error(ctx, &tk1, "Expected identifier or ')'.");
@@ -368,13 +368,13 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
             tk = next_token(o_s);
             char * result = NULL;
             if (data.type == INTRO_ATTR_ALIAS && tk.type == TK_IDENTIFIER) {
-                result = copy_and_terminate(tk.start, tk.length);
+                result = copy_and_terminate(ctx->arena, tk.start, tk.length);
             } else {
                 if (tk.type != TK_STRING) {
                     parse_error(ctx, &tk, "Expected string.");
                     return -1;
                 }
-                result = copy_and_terminate(tk.start+1, tk.length-2);
+                result = copy_and_terminate(ctx->arena, tk.start+1, tk.length-2);
             }
             int32_t index = arrlen(note_set);
             arrput(note_set, result);

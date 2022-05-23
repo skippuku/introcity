@@ -13,12 +13,12 @@ ifeq (release,$(MAKECMDGOALS))
   CFLAGS += -O2
   LDFLAGS += -s
 else ifeq (profile,$(MAKECMDGOALS))
-  CFLAGS += -O2 -g
+  CFLAGS += -g
 else
   ifeq (sanitize,$(MAKECMDGOALS))
     SANITIZE_FLAGS := -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
   endif
-  CFLAGS += -g -DDEBUG $(SANITIZE_FLAGS)
+  CFLAGS += -O2 -g -DDEBUG $(SANITIZE_FLAGS)
   LDFLAGS += $(SANITIZE_FLAGS)
 endif
 

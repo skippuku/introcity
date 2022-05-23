@@ -32,7 +32,7 @@ main() {
     for (int i=0; i < default_test.count_speeds; i++) {
         assert(ABS(default_test.speeds[i] - test_speeds[i]) < 0.0001);
     }
-    assert(default_test.skills == SKILL_PROGRAMMER | SKILL_MUSICIAN);
+    assert(default_test.skills == (SKILL_PROGRAMMER | SKILL_MUSICIAN));
 
     return 0;
 }

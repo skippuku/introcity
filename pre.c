@@ -49,6 +49,7 @@ typedef struct {
     char * result_buffer;
     FileInfo * current_file;
     Define * defines;
+    MemArena * arena;
     struct {
         char * custom_target;
         char * filename;
@@ -125,12 +126,12 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
             pos_loc = lctx->list[loc_index];
             break;
         } else {
+            if (loc.file) lctx->file = loc.file;
             switch(loc.mode) {
             case LOC_NONE:
                 break;
             case LOC_FILE:
             case LOC_MACRO:
-                if (loc.file) lctx->file = loc.file;
                 arrput(lctx->stack, i);
                 break;
             case LOC_POP:
@@ -149,6 +150,8 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
         exit(-1);
     }
     *o_pos = file_buffer + (pos_loc.file_offset + ((*o_pos - buffer_begin) - pos_loc.offset));
+    assert(*o_pos < file_buffer + lctx->file->buffer_size);
+
     char * last_line;
     *o_line = count_newlines_in_range(file_buffer, *o_pos, &last_line);
     *o_start_of_line = last_line;
@@ -972,7 +975,7 @@ preprocess_buffer(PreContext * ctx) {
                         Token tk = pre_next_token(&ms);
                         while (tk.type == TK_COMMENT) tk = pre_next_token(&ms);
                         if (tk.type == TK_IDENTIFIER) {
-                            char * arg = copy_and_terminate(tk.start, tk.length);
+                            char * arg = copy_and_terminate(ctx->arena, tk.start, tk.length);
                             arrput(arg_list, arg);
                         } else if (*tk.start == ')') {
                             break;
@@ -1016,7 +1019,7 @@ preprocess_buffer(PreContext * ctx) {
 
                 // create macro
                 Define def = {0};
-                def.key = copy_and_terminate(macro_name.start, macro_name.length);
+                def.key = copy_and_terminate(ctx->arena, macro_name.start, macro_name.length);
                 def.replace_list = replace_list;
                 def.forced = def_forced;
                 if (is_func_like) {
@@ -1123,7 +1126,7 @@ preprocess_buffer(PreContext * ctx) {
                 }
                 if (ctx->m_options.G) {
                 skip_and_add_include_dep: ;
-                    char * inc_filepath_stored = copy_and_terminate(inc_filename, strlen(inc_filename));
+                    char * inc_filepath_stored = copy_and_terminate(ctx->arena, inc_filename, strlen(inc_filename));
                     shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
                     continue;
                 } else {
@@ -1132,7 +1135,7 @@ preprocess_buffer(PreContext * ctx) {
                 }
 
             include_matched_file: ;
-                char * inc_filepath_stored = copy_and_terminate(inc_filepath, strlen(inc_filepath));
+                char * inc_filepath_stored = copy_and_terminate(ctx->arena, inc_filepath, strlen(inc_filepath));
                 if (!(ctx->m_options.no_sys && is_from_sys)) {
                     shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
                 } else {
@@ -1316,9 +1319,10 @@ PreInfo
 run_preprocessor(int argc, char ** argv) {
     // init pre context
     PreContext ctx_ = {0}, *ctx = &ctx_;
+    ctx->arena = new_arena((1 << 20)); // 1MiB buckets
     ctx->expr_ctx = calloc(1, sizeof(*ctx->expr_ctx));
     ctx->expr_ctx->mode = MODE_PRE;
-    ctx->expr_ctx->arena = new_arena();
+    ctx->expr_ctx->arena = new_arena(EXPR_BUCKET_CAP);
 
     PreInfo info = {0};
 
@@ -1515,7 +1519,7 @@ run_preprocessor(int argc, char ** argv) {
                 *end = '\0';
                 strcpy(buf, s);
                 path_normalize(buf);
-                char * stored_path = copy_and_terminate(buf, strlen(buf));
+                char * stored_path = copy_and_terminate(ctx->arena, buf, strlen(buf));
                 arrput(include_paths, stored_path);
                 s = end + 1;
                 if (!*s) break;
