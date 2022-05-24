@@ -14,7 +14,6 @@ attribute:
         length: change to expression ex. I(length map_width * map_height)
 
 city:
-    !! ability to use id instead of member name
     stb_ds arrays (requires stb_ds attribute)
 
 config:

@@ -102,6 +102,9 @@ parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk
 
 bool
 check_id_valid(const IntroStruct * i_struct, int id) {
+    if (id < 0 || ((id & 0xFFFF) != id)) {
+        return false;
+    }
     for (int member_index = 0; member_index < i_struct->count_members; member_index++) {
         const IntroMember * member = &i_struct->members[member_index];
         for (int attr_index = 0; attr_index < member->count_attributes; attr_index++) {
@@ -348,9 +351,12 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
                 return -1;
             }
             data.v.i = (int32_t)result;
-            if (data.type == INTRO_ATTR_ID && !check_id_valid(i_struct, data.v.i)) {
-                parse_error(ctx, &tk, "This ID is reserved.");
-                return -1;
+            if (data.type == INTRO_ATTR_ID) {
+                if (!check_id_valid(i_struct, data.v.i)) {
+                    parse_error(ctx, &tk, "This ID is reserved.");
+                    return -1;
+                }
+                i_struct->members[member_index].id = data.v.i;
             }
         } break;
 
@@ -449,6 +455,7 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
                     parse_error(ctx, &tk, "This ID is reserved.");
                     return -1;
                 }
+                i_struct->members[member_index].id = data.v.i;
             } else {
                 s = tk.start;
                 int error = parse_attribute(ctx, &s, i_struct, member_index, &data);

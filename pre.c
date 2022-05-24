@@ -1631,7 +1631,7 @@ run_preprocessor(int argc, char ** argv) {
                 strputf(&dummy_rules, "%s:\n", path);
             }
         }
-        arrput(rule, '\n');
+        strputf(&rule, "\n");
         if (dummy_rules != NULL) {
             strputf(&rule, "%.*s", (int)arrlen(dummy_rules), dummy_rules);
         }

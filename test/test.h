@@ -3,56 +3,6 @@
 #include ".//../test////basic.h"
 #include "../test/../lib/intro.h"
 
-enum Wood {
-    WOOD_PINE,
-    WOOD_ASH,
-    WOOD_BIRCH,
-    WOOD_CHERRY,
-    WOOD_MAHOGANY,
-};
-
-typedef struct {
-    char * name;
-    int32_t a, b;
-    uint8_t array [8];
-
-    int16_t * numbers I(length count_numbers);
-    int32_t count_numbers;
-
-    enum Wood wood_type;
-
-    struct {
-        int a, b;
-    } stuff;
-} Basic;
-
-typedef struct {
-    char * name;
-    int32_t a, c;
-    int32_t b2 I(alias b);
-    uint8_t array [8];
-    bool has_c;
-    IntroType * type I(type);
-
-    struct {
-        int a, b, c;
-        float scale I(= 10.0);
-    } stuff;
-
-    struct {
-        bool is_ok I(= 1);
-        float speed I(= 2.3);
-        double time_stamp;
-        int64_t seconds_left;
-        int32_t * a_pointer;
-    } universe;
-
-    enum Wood wood_type;
-
-    int16_t * numbers I(length count_numbers);
-    int32_t count_numbers;
-} BasicPlus;
-
 struct Undefined1;
 typedef struct Undefined2 Undefined2;
 enum UndefEnum;

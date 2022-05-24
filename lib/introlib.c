@@ -268,10 +268,6 @@ static void
 intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt) {
     static const char * tab = "    ";
 
-    if (type->category != INTRO_STRUCT && type->category != INTRO_UNION) {
-        return;
-    }
-
     printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
 
     for (int m_index = 0; m_index < type->i_struct->count_members; m_index++) {
@@ -299,7 +295,7 @@ intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * 
                 void * ptr = *(void **)m_data;
                 if (ptr) {
                     const IntroType * base = m->type->parent;
-                    if (!base->parent && intro_is_scalar(base)) {
+                    if (intro_is_scalar(base)) {
                         int64_t length;
                         if (intro_attribute_length(data, type, m, &length)) {
                             intro_print_basic_array(ptr, base, length);
@@ -385,7 +381,7 @@ intro_type_with_name_ctx(IntroContext * ctx, const char * name) {
 // CITY IMPLEMENTATION
 
 static const int implementation_version_major = 0;
-static const int implementation_version_minor = 1;
+static const int implementation_version_minor = 2;
 
 typedef struct {
     char magic_number [4];
@@ -526,6 +522,8 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
                 m_type_ids[m_index] = city__get_serialized_id(ctx, m->type);
             }
 
+            size_t id_test_bit = 1 << (ctx->offset_size * 8 - 1);
+
             put_uint(&ctx->info, type->category, 1);
             put_uint(&ctx->info, s_struct->count_members, 4);
             for (int m_index=0; m_index < s_struct->count_members; m_index++) {
@@ -534,10 +532,17 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
 
                 put_uint(&ctx->info, m->offset, ctx->offset_size);
 
-                size_t m_name_len = strlen(m->name);
-                uint32_t name_offset = arrlen(ctx->data);
-                memcpy(arraddnptr(ctx->data, m_name_len + 1), m->name, m_name_len + 1);
-                put_uint(&ctx->info, name_offset, ctx->offset_size);
+                int32_t id;
+                if (intro_attribute_int(m, INTRO_ATTR_ID, &id)) {
+                    size_t stored = id;
+                    stored |= id_test_bit;
+                    put_uint(&ctx->info, stored, ctx->offset_size);
+                } else {
+                    size_t m_name_len = strlen(m->name);
+                    uint32_t name_offset = arrlen(ctx->data);
+                    memcpy(arraddnptr(ctx->data, m_name_len + 1), m->name, m_name_len + 1);
+                    put_uint(&ctx->info, name_offset, ctx->offset_size);
+                }
             }
         }break;
 
@@ -681,10 +686,16 @@ city__safe_copy_struct(
             const IntroMember * sm = &s_struct->members[j];
 
             bool match = false;
-            for (int ai=0; ai < arrlen(aliases); ai++) {
-                if (strcmp(aliases[ai], sm->name) == 0) {
+            if (sm->name) {
+                for (int alias_i=0; alias_i < arrlen(aliases); alias_i++) {
+                    if (strcmp(aliases[alias_i], sm->name) == 0) {
+                        match = true;
+                        break;
+                    }
+                }
+            } else {
+                if (dm->id == sm->id) {
                     match = true;
-                    break;
                 }
             }
             if (match) {
@@ -768,6 +779,8 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
     uint8_t * src = data + header->data_ptr;
     const uint8_t * b = data + sizeof(*header);
 
+    size_t id_test_bit = 1 << (offset_size * 8 - 1);
+
     for (int i=0; i < header->count_types; i++) {
         IntroType * type = malloc(sizeof(*type));
         memset(type, 0, sizeof(*type));
@@ -786,10 +799,17 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
 
             IntroMember * members = NULL;
             for (int m=0; m < count_members; m++) {
-                IntroMember member;
+                IntroMember member = {0};
                 member.type   = hmget(info_by_id, next_uint(&b, type_size));
                 member.offset = (int32_t)next_uint(&b, offset_size);
-                member.name   = (char *)(src + next_uint(&b, offset_size));
+
+                size_t next = next_uint(&b, offset_size);
+                if ((next & id_test_bit)) {
+                    member.id = next & (~id_test_bit);
+                } else {
+                    member.name = (char *)(src + next);
+                }
+
                 arrput(members, member);
             }
 

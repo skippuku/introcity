@@ -1,7 +1,7 @@
-INTROLIB := ../lib/introlib.o
+INTROLIB := ../build/debug/introlib.o
 INTRO_PARSE := ../intro
 CPPFLAGS += -I../lib
-CFLAGS := -g -MMD
+CFLAGS = -g -MMD -MT '$@'
 SRC = $(wildcard *.c)
 INTERACTIVE := interactive_test
 EXE = $(SRC:%.c=db_%)
@@ -52,14 +52,14 @@ $(INTRO_PARSE):
 
 FORCE:
 
-$(EXE): db_%: %.o $(INTROLIB)
-	$(CC) $^ -o $@
+$(EXE): db_%: %.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) $< $(INTROLIB) -o $@
 
 clean:
 	rm -f *.intro *.o *.d $(EXE)
 
 %.d:
-	$(INTRO_PARSE) $(CPPFLAGS) -MM -MG $*.c > $@
+	$(INTRO_PARSE) $(CPPFLAGS) -MM -MG -MT 'db_$*' $*.c > $@
 
 DEPS := $(SRC:.c=.d)
 ifeq (,$(filter clean,$(MAKECMDGOALS)))

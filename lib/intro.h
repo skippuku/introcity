@@ -109,6 +109,7 @@ typedef struct IntroMember {
     const char * name;
     IntroType * type;
     uint8_t  bitfield;
+    uint16_t id;
     uint32_t offset;
     uint32_t count_attributes;
     const IntroAttributeData * attributes I(length count_attributes);
