@@ -11,3 +11,4 @@ test/interactive_test
 .intro_def
 test/log.txt
 test/intro.odin
+build/

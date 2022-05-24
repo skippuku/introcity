@@ -1,64 +1,82 @@
 IMGUI_PATH := ../modules/imgui/
-EXE = intro
+EXE := intro
 
 GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
 
 CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
-CFLAGS += -MMD
 
 SRC := intro.c lib/introlib.c lib/intro_imgui.cpp
-OBJ := lib/introlib.o
+MAGIC_DEFAULT_PROFILE := debug
 
-ifeq (release,$(MAKECMDGOALS))
+define PROFILE.release
   CFLAGS += -O2
   LDFLAGS += -s
-else ifeq (profile,$(MAKECMDGOALS))
+  MAGIC_TARGET := build
+endef
+
+define PROFILE.profile
   CFLAGS += -g -O2
-else
-  ifeq (sanitize,$(MAKECMDGOALS))
-    SANITIZE_FLAGS := -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
-  endif
-  CFLAGS += -g -DDEBUG $(SANITIZE_FLAGS)
+  MAGIC_TARGET := build
+endef
+
+define PROFILE.debug
+  CFLAGS += -g -DDEBUG
+  MAGIC_TARGET := build
+endef
+
+define PROFILE.sanitize
+  $(PROFILE.debug)
+  SANITIZE_FLAGS := -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
+  CFLAGS += $(SANITIZE_FLAGS)
   LDFLAGS += $(SANITIZE_FLAGS)
-endif
+  MAGIC_TARGET := build
+endef
+
+define PROFILE.test
+  $(PROFILE.debug)
+  PROFILEDIR := debug
+endef
+
+define PROFILE.install
+  $(PROFILE.release)
+  PROFILEDIR := release
+endef
+
+define PROFILE.clean
+  MAGIC_NODEP := 1
+endef
+
+define PROFILE.cleanall
+  $(PROFILE.clean)
+endef
+
+include magic.mk
 
 CXXFLAGS := $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
 CFLAGS += -std=gnu99
 
-.PHONY: release debug test install clean cleanall sanitize
+.PHONY: build test install clean cleanall
 
-all: $(EXE)
-release: $(EXE)
-debug: $(EXE)
-sanitize: $(EXE)
-profile: $(EXE)
+build: $(EXE)
+	@echo "Build complete for $(PROFILE)."
 
-$(EXE): %: %.o $(OBJ)
+$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-PREFIX = /usr/local
-
-test: debug
+test: build
 	@$(MAKE) --directory=test/ run
 	./$(EXE) intro.c -o test/intro.c.intro
 
-install: release
+PREFIX = /usr/local
+
+install: build
 	mkdir -p $(PREFIX)/bin
 	cp -f $(EXE) $(PREFIX)/bin/intro
 	chmod 755 $(PREFIX)/bin/intro
 
 clean:
-	rm -f lib/*.o *.o lib/*.d *.d
+	rm -rf $(BUILDDIR)/*
 
-cleanall:
-	@$(MAKE) --directory=test/ clean
-	@$(MAKE) clean
+cleanall: clean
+	@$(MAKE) -C test/ clean
 	rm -f $(EXE)
-
-DEPS := $(addsuffix .d,$(basename $(SRC)))
-
-$(DEPS): %.d: %.o
-
-ifeq (,$(filter clean cleanall,$(MAKECMDGOALS)))
-include $(DEPS)
-endif

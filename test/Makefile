@@ -9,11 +9,6 @@ TESTS = $(filter-out db_$(INTERACTIVE),$(EXE))
 
 export ASAN_OPTIONS = detect_leaks=0
 
-define \n
-
-
-endef
-
 .PHONY: clean run
 .PRECIOUS: %.intro
 

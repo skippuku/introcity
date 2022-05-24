@@ -63,7 +63,6 @@ doc:
     man page
 
 misc:
-    use magic.mk so i don't have to clean everytime i want a different profile
     use custum allocators more + cleanup
     parse program options and pass only relevant ones to sub-processes
     maybe the preprocessor should output tokens instead of text
