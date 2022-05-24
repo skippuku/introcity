@@ -14,8 +14,12 @@ do_indent(FILE * out, int count) {
     for (int i=0; i < count; i++) fputs(tab, out);
 }
 
+enum TypeConversionFlag {
+    FLAG_ARRAY_LIKE = 0x01,
+};
+
 void
-fprint_odin_type(FILE * out, const IntroType * type, int depth) {
+fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
     while (1) {
         if (type->category == INTRO_POINTER) {
             if (type->parent == ITYPE(void)) {
@@ -25,7 +29,11 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth) {
                 fprintf(out, "cstring");
                 return;
             } else {
-                fprintf(out, "^");
+                if ((flags & FLAG_ARRAY_LIKE)) {
+                    fprintf(out, "[^]");
+                } else {
+                    fprintf(out, "^");
+                }
             }
         } else if (type->category == INTRO_ARRAY) {
             // I don't know how you are supposed to deal with zero-length arrays in Odin...
@@ -55,12 +63,16 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth) {
                 // fallthrough
             case INTRO_STRUCT: {
                 if (depth == 0 || !type->name) {
-                    fprintf(out, "struct %s {\n", (raw_union)? "#raw_union" : "");
+                    fprintf(out, "struct %s{\n", (raw_union)? "#raw_union " : "");
                     for (int mi=0; mi < type->i_struct->count_members; mi++) {
                         IntroMember * m = &type->i_struct->members[mi];
                         do_indent(out, depth + 1);
                         fprintf(out, "%s: ", m->name);
-                        fprint_odin_type(out, m->type, depth + 1);
+                        int m_flags = 0;
+                        if (intro_attribute_flag(m, INTRO_ATTR_LENGTH)) {
+                            m_flags |= FLAG_ARRAY_LIKE;
+                        }
+                        fprint_odin_type(out, m->type, depth + 1, m_flags);
                         fprintf(out, ",\n");
                     }
                     do_indent(out, depth);
@@ -94,7 +106,7 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth) {
                             len_prefix += 1;
                         }
                     }
-                    fprintf(out, "enum {\n");
+                    fprintf(out, "enum i32 {\n");
                     for (int i=0; i < type->i_enum->count_members; i++) {
                         IntroEnumValue v = type->i_enum->members[i];
                         do_indent(out, depth + 1);
@@ -113,6 +125,7 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth) {
             return;
         }
         type = type->parent;
+        flags &= ~(FLAG_ARRAY_LIKE);
         depth = 1;
     }
 }
@@ -128,7 +141,7 @@ main() {
         const IntroType * type = &__intro_types[type_i];
         if (type->name && 0==memcmp(type->name, "Intro", 5)) {
             fprintf(out, "%s :: ", &type->name[5]);
-            fprint_odin_type(out, type, 0);
+            fprint_odin_type(out, type, 0, 0);
             fprintf(out, "\n\n");
         }
     }
@@ -146,11 +159,11 @@ main() {
             const char * name = func->arg_names[arg_i];
             const IntroType * type = func->type->args->types[arg_i];
             fprintf(out, "%s: ", name);
-            fprint_odin_type(out, type, 1);
+            fprint_odin_type(out, type, 1, 0);
         }
         if (func->type->parent && func->type->parent->category != INTRO_UNKNOWN) {
             fprintf(out, ") -> ");
-            fprint_odin_type(out, func->type->parent, 1);
+            fprint_odin_type(out, func->type->parent, 1, 0);
             fprintf(out, " ---\n");
         } else {
             fprintf(out, ") ---\n");

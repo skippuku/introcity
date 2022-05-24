@@ -19,34 +19,6 @@
 #define shtemp(t) stbds_temp((t)-1)
 #define hmtemp(t) stbds_temp((t)-1)
 
-int
-intro_size(const IntroType * type) {
-    if (intro_is_scalar(type)) {
-        return (type->category & 0x0f);
-    } else {
-        switch(type->category) {
-        case INTRO_POINTER: return sizeof(void *);
-        case INTRO_ARRAY:   return type->array_size * intro_size(type->parent);
-        case INTRO_UNION:   // fallthrough
-        case INTRO_STRUCT:  return type->i_struct->size;
-        case INTRO_ENUM:    return type->i_enum->size;
-        case INTRO_F128:    return 16;
-        default: return 0;
-        }
-    }
-}
-
-const IntroType *
-intro_origin(const IntroType * type, int * o_depth) {
-    int depth = 0;
-    while (type->parent && type->category != INTRO_ARRAY && type->category != INTRO_POINTER) {
-        type = type->parent;
-        depth++;
-    }
-    if (o_depth) *o_depth = depth;
-    return type;
-}
-
 const char *
 intro_enum_name(const IntroType * type, int value) {
     if (type->i_enum->is_sequential) {

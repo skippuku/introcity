@@ -111,14 +111,14 @@ typedef struct IntroMember {
     uint8_t  bitfield;
     uint32_t offset;
     uint32_t count_attributes;
-    const IntroAttributeData * attributes;
+    const IntroAttributeData * attributes I(length count_attributes);
 } IntroMember;
 
 struct IntroStruct {
     uint32_t size;
     uint32_t count_members;
     bool is_union;
-    IntroMember members [];
+    IntroMember members [] I(length count_members);
 };
 
 typedef struct IntroEnumValue {
@@ -131,12 +131,12 @@ struct IntroEnum {
     uint32_t count_members;
     bool is_flags;
     bool is_sequential;
-    IntroEnumValue members [];
+    IntroEnumValue members [] I(length count_members);
 };
 
 struct IntroTypePtrList {
     uint32_t count;
-    IntroType * types [];
+    IntroType * types [] I(length count);
 };
 
 typedef struct IntroFunction {
@@ -149,10 +149,10 @@ typedef struct IntroFunction {
 } IntroFunction;
 
 typedef struct IntroContext {
-    IntroType * types;
-    const char ** notes;
-    uint8_t * values;
-    IntroFunction ** functions;
+    IntroType * types          I(length count_types);
+    const char ** notes        I(length count_notes);
+    uint8_t * values           I(length size_values);
+    IntroFunction ** functions I(length count_functions);
 
     uint32_t count_types;
     uint32_t count_notes;
@@ -190,12 +190,41 @@ intro_is_complex(const IntroType * type) {
          || type->category == INTRO_ENUM);
 }
 
+INTRO_INLINE int
+intro_size(const IntroType * type) {
+    switch(type->category) {
+    case INTRO_U8:
+    case INTRO_S8:      return 1;
+    case INTRO_U16:
+    case INTRO_S16:     return 2;
+    case INTRO_U32:
+    case INTRO_S32:
+    case INTRO_F32:     return 4;
+    case INTRO_U64:
+    case INTRO_S64:
+    case INTRO_F64:     return 8;
+    case INTRO_F128:    return 16;
+    case INTRO_POINTER: return sizeof(void *);
+    case INTRO_ARRAY:   return type->array_size * intro_size(type->parent);
+    case INTRO_UNION:
+    case INTRO_STRUCT:  return type->i_struct->size;
+    case INTRO_ENUM:    return type->i_enum->size;
+    default: return 0;
+    }
+}
+
+INTRO_INLINE const IntroType *
+intro_origin(const IntroType * type) {
+    while (type->parent && type->category != INTRO_ARRAY && type->category != INTRO_POINTER) {
+        type = type->parent;
+    }
+    return type;
+}
+
 typedef struct {
     int indent;
 } IntroPrintOptions;
 
-int intro_size(const IntroType * type);
-const IntroType * intro_origin(const IntroType * type, int * o_depth);
 const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
 bool intro_attribute_flag(const IntroMember * m, int32_t attr_type);

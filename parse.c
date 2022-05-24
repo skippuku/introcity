@@ -884,7 +884,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         IntroFunction * prev = shget(ctx->function_map, terminated_name);
         int32_t count_args = decl->type->args->count;
         if (prev) {
-            if (intro_origin(prev->type, 0) != intro_origin(decl->type, 0)) {
+            if (intro_origin(prev->type) != intro_origin(decl->type)) {
                 parse_error(ctx, &decl->name_tk, "Function declaration does not match previous.");
                 return -1;
             } else {
