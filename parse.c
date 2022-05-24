@@ -76,7 +76,7 @@ store_arg_type_list(ParseContext * ctx, IntroType ** list) {
     size_t count_list_bytes = arrlen(list) * sizeof(list[0]);
     size_t hash = (list)? stbds_hash_bytes(list, count_list_bytes, hash_seed) : 0;
     IntroTypePtrList * stored = hmget(ctx->arg_list_by_hash, hash);
-    if (stored) {
+    if (stored && list != NULL) {
         // TODO: actually handle this somehow instead of aborting
         assert(0 == memcmp(stored->types, list, count_list_bytes));
     } else {
@@ -224,6 +224,7 @@ parse_constant_expression(ParseContext * ctx, char ** o_s) {
         arrput(tks, tk);
     }
     ExprNode * tree = build_expression_tree(ctx->expr_ctx, tks, arrlen(tks), &tk);
+    arrfree(tks);
     if (!tree) {
         parse_error(ctx, &tk, "Unknown value in expression.");
         exit(1);
@@ -269,6 +270,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
     if (tk.type != TK_L_BRACE) {
         if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) {
+            arrfree(complex_type_name);
             return RET_NOT_DEFINITION;
         }
         parse_error(ctx, &tk, "Expected '{'.");
@@ -583,6 +585,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
         } else if (error != 0) {
             return -1;
         } else {
+            arrfree(type_name);
             ptrdiff_t last_index = hmtemp(ctx->type_set);
             decl->base = ctx->type_set[last_index].value;
             if (is_typedef) decl->state = DECL_TYPEDEF;
@@ -617,7 +620,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                     strputf(&type_name, " long");
                     tk = tk2;
                 } else if (tk_equal(&tk2, "double")) {
-                    type.category = INTRO_F128; // TODO
+                    type.category = INTRO_F128;
                     tk = tk2;
                     strputf(&type_name, " %.*s", tk.length, tk.start);
                     break;
@@ -990,7 +993,6 @@ find_end: ;
 
 static IntroType **
 parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_decl) {
-    // TODO: get names
     IntroType ** arg_types = NULL;
 
     DeclState decl = {.state = DECL_ARGS};

@@ -52,6 +52,7 @@ main(int argc, char * argv []) {
     }
 
     error = intro_dump_file(pre_info.output_filename, header, strlen(header));
+    arrfree(header);
     if (error) {
         fprintf(stderr, "failed to write to file '%s'.\n", pre_info.output_filename);
         return 4;

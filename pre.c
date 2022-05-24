@@ -30,7 +30,7 @@ typedef struct {
     bool func_like;
     bool variadic;
     bool forced;
-} Define; // TODO: rename to Macro
+} Define;
 
 typedef struct {
     int * macro_index_stack;
@@ -233,7 +233,7 @@ preprocess_message_internal(LocationContext * lctx, const Token * tk, char * mes
 #define preprocess_warning(tk, message) preprocess_message_internal(&ctx->loc, tk, message, 1)
 
 static Token
-create_stringized(Token * list) {
+create_stringized(PreContext * ctx, Token * list) {
     char * buf = NULL;
     arrput(buf, '"');
     for (int i=0; i < arrlen(list); i++) {
@@ -254,11 +254,14 @@ create_stringized(Token * list) {
     }
     strputf(&buf, "\"");
 
+    char * str = copy_and_terminate(ctx->arena, buf, arrlen(buf));
+
     Token result = {
-        .start = buf, // TODO: leak
+        .start = str,
         .length = arrlen(buf),
         .type = TK_STRING,
     };
+    arrfree(buf);
     return result;
 }
 
@@ -508,7 +511,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
     }
     Define * macro = &ctx->defines[macro_index];
     if (macro->special != MACRO_NOT_SPECIAL) {
-        char * buf = NULL; // TODO: leak
+        char * buf = NULL;
         int token_type = TK_STRING;
         switch(macro->special) {
         case MACRO_NOT_SPECIAL: break; // never reached
@@ -618,11 +621,12 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         }
 
         Token replace_tk = {
-            .start = buf,
+            .start = copy_and_terminate(ctx->arena, buf, arrlen(buf)),
             .length = arrlen(buf),
             .type = token_type,
             .preceding_space = macro_tk->preceding_space,
         };
+        arrfree(buf);
         ctx->expand_ctx.list[macro_tk_index] = replace_tk;
         return true;
     }
@@ -663,7 +667,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 for (int param_i=0; param_i < macro->arg_count; param_i++) {
                     if (tk_equal(&tk, macro->arg_list[param_i])) {
                         if (ltk.type == TK_HASH) {
-                            Token stringized = create_stringized(margs.unexpanded_list[param_i]);
+                            Token stringized = create_stringized(ctx, margs.unexpanded_list[param_i]);
                             stringized.preceding_space = ltk.preceding_space;
                             arrput(list, stringized);
                         } else {
@@ -712,19 +716,20 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             if (last_tk.type == TK_PLACEHOLDER && next_tk.type == TK_PLACEHOLDER) {
                 result.type = TK_PLACEHOLDER;
             } else {
-                char * buf = NULL; // TODO: leak
+                char * buf = NULL;
                 if (last_tk.type != TK_PLACEHOLDER) {
                     strputf(&buf, "%.*s", last_tk.length, last_tk.start);
                 }
                 if (next_tk.type != TK_PLACEHOLDER) {
                     strputf(&buf, "%.*s", next_tk.length, next_tk.start);
                 }
-                result.start = buf;
+                result.start = copy_and_terminate(ctx->arena, buf, arrlen(buf));
                 result.length = arrlen(buf);
                 result.preceding_space = last_tk.preceding_space;
                 if (is_iden(result.start[0])) { // TODO: handle this more gracefully
                     result.type = TK_IDENTIFIER;
                 }
+                arrfree(buf);
             }
             i--;
             arrdeln(replace_list, i, MIN(2, arrlen(replace_list) - i));
@@ -1028,7 +1033,6 @@ preprocess_buffer(PreContext * ctx) {
                     def.func_like = true;
                     def.variadic = variadic;
                 }
-                // TODO: detect redefinitions
                 Define * prevdef = shgetp_null(ctx->defines, def.key);
                 if (prevdef) {
                     if (prevdef->forced) {
@@ -1652,6 +1656,13 @@ run_preprocessor(int argc, char ** argv) {
         fputs(ctx->result_buffer, stdout);
         exit(0);
     }
+
+    for (int def_i=0; def_i < shlen(ctx->defines); def_i++) {
+        Define def = ctx->defines[def_i];
+        arrfree(def.arg_list);
+        arrfree(def.replace_list);
+    }
+    shfree(ctx->defines);
 
     info.loc = ctx->loc;
     info.loc.index = 0;

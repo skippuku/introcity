@@ -7,6 +7,8 @@ INTERACTIVE := interactive_test
 EXE = $(SRC:%.c=db_%)
 TESTS = $(filter-out db_$(INTERACTIVE),$(EXE))
 
+export ASAN_OPTIONS = detect_leaks=0
+
 define \n
 
 
