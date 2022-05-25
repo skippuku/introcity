@@ -1,4 +1,4 @@
-# CITY FILE FORMAT (.cty) version 0.1
+# CITY FILE FORMAT (.cty) version 0.2
 
 A city file has three sections:
  - [Header](#header)
@@ -24,7 +24,7 @@ A city file has three sections:
 This is always ASCII `ICTY` (`0x49 0x42 0x54 0x59`)
 
 ### Version
-For version 0.1, **Version Major** is 0 and **Version Minor** is 1.   
+For version 0.2, **Version Major** is 0 and **Version Minor** is 2.   
 As this system is in infancy, and the format may undergo significant changes, only matching implementation and file versions are supported.   
 
 ### Size Info
@@ -87,7 +87,7 @@ The first byte in a type is the category. This correlates to `IntroCategory`. De
    |---------------------------|---------|
    |[`TYPE_SIZE`](#size-info)  | type id |
    |[`OFFSET_SIZE`](#size-info)| offset  |
-   |[`OFFSET_SIZE`](#size-info)| offset into **DATA** where the member's name is located |
+   |[`OFFSET_SIZE`](#size-info)| If the most significant bit is set, this is an id (without the MSB). Otherwise it is an offset into **DATA** where the member's name is located. |
 
 
 ## Data

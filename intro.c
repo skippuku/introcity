@@ -1,6 +1,7 @@
 #include "lib/intro.h"
 #include "lexer.c"
 #include "global.h"
+#include "config.c"
 #include "expr.c"
 #include "pre.c"
 #include "parse.c"
@@ -31,6 +32,11 @@ enable_windows_console_color() {
 int
 main(int argc, char * argv []) {
     enable_windows_console_color();
+
+    if (0==strcmp(argv[1], "--gen-config")) {
+        generate_config(argc - 2, &argv[2]);
+        return 0;
+    }
 
     PreInfo pre_info = run_preprocessor(argc, argv);
     if (!pre_info.result_buffer || pre_info.ret != 0) {

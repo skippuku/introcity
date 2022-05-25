@@ -64,6 +64,15 @@
 #endif
 
 typedef struct {
+    int current;
+    int current_used;
+    int capacity;
+    struct {
+        void * data;
+    } buckets [256]; // should be enough for anyone
+} MemArena;
+
+typedef struct {
     char * filename;
     char * buffer;
     size_t buffer_size;
@@ -217,6 +226,24 @@ typedef struct {
     uint8_t bitfield;
 } DeclState;
 
+typedef struct {
+    uint8_t size_ptr;
+    uint8_t size_short;
+    uint8_t size_int;
+    uint8_t size_long;
+    uint8_t size_long_long;
+    uint8_t size_long_double;
+    uint8_t size_bool;
+    uint8_t char_is_signed;
+} CTypeInfo;
+
+typedef struct {
+    char ** sys_include_paths;
+    char * defines;
+    MemArena * arena;
+    CTypeInfo type_info;
+} Config;
+
 static int parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl);
 
 static char *
@@ -253,15 +280,6 @@ strputf(char ** pstr, const char * format, ...) {
 
     va_end(args);
 }
-
-typedef struct {
-    int current;
-    int current_used;
-    int capacity;
-    struct {
-        void * data;
-    } buckets [256]; // should be enough for anyone
-} MemArena;
 
 static void *
 arena_alloc(MemArena * arena, size_t amount) {
@@ -303,11 +321,108 @@ free_arena(MemArena * arena) {
 }
 
 static char *
-copy_and_terminate(MemArena * arena, char * str, int length) {
+copy_and_terminate(MemArena * arena, const char * str, int length) {
     char * result = arena_alloc(arena, length + 1);
     memcpy(result, str, length);
     result[length] = '\0';
     return result;
+}
+
+static char *
+read_stream(FILE * file) {
+    char * result = NULL;
+    fseek(file, 0, SEEK_SET);
+    const int read_size = 1024;
+    char buf [read_size];
+    while (1) {
+        int read_res = fread(&buf, 1, read_size, file);
+        memcpy(arraddnptr(result, read_res), buf, read_res);
+        if (read_res < read_size) {
+            arrput(result, '\0');
+            break;
+        }
+    }
+    return result;
+}
+
+static void
+path_normalize(char * dest) {
+    char * dest_start = dest;
+    char * src = dest;
+    while (*src) {
+        if (*src == '\\') *src = '/';
+        src++;
+    }
+    int depth = 0;
+    src = dest;
+    bool check_next = true;
+    if (*src == '/') src++, dest++;
+    char * last_dir = dest;
+    while (*src) {
+        if (check_next) {
+            check_next = false;
+            while (1) {
+                if (memcmp(src, "/", 1)==0) {
+                    src += 1;
+                } else if (memcmp(src, "./", 2)==0) {
+                    src += 2;
+                } else if (memcmp(src, "../", 3)==0) {
+                    if (depth > 0) {
+                        dest = last_dir;
+                        last_dir--;
+                        while (--last_dir > dest_start && *last_dir != '/');
+                        last_dir++;
+                        depth -= 1;
+                    } else {
+                        depth = 0;
+                        memmove(dest, src, 3);
+                        dest += 3;
+                    }
+                    src += 3;
+                } else {
+                    last_dir = dest;
+                    depth += 1;
+                    break;
+                }
+            }
+        }
+        if (*src == '/') {
+            check_next = true;
+        }
+        *dest++ = *src++;
+    }
+    *dest = '\0';
+}
+
+static void
+path_join(char * dest, const char * base, const char * ext) {
+    strcpy(dest, base);
+    strcat(dest, "/");
+    strcat(dest, ext);
+    path_normalize(dest);
+}
+
+static void
+path_dir(char * dest, char * filepath, char ** o_filename) {
+    char * end = strrchr(filepath, '/');
+    if (end == NULL) {
+        strcpy(dest, ".");
+        if (o_filename) *o_filename = filepath;
+    } else {
+        size_t dir_length = end - filepath;
+        memcpy(dest, filepath, dir_length);
+        dest[dir_length] = '\0';
+        if (o_filename) *o_filename = end + 1;
+    }
+}
+
+static char *
+path_extension(char * dest, const char * path) {
+    char * forslash = strrchr(path, '/');
+    char * period = strrchr(path, '.');
+    if (!period || forslash > period) return NULL;
+
+    return strcpy(dest, period);
 }
 
 #ifdef DEBUG

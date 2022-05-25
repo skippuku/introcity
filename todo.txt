@@ -17,10 +17,12 @@ city:
     stb_ds arrays (requires stb_ds attribute)
 
 config:
+    figure out where the file goes
+    allow config to be overwritten by file in working directory or file given with cmdline argument
+    allow config to be appended with another config?
     change c type sizes for different platforms
-    add Makefile target to generate config files
-        windows batch script also?
     static assert in .intro file if types don't match
+    windows batch script?
 
 parse:
     !! handle sizeof struct/union in expression
@@ -54,11 +56,14 @@ lib:
     single header?
 
 test:
-    test for failures that should happen
-    separate boring tests from cool examples
+    test for errors that should be raised by the parser
     more rigerous tests
 
+examples:
+    !! more of these
+
 doc:
+    parser --help status
     man page
 
 misc:

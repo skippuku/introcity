@@ -126,9 +126,8 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
 
     strputf(&s, "/* Generated with intro %s */\n\n", VERSION);
     strputf(&s, "#ifndef %s\n"
-                "#define %s\n",
+                "#define %s\n\n",
                 header_def, header_def);
-    strputf(&s, "#include <stddef.h>\n\n");
 
     struct {
         void * key;

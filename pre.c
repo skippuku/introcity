@@ -266,86 +266,6 @@ create_stringized(PreContext * ctx, Token * list) {
 }
 
 static void
-path_normalize(char * dest) {
-    char * dest_start = dest;
-    char * src = dest;
-    while (*src) {
-        if (*src == '\\') *src = '/';
-        src++;
-    }
-    int depth = 0;
-    src = dest;
-    bool check_next = true;
-    if (*src == '/') src++, dest++;
-    char * last_dir = dest;
-    while (*src) {
-        if (check_next) {
-            check_next = false;
-            while (1) {
-                if (memcmp(src, "/", 1)==0) {
-                    src += 1;
-                } else if (memcmp(src, "./", 2)==0) {
-                    src += 2;
-                } else if (memcmp(src, "../", 3)==0) {
-                    if (depth > 0) {
-                        dest = last_dir;
-                        last_dir--;
-                        while (--last_dir > dest_start && *last_dir != '/');
-                        last_dir++;
-                        depth -= 1;
-                    } else {
-                        depth = 0;
-                        memmove(dest, src, 3);
-                        dest += 3;
-                    }
-                    src += 3;
-                } else {
-                    last_dir = dest;
-                    depth += 1;
-                    break;
-                }
-            }
-        }
-        if (*src == '/') {
-            check_next = true;
-        }
-        *dest++ = *src++;
-    }
-    *dest = '\0';
-}
-
-static void
-path_join(char * dest, const char * base, const char * ext) {
-    strcpy(dest, base);
-    strcat(dest, "/");
-    strcat(dest, ext);
-    path_normalize(dest);
-}
-
-static void
-path_dir(char * dest, char * filepath, char ** o_filename) {
-    char * end = strrchr(filepath, '/');
-    if (end == NULL) {
-        strcpy(dest, ".");
-        if (o_filename) *o_filename = filepath;
-    } else {
-        size_t dir_length = end - filepath;
-        memcpy(dest, filepath, dir_length);
-        dest[dir_length] = '\0';
-        if (o_filename) *o_filename = end + 1;
-    }
-}
-
-static char *
-path_extension(char * dest, const char * path) {
-    char * forslash = strrchr(path, '/');
-    char * period = strrchr(path, '.');
-    if (!period || forslash > period) return NULL;
-
-    return strcpy(dest, period);
-}
-
-static void
 ignore_section(PasteState * state, char * begin_ignored, char * end_ignored) {
     // save chunk location
     PreContext * ctx = state->ctx;
@@ -874,23 +794,6 @@ pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
             }
         }
     }
-}
-
-static char *
-read_stream(FILE * file) {
-    char * result = NULL;
-    fseek(file, 0, SEEK_SET);
-    const int read_size = 1024;
-    char buf [read_size];
-    while (1) {
-        int read_res = fread(&buf, 1, read_size, file);
-        memcpy(arraddnptr(result, read_res), buf, read_res);
-        if (read_res < read_size) {
-            arrput(result, '\0');
-            break;
-        }
-    }
-    return result;
 }
 
 int preprocess_filename(PreContext * ctx, char * filename);
@@ -1500,6 +1403,8 @@ run_preprocessor(int argc, char ** argv) {
     }
 
     if (!no_sys) {
+        FileInfo temp_file = {0};
+
         ctx->minimal_parse = true;
 
         char program_dir [1024];
@@ -1508,56 +1413,37 @@ run_preprocessor(int argc, char ** argv) {
         path_normalize(program_dir);
         path_dir(program_dir, program_dir, NULL);
 
-        // sys paths
-        const char * sys_inc_path = ".intro_inc";
+        const char * sys_inc_path = "intro.cfg";
         path_join(path, program_dir, sys_inc_path);
-        char * paths_buffer = intro_read_file(path, NULL);
-        char * s = paths_buffer;
-        if (paths_buffer) {
+        char * cfg_buffer = intro_read_file(path, NULL);
+        if (cfg_buffer) {
+            Config cfg = load_config(cfg_buffer);
             ctx->sys_header_first = arrlen(include_paths);
-            while (1) {
-                char buf [1024];
-                char * end = strchr(s, '\n');
-                if (*(end - 1) == '\r') *(end - 1) = '\0';
-                if (!end) break;
-                *end = '\0';
-                strcpy(buf, s);
-                path_normalize(buf);
-                char * stored_path = copy_and_terminate(ctx->arena, buf, strlen(buf));
-                arrput(include_paths, stored_path);
-                s = end + 1;
-                if (!*s) break;
-            }
+            memcpy(arraddnptr(include_paths, arrlen(cfg.sys_include_paths)), cfg.sys_include_paths, arrlen(cfg.sys_include_paths) * sizeof(char *));
             ctx->sys_header_last = arrlen(include_paths) - 1;
-            free(paths_buffer);
+
+            if (cfg.defines) {
+                temp_file.buffer = cfg.defines;
+                temp_file.filename = path;
+                ctx->current_file = &temp_file;
+                preprocess_buffer(ctx);
+            }
         } else {
             fprintf(stderr, "No file at %s\n", path);
         }
 
-        // sys defines
-        const char * sys_def_path = ".intro_def";
-        path_join(path, program_dir, sys_def_path);
-        char * def_buffer = intro_read_file(path, NULL);
-        FileInfo temp_file = {0};
-        if (def_buffer) {
-            temp_file.buffer = def_buffer;
-            temp_file.filename = path;
-            ctx->current_file = &temp_file;
-            preprocess_buffer(ctx);
-        } else {
-            fprintf(stderr, "No file at %s\n", path);
-        }
-
+        bool temp_minimal_parse = false;
         if (ctx->m_options.enabled && !ctx->m_options.D) {
             preprocess_only = true;
-            ctx->minimal_parse = true;
+            temp_minimal_parse = true;
         } else {
             temp_file.buffer = intro_defs;
             temp_file.filename = "__INTRO_DEFS__";
             ctx->current_file = &temp_file;
             preprocess_buffer(ctx);
         }
-        ctx->minimal_parse = false;
+
+        ctx->minimal_parse = temp_minimal_parse;
     }
 
     for (int i=0; i < arrlen(deferred_defines); i++) {

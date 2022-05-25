@@ -37,9 +37,14 @@ define PROFILE.test
   PROFILEDIR := debug
 endef
 
-define PROFILE.install
+define PROFILE.config
   $(PROFILE.release)
   PROFILEDIR := release
+  MAGIC_TARGET :=
+endef
+
+define PROFILE.install
+  $(PROFILE.config)
 endef
 
 define PROFILE.clean
@@ -55,7 +60,7 @@ include magic.mk
 CXXFLAGS := $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
 CFLAGS += -std=gnu99
 
-.PHONY: build test install clean cleanall
+.PHONY: build test install clean cleanall config
 
 build: $(EXE)
 	@echo "Build complete for $(PROFILE)."
@@ -67,9 +72,14 @@ test: build
 	@$(MAKE) --directory=test/ run
 	./$(EXE) intro.c -o test/intro.c.intro
 
+config: intro.cfg
+
+intro.cfg: $(EXE)
+	./$(EXE) --gen-config --compiler $(CC) --file $@
+
 PREFIX = /usr/local
 
-install: build
+install: build intro.cfg
 	mkdir -p $(PREFIX)/bin
 	cp -f $(EXE) $(PREFIX)/bin/intro
 	chmod 755 $(PREFIX)/bin/intro

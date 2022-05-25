@@ -23,8 +23,7 @@ These are the attributes provided by *intro*.
 
 ### id
 **type:** [int](#int)   
-**NOTE**: Serialization using IDs is planned but not currently implemented.    
-Defines the id used for serialization. Every id in a structure must be unique. This is enforced by the parser.    
+Defines the id used for serialization. Every id in a structure must be unique and representable by a 16-bit unsigned integer. This is enforced by the parser.    
 If there is a stray integer with no attribute defined, it is assumed to be an id, for convenience.
 ```C
     int   a I(id 1); // OK
