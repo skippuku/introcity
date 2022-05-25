@@ -28,7 +28,8 @@ load_config(const char * buf) {
                     if (!end) break;
                     if (end - s <= 0) break;
                     char buf [1024];
-                    strncpy(buf, s, end - s);
+                    strncpy(buf, s, sizeof(buf));
+                    buf[end - s] = 0;
                     path_normalize(buf);
                     char * path = copy_and_terminate(cfg.arena, buf, strlen(buf));
                     arrput(cfg.sys_include_paths, path);

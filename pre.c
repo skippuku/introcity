@@ -1025,7 +1025,7 @@ preprocess_buffer(PreContext * ctx) {
                     }
                     path_join(inc_filepath, include_path, inc_filename);
                     if (access(inc_filepath, F_OK) == 0) {
-                        if (i >= ctx->sys_header_first || i <= ctx->sys_header_last) {
+                        if (i >= ctx->sys_header_first && i <= ctx->sys_header_last) {
                             is_from_sys = true;
                         }
                         goto include_matched_file;
@@ -1419,7 +1419,8 @@ run_preprocessor(int argc, char ** argv) {
         if (cfg_buffer) {
             Config cfg = load_config(cfg_buffer);
             ctx->sys_header_first = arrlen(include_paths);
-            memcpy(arraddnptr(include_paths, arrlen(cfg.sys_include_paths)), cfg.sys_include_paths, arrlen(cfg.sys_include_paths) * sizeof(char *));
+            const char ** dest = arraddnptr(include_paths, arrlen(cfg.sys_include_paths));
+            memcpy(dest, cfg.sys_include_paths, arrlen(cfg.sys_include_paths) * sizeof(char *));
             ctx->sys_header_last = arrlen(include_paths) - 1;
 
             if (cfg.defines) {
@@ -1528,8 +1529,7 @@ run_preprocessor(int argc, char ** argv) {
         }
 
         if (ctx->m_options.filename == NULL) {
-            fprintf(stderr, "Somehow, intro cannot figure out what to do with the dependency information.\n"
-                            "Congratulations, you confused not only the program, but also me personally. -cyman\n");
+            fprintf(stderr, "Somehow, intro cannot figure out what to do with the dependency information.\n");
             exit(1);
         }
         int error = intro_dump_file(ctx->m_options.filename, rule, arrlen(rule));
