@@ -2,6 +2,5 @@ doc/
 test/
 lib/ext/
 README.md
-intro.d
-lib/introlib.d
-lib/intro_imgui.d
+magic.mk
+build/
