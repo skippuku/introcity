@@ -5,6 +5,12 @@
 typedef enum I(attribute) {
     ATTR_JOINT I(member joint),
     ATTR_HANDLE I(flag handle),
+
+    ATTR_SCALE I(float scale),
+    ATTR_NUM I(int num),
+    ATTR_FRIEND I(member friend),
+    ATTR_DEATH_VALUE I(value death_value),
+    ATTR_EXP I(flag exp),
 } CustomAttributes;
 
 typedef struct {
@@ -20,6 +26,12 @@ typedef struct {
     size_t * sweet_nothings I(length count_sweet_nothings, joint name);
     int count_sweet_nothings;
 } JointAllocTest;
+
+typedef struct {
+    char * name I(note "this is the name", num 47, default "spock", 9);
+    int v1 I(10, = 67, death_value -9, friend v2, scale 8.5, exp);
+    float v2 I(id 11, exp, friend v1, death_value 2.5, note "i don't know what to put in here guys");
+} AttributeTest;
 
 #include "attributes.c.intro"
 
@@ -109,6 +121,47 @@ main() {
     }
     
     special_free(&data, ITYPE(JointAllocTest));
+
+    AttributeTest test;
+    intro_set_defaults(&test, ITYPE(AttributeTest));
+    {
+        int32_t i;
+        float f;
+
+        const IntroMember *m_name = &ITYPE(AttributeTest)->i_struct->members[0],
+                          *m_v1   = &ITYPE(AttributeTest)->i_struct->members[1],
+                          *m_v2   = &ITYPE(AttributeTest)->i_struct->members[2];
+
+        assert(intro_attribute_int(m_name, INTRO_ATTR_NOTE, &i));
+        assert(0==strcmp(__intro_notes[i], "this is the name"));
+
+        assert(intro_attribute_int(m_name, ATTR_NUM, &i) && i == 47);
+
+        assert(0==strcmp(test.name, "spock"));
+
+        assert(!intro_attribute_flag(m_name, ATTR_EXP));
+
+        assert(intro_attribute_int(m_name, INTRO_ATTR_ID, &i) && i == 9);
+        assert(m_name->id == 9);
+
+        assert(test.v1 == 67);
+        assert(m_v1->id == 10);
+        assert(intro_attribute_int(m_v1, ATTR_FRIEND, &i) && i == 2);
+        assert(intro_attribute_float(m_v1, ATTR_SCALE, &f) && f == 8.5);
+        assert(intro_attribute_flag(m_v1, ATTR_EXP));
+
+        assert(test.v2 == 0.0f);
+        assert(m_v2->id == 11);
+        assert(intro_attribute_flag(m_v2, ATTR_EXP));
+        assert(intro_attribute_int(m_v2, ATTR_FRIEND, &i) && i == 1);
+        assert(intro_attribute_int(m_v2, INTRO_ATTR_NOTE, &i));
+        assert(0==strcmp(__intro_notes[i], "i don't know what to put in here guys"));
+
+        intro_set_values(&test, ITYPE(AttributeTest), ATTR_DEATH_VALUE);
+        assert(test.name == NULL);
+        assert(test.v1 == -9);
+        assert(test.v2 == 2.5);
+    }
 
     return 0;
 }

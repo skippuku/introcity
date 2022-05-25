@@ -25,12 +25,15 @@ config:
     windows batch script?
 
 parse:
+    !! fix failure on equal signs in unexpected (c++) places
     !! handle sizeof struct/union in expression
-        i don't like any of my options for fixing this...
+    stop parsing after a .intro include as to not depend on types defined later
     handle bit field accessing
     handle strings next to each other
     const flag?
     parse float expressions (for value attributes)
+        be aware of types in expressions
+    parse constants
     rudimentary C++ support
         operator overloads
         function overloads
@@ -39,12 +42,14 @@ parse:
         ignore templates
 
 pre:
+    more options for what parts have information generated
+        option to exclude by default, enable with #if __INTRO__
     save location of includes and defines
     parse #line directives
     create #line directives?
 
 gen:
-    option to flag types you care about and only output information nescessary for those types
+    option to flag types you care about and only output information necessary for those types
     option to create typedefs for structs and enums
     typeof with _Generic?
 
@@ -57,7 +62,7 @@ lib:
 
 test:
     test for errors that should be raised by the parser
-    more rigerous tests
+    more rigorous tests
 
 examples:
     !! more of these
@@ -67,6 +72,31 @@ doc:
     man page
 
 misc:
-    use custum allocators more + cleanup
+    use custom allocators more + cleanup
     parse program options and pass only relevant ones to sub-processes
     maybe the preprocessor should output tokens instead of text
+
+The struct layout precipice:
+    Struct layout is dependent on the platform ABI.
+    In addition to this there are many ways a struct layout can be altered (push(pack), __attribute__((aligned)), etc.)
+    
+    Right now, intro just generates offsetof's in the header.
+
+    Ideally, C would have actual layout specifications, and we could easily generate all of the type information in a binary format.
+    (Of course C would also ideally have introspection, but here we are.)
+
+    The options are:
+
+    Continue to use offsetof
+        + guaranteed correct
+        + easiest to implement (already done)
+        - Only useful in C/C++
+        - generated header is big and redundant
+        - parser is limited in capability due to incomplete type information:
+            struct value attribute are difficult (currently just unimplemented)
+            certain expressions cannot be evaluated
+
+    Calculate the correct layout information based on platform
+        + generated information can be in binary form
+        + language agnostic
+        - incorrect generation is difficult/impossible to mitigate

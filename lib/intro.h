@@ -1,6 +1,10 @@
 #ifndef INTRO_H
 #define INTRO_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -253,4 +257,7 @@ int intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_typ
 #define intro_imgui_edit(data, data_type, name) intro_imgui_edit_ctx(INTRO_CTX, data, data_type, name)
 void intro_imgui_edit_ctx(IntroContext * ctx, void * data, const IntroType * data_type, const char * name);
 
+#ifdef __cplusplus
+}
+#endif
 #endif // INTRO_H

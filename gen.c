@@ -147,7 +147,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
                 if (m->count_attributes > 0) {
                     for (int attr_index = 0; attr_index < m->count_attributes; attr_index++) {
                         const IntroAttributeData * attr = &m->attributes[attr_index];
-                        strputf(&s, "%s{%i, %s, %i},\n", tab, attr->type, attr_value_str(attr->value_type), attr->v.i);
+                        strputf(&s, "%s{%i, %s, 0x%x},\n", tab, attr->type, attr_value_str(attr->value_type), attr->v.i);
                     }
                 }
             }
