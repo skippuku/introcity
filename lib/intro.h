@@ -74,6 +74,7 @@ struct IntroType {
     IntroCategory category;
     uint32_t flags; // not currently implemented
     union {
+        void * __data;
         uint32_t array_size;
         IntroStruct * i_struct;
         IntroEnum * i_enum;

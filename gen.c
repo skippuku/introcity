@@ -280,21 +280,13 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
         if (intro_is_complex(t) || t->category == INTRO_FUNCTION) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
             if (saved_name) {
-                const char * union_member = "ERROR";
-                switch(t->category) {
-                case INTRO_STRUCT:
-                case INTRO_UNION:    union_member = "i_struct"; break;
-                case INTRO_ENUM:     union_member = "i_enum"; break;
-                case INTRO_FUNCTION: union_member = "args"; break;
-                default: break; // never reached
-                }
-                strputf(&s, ".%s=&__intro_%s", union_member, saved_name);
+                strputf(&s, "&__intro_%s", saved_name);
             } else {
                 strputf(&s, "0");
             }
         } else {
             if (t->category == INTRO_ARRAY) {
-                strputf(&s, "%u", t->array_size);
+                strputf(&s, "(void *)0x%x", t->array_size);
             } else {
                 strputf(&s, "0");
             }
