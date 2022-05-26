@@ -1,8 +1,10 @@
+!!!! stb_ds hash maps can fail to find slots for macro definitions and it's fucking up the preprocessor. To mitigate this, I set the seed to time, so you can just run it again if it fails for that reason.
+
 attribute:
     attribute type: type
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
-    struct/union values
+    !! struct/union values
     somehow handle data at an offset to a pointer ex. stb_ds
     members of complex type can specify an attribute as a value: I(default default)
     noserialize (for pointers)
@@ -17,7 +19,7 @@ city:
     stb_ds arrays (requires stb_ds attribute)
 
 config:
-    figure out where the file goes
+    !! figure out where the file goes
     allow config to be overwritten by file in working directory or file given with cmdline argument
     allow config to be appended with another config?
     change c type sizes for different platforms
@@ -42,6 +44,7 @@ parse:
         ignore templates
 
 pre:
+    !! fix: preprocessor tries to expand 'defined' outside of #if expressions
     more options for what parts have information generated
         option to exclude by default, enable with #if __INTRO__
     save location of includes and defines

@@ -1,5 +1,3 @@
-#include <sys/unistd.h>
-#include <sys/stat.h>
 #include <time.h>
 
 #include "global.h"
@@ -27,6 +25,7 @@ typedef struct {
     char ** arg_list;
     int32_t arg_count;
     SpecialMacro special;
+    bool is_defined;
     bool func_like;
     bool variadic;
     bool forced;
@@ -203,6 +202,7 @@ parse_msg_internal(LocationContext * lctx, char * buffer, const Token * tk, char
     assert(start_of_line != NULL);
     char * hl_end = hl_start + tk->length;
     message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, message_type);
+    fprintf(stderr, "errenous token: %.*s\n", tk->length, tk->start);
     for (int i=arrlen(lctx->stack) - 1; i >= 0; i--) {
         FileLoc l = lctx->list[lctx->stack[i]];
         if (l.mode == LOC_FILE) {
@@ -430,6 +430,8 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         return false;
     }
     Define * macro = &ctx->defines[macro_index];
+    if (!macro->is_defined) return false;
+
     if (macro->special != MACRO_NOT_SPECIAL) {
         char * buf = NULL;
         int token_type = TK_STRING;
@@ -766,7 +768,7 @@ pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
                 } else if (tk_equal(&tk, "endif")) {
                     depth--;
                 } else if (tk_equal(&tk, "else")) {
-                    if (depth == 1) {
+                    if (elif_ok && depth == 1) {
                         while (tk.type != TK_NEWLINE && tk.type != TK_END) {
                             tk = pre_next_token(o_s);
                         }
@@ -927,6 +929,7 @@ preprocess_buffer(PreContext * ctx) {
 
                 // create macro
                 Define def = {0};
+                def.is_defined = true;
                 def.key = copy_and_terminate(ctx->arena, macro_name.start, macro_name.length);
                 def.replace_list = replace_list;
                 def.forced = def_forced;
@@ -936,13 +939,13 @@ preprocess_buffer(PreContext * ctx) {
                     def.func_like = true;
                     def.variadic = variadic;
                 }
-                Define * prevdef = shgetp_null(ctx->defines, def.key);
-                if (prevdef) {
+                const Define * prevdef = shgetp(ctx->defines, def.key);
+                if (prevdef && prevdef->is_defined) {
                     if (prevdef->forced) {
                         preprocess_warning(&macro_name, "Attempted consesquent #define of forced define.");
                         goto nextline;
                     } else {
-                        //preprocess_warning(&macro_name, "Macro redefinition.");
+                        // preprocess_warning(&macro_name, "Macro redefinition.");
                         // NOTE: system headers would cause this to trigger a lot, though redefinitions
                         //       are against the C standard. So something is amok.
                     }
@@ -952,10 +955,12 @@ preprocess_buffer(PreContext * ctx) {
                 Token def = pre_next_token(&s);
                 STACK_TERMINATE(iden, def.start, def.length);
                 Define * macro = shgetp(ctx->defines, iden);
-                if (!macro->forced) {
-                    (void) shdel(ctx->defines, iden);
-                } else {
-                    preprocess_warning(&def, "Attempted #undef of forced define.");
+                if (macro && macro->is_defined) {
+                    if (!macro->forced) {
+                        macro->is_defined = false;
+                    } else {
+                        preprocess_warning(&def, "Attempted #undef of forced define.");
+                    }
                 }
             } else if (tk_equal(&directive, "if")) {
                 bool expr_result = parse_expression(ctx, &s);
@@ -1105,8 +1110,9 @@ preprocess_buffer(PreContext * ctx) {
                         if (arrlen(list) > 0) {
                             FileInfo * last_origin = ctx->current_file;
                             ptrdiff_t last_file_offset = -1;
+                            Token mtk;
                             for (int i=0; i < arrlen(list); i++) {
-                                Token mtk = list[i];
+                                mtk = list[i];
                                 FileInfo * origin = find_origin(&ctx->loc, ctx->loc.file, mtk.start);
                                 if (origin) {
                                     ptrdiff_t file_offset = mtk.start - origin->buffer;
@@ -1126,6 +1132,8 @@ preprocess_buffer(PreContext * ctx) {
                                 }
                                 memcpy(arraddnptr(ctx->result_buffer, mtk.length), mtk.start, mtk.length);
                             }
+                            // avoid identifiers getting slapped together
+                            if (mtk.type == TK_IDENTIFIER) arrput(ctx->result_buffer, ' ');
                         }
 
                         FileLoc pop_macro = {
@@ -1200,13 +1208,11 @@ preprocess_filename(PreContext * ctx, char * filename) {
 static char intro_defs [] =
 "#define_forced __INTRO__ 1\n"
 
-"#define_forced __unaligned \n"
 "#if !defined __GNUC__\n"
 "  #define_forced __forceinline inline\n"
 "  #define_forced __THROW \n"
 "#endif\n"
 "#define_forced __inline inline\n"
-"#define_forced __restrict restrict\n"
 
 // MINGW
 "#define _VA_LIST_DEFINED 1\n"
@@ -1233,6 +1239,7 @@ run_preprocessor(int argc, char ** argv) {
 
     PreInfo info = {0};
 
+    stbds_rand_seed(time(NULL));
     sh_new_arena(ctx->defines);
 
     static const struct{char * name; SpecialMacro value;} special_macros [] = {
@@ -1251,6 +1258,7 @@ run_preprocessor(int argc, char ** argv) {
         Define special = {0};
         special.key = special_macros[i].name;
         special.special = special_macros[i].value;
+        special.is_defined = true;
         shputs(ctx->defines, special);
     }
 
@@ -1413,9 +1421,11 @@ run_preprocessor(int argc, char ** argv) {
         path_normalize(program_dir);
         path_dir(program_dir, program_dir, NULL);
 
-        const char * sys_inc_path = "intro.cfg";
-        path_join(path, program_dir, sys_inc_path);
-        char * cfg_buffer = intro_read_file(path, NULL);
+        char * cfg_buffer = NULL;
+        bool have_config = get_config_path(path, program_dir);
+        if (have_config) {
+            cfg_buffer = intro_read_file(path, NULL);
+        }
         if (cfg_buffer) {
             Config cfg = load_config(cfg_buffer);
             ctx->sys_header_first = arrlen(include_paths);
@@ -1430,7 +1440,7 @@ run_preprocessor(int argc, char ** argv) {
                 preprocess_buffer(ctx);
             }
         } else {
-            fprintf(stderr, "No file at %s\n", path);
+            fprintf(stderr, "Could not find intro.cfg.\n");
         }
 
         bool temp_minimal_parse = false;
@@ -1539,16 +1549,18 @@ run_preprocessor(int argc, char ** argv) {
         }
     }
     if (preprocess_only) {
-        fputs(ctx->result_buffer, stdout);
+        fwrite(ctx->result_buffer, 1, arrlen(ctx->result_buffer), stdout);
         exit(0);
     }
 
+#if 0 // needed for error messages
     for (int def_i=0; def_i < shlen(ctx->defines); def_i++) {
         Define def = ctx->defines[def_i];
         arrfree(def.arg_list);
         arrfree(def.replace_list);
     }
     shfree(ctx->defines);
+#endif
 
     info.loc = ctx->loc;
     info.loc.index = 0;

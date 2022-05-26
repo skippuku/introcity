@@ -353,7 +353,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrfree(nests);
     }
 
-    if (decl.attribute_specifiers) {
+    if (arrlen(decl.attribute_specifiers) > 0) {
         IntroAttributeData * d;
         uint32_t count;
         for (int i=0; i < arrlen(decl.attribute_specifiers); i++) {
@@ -364,10 +364,10 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             result->members[member_index].attributes = d;
             result->members[member_index].count_attributes = count;
         }
-        arrfree(decl.attribute_specifiers);
 
         handle_differed_defaults(ctx, result);
     }
+    arrfree(decl.attribute_specifiers);
 
     return 0;
 }
@@ -759,6 +759,7 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
             IntroType ** arg_types = parse_function_arguments(ctx, o_s, decl);
             arrpush(func_args_stack, arg_types);
             arrput(temp, FUNCTION);
+            decl->func_specifies_args = true;
             tk = next_token(o_s);
         }
 
@@ -832,6 +833,8 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
          || (tk.type == TK_SEMICOLON)
          || (tk.type == TK_R_BRACE)) {
             return RET_DECL_FINISHED;
+        } else if (decl->state == DECL_CAST) {
+            return RET_NOT_TYPE;
         } else {
             parse_error(ctx, &tk, "Invalid type.");
             return -1;
@@ -849,20 +852,24 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     if (ret < 0) return -1;
 
     if (decl->state == DECL_TYPEDEF) {
-        if (decl->name_tk.start == NULL) {
-            parse_error(ctx, &decl->base_tk, "typedef has no name.");
-            return -1;
+        char * name;
+        if (decl->name_tk.start) {
+            name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
+        } else {
+            //parse_error(ctx, &decl->base_tk, "typedef has no name."); // apperantly this is actually fine?
+            name = NULL;
+            goto find_end;
         }
-        char * name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
         if (shgeti(ctx->ignore_typedefs, name) >= 0) {
             goto find_end;
         }
         IntroType * prev = shget(ctx->type_map, name);
         if (prev) {
-            if (prev->parent != decl->type) {
-                parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
-                return -1;
-            }
+            // TODO: this is was false firing...
+            //if (intro_origin(prev) != intro_origin(decl->type)) {
+            //    parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
+            //    return -1;
+            //}
         } else {
             IntroType new_type = *decl->type;
             new_type.name = name;
@@ -883,37 +890,41 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         STACK_TERMINATE(terminated_name, decl->name_tk.start, decl->name_tk.length);
         IntroFunction * prev = shget(ctx->function_map, terminated_name);
         int32_t count_args = decl->type->args->count;
-        if (prev) {
-            if (intro_origin(prev->type) != intro_origin(decl->type)) {
-                parse_error(ctx, &decl->name_tk, "Function declaration does not match previous.");
-                return -1;
+        if (decl->func_specifies_args) {
+            if (prev) {
+                if (intro_origin(prev->type) != intro_origin(decl->type)) {
+                    parse_error(ctx, &decl->name_tk, "Function declaration does not match previous.");
+                    return -1;
+                } else {
+                    //if (prev->has_body) {
+                    //    parse_warning(ctx, &decl->name_tk, "Function is redeclared after definition.");
+                    //}
+                    func = prev;
+                }
             } else {
-                //if (prev->has_body) {
-                //    parse_warning(ctx, &decl->name_tk, "Function is redeclared after definition.");
-                //}
-                func = prev;
+                func = calloc(1, sizeof(*func) + count_args * sizeof(func->arg_names[0]));
+                func->name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
+                func->type = decl->type;
+                {
+                    IntroLocation loc = {0};
+                    char * pos = decl->name_tk.start;
+                    char * start_of_line;
+                    FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
+                    if (file->gen) {
+                        func->flags |= INTRO_EXPLICITLY_GENERATED;
+                    }
+                    loc.path = file->filename;
+                    loc.column = pos - start_of_line;
+                    func->location = loc;
+                }
+                shput(ctx->function_map, func->name, func);
+            }
+            if (count_args > 0 && decl->arg_names) {
+                memcpy(func->arg_names, decl->arg_names, count_args * sizeof(func->arg_names[0]));
+                arrfree(decl->arg_names);
             }
         } else {
-            func = calloc(1, sizeof(*func) + count_args * sizeof(func->arg_names[0]));
-            func->name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
-            func->type = decl->type;
-            {
-                IntroLocation loc = {0};
-                char * pos = decl->name_tk.start;
-                char * start_of_line;
-                FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
-                if (file->gen) {
-                    func->flags |= INTRO_EXPLICITLY_GENERATED;
-                }
-                loc.path = file->filename;
-                loc.column = pos - start_of_line;
-                func->location = loc;
-            }
-            shput(ctx->function_map, func->name, func);
-        }
-        if (count_args > 0) {
-            memcpy(func->arg_names, decl->arg_names, count_args * sizeof(func->arg_names[0]));
-            arrfree(decl->arg_names);
+            assert(decl->arg_names == NULL);
         }
     }
 
@@ -950,10 +961,10 @@ find_end: ;
                     continue;
                 }
             }
-            if (tk.type == TK_L_BRACE && decl->type->category == INTRO_FUNCTION) {
+            if (tk.type == TK_L_BRACE && func) {
+                assert(func != NULL);
                 do_find_closing = true;
                 func_body = true;
-                assert(func != NULL);
                 func->has_body = true;
             }
             if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {

@@ -1,5 +1,68 @@
 #include <limits.h>
 
+bool
+get_config_path(char * o_path, const char * exe_dir) {
+    char temp [4096];
+    MemArena * arena = new_arena(1024);
+    char ** paths = NULL;
+    arrput(paths, "intro.cfg");
+    arrput(paths, ".intro.cfg");
+
+#define ADD_PATH() do{ \
+    strcat(temp, "/intro.cfg"); \
+    path_normalize(temp); \
+    arrput(paths, copy_and_terminate(arena, temp, strlen(temp))); \
+} while(0)
+
+#if defined(__linux__) || defined(BSD)
+    char * configdir = getenv("XDG_CONFIG_HOME");
+    if (configdir) {
+        strcpy(temp, configdir);
+        strcat(temp, "/introcity");
+        ADD_PATH();
+    } else {
+        char * home = getenv("HOME");
+        if (home) {
+            strcpy(temp, home);
+            strcat(temp, "/.config/introcity");
+            ADD_PATH();
+        }
+    }
+#endif
+#ifdef _WIN32
+    HRESULT ret = SHGetFolderPathA(NULL, CSIDL_LOCAL_APPDATA, NULL, SHGFP_TYPE_CURRENT, temp);
+    if (ret == S_OK) {
+        strcat(temp, "/introcity");
+        ADD_PATH();
+    }
+#endif
+
+    if (exe_dir) {
+        strcpy(temp, exe_dir);
+        ADD_PATH();
+    }
+
+#if defined(__linux__) || defined(BSD)
+    strcpy(temp, "/etc/introcity");
+    ADD_PATH();
+#endif
+#undef ADD_PATH
+
+    bool ok = false;
+    for (int i=0; i < arrlen(paths); i++) {
+        char * path = paths[i];
+        if (access(path, F_OK) == 0) {
+            strcpy(o_path, path);
+            ok = true;
+            break;
+        }
+    }
+
+    arrfree(paths);
+    free_arena(arena);
+    return ok;
+}
+
 Config
 load_config(const char * buf) {
     Config cfg = {0};

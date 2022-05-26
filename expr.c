@@ -135,9 +135,19 @@ build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Toke
                     tk1 = tokens[++tk_i];
                     char * s = tk1.start;
                     DeclState cast = {.state = DECL_CAST};
-                    if (parse_declaration(ectx->ctx, &s, &cast) < 0) return NULL;
+                    int ret = parse_declaration(ectx->ctx, &s, &cast);
+                    if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
+                        node->value = intro_size(cast.type);
+                    } else if (ret == RET_NOT_TYPE) {
+                        if (tk1.type == TK_STRING) {
+                            node->value = tk1.length - 1;
+                        } else {
+                            return NULL;
+                        }
+                    } else {
+                        return NULL;
+                    }
 
-                    node->value = intro_size(cast.type);
                     node->op = OP_INT;
 
                     while (tk1.start < s && ++tk_i < count_tokens) tk1 = tokens[tk_i];

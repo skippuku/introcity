@@ -55,12 +55,16 @@
 
 #if defined __clang__
   #define COMPILER_STR "clang"
+int _1; // clang
 #elif defined __GNUC__
   #define COMPILER_STR "gcc"
+int _2; // gcc 
 #elif defined _MSC_VER
   #define COMPILER_STR "msvc"
+int _3; // msvc
 #else
   #define COMPILER_STR "compiler"
+int _4; // compiler
 #endif
 
 typedef struct {
@@ -218,12 +222,12 @@ typedef struct {
     Token base_tk;
     Token name_tk;
 
-    union {
-        AttributeSpecifier * attribute_specifiers;
-        char ** arg_names;
-    };
+    AttributeSpecifier * attribute_specifiers;
+    char ** arg_names;
+
     int32_t member_index;
     uint8_t bitfield;
+    bool func_specifies_args;
 } DeclState;
 
 typedef struct {
@@ -284,10 +288,16 @@ strputf(char ** pstr, const char * format, ...) {
 static void *
 arena_alloc(MemArena * arena, size_t amount) {
     if (arena->current_used + amount > arena->capacity) {
-        if (arena->buckets[++arena->current].data == NULL) {
-            arena->buckets[arena->current].data = calloc(1, arena->capacity);
+        if (amount <= arena->capacity) {
+            if (arena->buckets[++arena->current].data == NULL) {
+                arena->buckets[arena->current].data = calloc(1, arena->capacity);
+            }
+            arena->current_used = 0;
+        } else {
+            arena->current++;
+            arena->buckets[arena->current].data = realloc(arena->buckets[arena->current].data, amount);
+            memset(arena->buckets[arena->current].data, 0, amount - arena->capacity);
         }
-        arena->current_used = 0;
     }
     void * result = arena->buckets[arena->current].data + arena->current_used;
     arena->current_used += amount;

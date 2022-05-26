@@ -24,17 +24,17 @@ define PROFILE.debug
   MAGIC_TARGET := build
 endef
 
+SANITIZE_FLAGS := -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
 define PROFILE.sanitize
   $(PROFILE.debug)
-  SANITIZE_FLAGS := -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
   CFLAGS += $(SANITIZE_FLAGS)
   LDFLAGS += $(SANITIZE_FLAGS)
   MAGIC_TARGET := build
 endef
 
 define PROFILE.test
-  $(PROFILE.debug)
-  PROFILEDIR := debug
+  $(PROFILE.release)
+  PROFILEDIR := release
 endef
 
 define PROFILE.config
@@ -57,7 +57,7 @@ endef
 
 include magic.mk
 
-CXXFLAGS := $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
+CXXFLAGS += $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
 CFLAGS += -std=gnu99
 
 .PHONY: build test install clean cleanall config

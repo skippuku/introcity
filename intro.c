@@ -1,3 +1,18 @@
+#ifdef _WIN32
+  #define WIN32_LEAN_AND_MEAN
+  #include <windef.h>
+  #include <wingdi.h>
+  #include <winbase.h>
+  #include <wincon.h>
+  #include <shlobj.h>
+  #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+  #endif
+#endif
+
+#include <sys/unistd.h>
+#include <sys/stat.h>
+
 #include "lib/intro.h"
 #include "lexer.c"
 #include "global.h"
@@ -6,17 +21,6 @@
 #include "pre.c"
 #include "parse.c"
 #include "gen.c"
-
-// Pretty annoying we have to include these massive headers just to turn on term color...
-#ifdef _WIN32
-  #include <windef.h>
-  #include <wingdi.h>
-  #include <winbase.h>
-  #include <wincon.h>
-  #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
-    #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
-  #endif
-#endif
 
 static void
 enable_windows_console_color() {
@@ -33,7 +37,7 @@ int
 main(int argc, char * argv []) {
     enable_windows_console_color();
 
-    if (0==strcmp(argv[1], "--gen-config")) {
+    if (argc > 1 && 0==strcmp(argv[1], "--gen-config")) {
         generate_config(argc - 2, &argv[2]);
         return 0;
     }
