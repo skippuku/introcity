@@ -413,7 +413,7 @@ path_join(char * dest, const char * base, const char * ext) {
 }
 
 static void
-path_dir(char * dest, char * filepath, char ** o_filename) {
+path_dir(char * dest, char *restrict filepath, char ** o_filename) {
     char * end = strrchr(filepath, '/');
     if (end == NULL) {
         strcpy(dest, ".");

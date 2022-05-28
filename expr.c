@@ -265,6 +265,7 @@ build_expression_procedure(ExprNode * tree) {
     }
 
     while (1) {
+        assert(node->right != NULL);
         ExprInstruction ins = {0};
         ins.op = node->op;
         bool left_is_op = node->left && node->left->op;

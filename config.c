@@ -37,7 +37,7 @@ get_config_path(char * o_path, const char * exe_dir) {
     }
 #endif
 
-    if (exe_dir) {
+    if (0 != strcmp(exe_dir, ".")) {
         strcpy(temp, exe_dir);
         ADD_PATH();
     }
@@ -156,7 +156,7 @@ load_config(const char * buf) {
 
 void
 generate_config(int argc, char ** argv) {
-    // At the moment, it is assumed the compiler handles gcc-style arguments
+    // At the moment, this will probably only work with gcc and clang
 
     Config cfg = {0};
     MemArena * arena = new_arena(1024);

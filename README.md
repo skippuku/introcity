@@ -84,8 +84,8 @@ For more examples, check out the test directory.
 ## Build/Install
 `make release` will build a release version of the parser.
 
-### Linux/MSYS
-`sudo make install` will build a release version of the parser and copy it to `/usr/local/bin/intro` so you can invoke it from anywhere.
+### Linux
+`sudo make install` should set you up so you can invoke "intro" from anywhere.
 
 ## Integration
 You can insert *intro* into the build process. For example a Makefile might look like this:

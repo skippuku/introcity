@@ -23,4 +23,4 @@ chmod 755 $PREFIX/bin/intro # read/execute
 
 mkdir -p /etc/introcity
 cp -f intro.cfg /etc/introcity/intro.cfg
-chmod 711 /etc/introcity/intro.cfg # read
+chmod 744 /etc/introcity/intro.cfg # read

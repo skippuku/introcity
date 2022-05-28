@@ -385,7 +385,7 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
         arrput(unexpanded_list, tks);
     }
 
-    const ExpandContext prev_ctx = ctx->expand_ctx;
+    ExpandContext prev_ctx = ctx->expand_ctx;
     for (int arg_i=0; arg_i < arrlen(arg_list); arg_i++) {
         for (int tk_i=0; tk_i < arrlen(arg_list[arg_i]); tk_i++) {
             if (arg_list[arg_i][tk_i].type == TK_IDENTIFIER) {
@@ -399,6 +399,7 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
             }
         }
     }
+    prev_ctx.macro_index_stack = ctx->expand_ctx.macro_index_stack;
     ctx->expand_ctx = prev_ctx;
 
     result.unexpanded_list = unexpanded_list;
@@ -1224,6 +1225,9 @@ static char intro_defs [] =
 "#define_forced __asm__(x) \n"
 "#define_forced __volatile__(x) \n"
 "#endif\n"
+
+// clang
+"#define __has_include_next(x) 0\n" // TODO: should probably implement this instead of lazy lying
 ;
 
 PreInfo
@@ -1262,6 +1266,7 @@ run_preprocessor(int argc, char ** argv) {
     bool preprocess_only = false;
     bool no_sys = false;
     char * filepath = NULL;
+    char * cfg_file = NULL;
 
     Token *const undef_replace_list = NULL; // reserve an address. remains unused
     Token * default_replace_list = NULL;
@@ -1280,6 +1285,8 @@ run_preprocessor(int argc, char ** argv) {
                 } else if (0==strcmp(arg, "expr-test")) {
                     expr_test();
                     exit(0);
+                } else if (0==strcmp(arg, "cfg")) {
+                    cfg_file = argv[++i];
                 } else {
                     fprintf(stderr, "Unknown option: '%s'\n", arg);
                     exit(1);
@@ -1410,16 +1417,17 @@ run_preprocessor(int argc, char ** argv) {
     if (!no_sys) {
         ctx->minimal_parse = true;
 
-        char program_dir [1024];
-        char path [1024];
-        strcpy(program_dir, argv[0]);
-        path_normalize(program_dir);
-        path_dir(program_dir, program_dir, NULL);
-
+        char path [4096];
+        if (!cfg_file) {
+            char program_dir [4096];
+            path_dir(program_dir, argv[0], NULL);
+            if (get_config_path(path, program_dir)) {
+                cfg_file = path;
+            }
+        }
         char * cfg_buffer = NULL;
-        bool have_config = get_config_path(path, program_dir);
-        if (have_config) {
-            cfg_buffer = intro_read_file(path, NULL);
+        if (cfg_file) {
+            cfg_buffer = intro_read_file(cfg_file, NULL);
         }
         if (cfg_buffer) {
             Config cfg = load_config(cfg_buffer);
@@ -1431,7 +1439,7 @@ run_preprocessor(int argc, char ** argv) {
             if (cfg.defines) {
                 FileInfo * config_file = calloc(1, sizeof(*config_file));
                 config_file->buffer = cfg.defines;
-                config_file->filename = path;
+                config_file->filename = copy_and_terminate(ctx->arena, path, strlen(path));
                 arrput(ctx->loc.file_buffers, config_file);
                 ctx->current_file = config_file;
                 int ret = preprocess_buffer(ctx);
