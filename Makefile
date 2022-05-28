@@ -1,8 +1,18 @@
 IMGUI_PATH := ../modules/imgui/
 EXE := intro
 
-GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
+ifeq (,$(OS))
+  UNAME := $(shell uname -s)
+  ifeq (Linux,$(UNAME))
+    OS := Linux
+  endif
+endif
 
+ifneq (0,$(shell id -u))
+  GIT_VERSION := $(shell git describe --abbrev=7 --tags --dirty --always)
+else
+  GIT_VERSION := unknown
+endif
 CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
 
 SRC := intro.c lib/introlib.c
@@ -39,12 +49,10 @@ endef
 
 define PROFILE.config
   $(PROFILE.release)
-  PROFILEDIR := release
-  MAGIC_TARGET :=
 endef
 
 define PROFILE.install
-  $(PROFILE.config)
+  MAGIC_NODEP := 1
 endef
 
 define PROFILE.clean
@@ -72,17 +80,16 @@ test: build
 	@$(MAKE) --directory=test/ run
 	./$(EXE) intro.c -o test/intro.c.intro
 
-config: intro.cfg
+config: $(EXE)
+	./$(EXE) --gen-config --compiler $(CC) --file intro.cfg
 
-intro.cfg: $(EXE)
-	./$(EXE) --gen-config --compiler $(CC) --file $@
-
-PREFIX = /usr/local
-
-install: build intro.cfg
-	mkdir -p $(PREFIX)/bin
-	cp -f $(EXE) $(PREFIX)/bin/intro
-	chmod 755 $(PREFIX)/bin/intro
+install:
+ifeq (Linux,$(OS))
+	./scripts/install.sh
+	@echo "install successful, enjoy!"
+else
+	@echo "install target is not supported for this OS."
+endif
 
 clean:
 	rm -rf $(BUILDDIR)/*
