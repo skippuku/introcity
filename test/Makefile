@@ -45,7 +45,7 @@ run: $(TESTS)
 	printf "$(CRESET)\n"
 
 $(INTRO_PARSE):
-	@$(MAKE) -C .. release
+	@$(MAKE) -C .. debug
 
 %.intro: % $(INTRO_PARSE) FORCE
 	$(INTRO_PARSE) $(CPPFLAGS) $< -o $@

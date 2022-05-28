@@ -452,7 +452,8 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 exit(1);
             }
             STACK_TERMINATE(defined_iden, tk.start, tk.length);
-            char * replace = (shgeti(ctx->defines, defined_iden) >= 0)? "1" : "0";
+            Define def = shgets(ctx->defines, defined_iden);
+            char * replace = (def.is_defined)? "1" : "0";
             if (is_paren) {
                 tk = internal_macro_next_token(ctx, &index);
                 if (*tk.start != ')') {
@@ -769,31 +770,24 @@ pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
                     depth--;
                 } else if (tk_equal(&tk, "else")) {
                     if (elif_ok && depth == 1) {
-                        while (tk.type != TK_NEWLINE && tk.type != TK_END) {
-                            tk = pre_next_token(o_s);
-                        }
-                        *o_s = tk.start;
-                        return;
+                        depth = 0;
                     }
                 } else if (tk_equal(&tk, "elif")) {
                     if (elif_ok && depth == 1) {
                         bool expr_result = parse_expression(ctx, o_s);
                         if (expr_result) {
-                            return;
+                            depth = 0;
                         }
                     }
                 }
-                goto nextline;
             }
-        } else {
-        nextline:
-            while (tk.type != TK_NEWLINE && tk.type != TK_END) {
-                tk = pre_next_token(o_s);
-            }
-            if (depth == 0 || tk.type == TK_END) {
-                *o_s = tk.start;
-                return;
-            }
+        }
+        while (tk.type != TK_NEWLINE && tk.type != TK_END) {
+            tk = pre_next_token(o_s);
+        }
+        if (depth == 0 || tk.type == TK_END) {
+            *o_s = tk.start;
+            return;
         }
     }
 }
@@ -939,18 +933,21 @@ preprocess_buffer(PreContext * ctx) {
                     def.func_like = true;
                     def.variadic = variadic;
                 }
-                const Define * prevdef = shgetp(ctx->defines, def.key);
+                Define * prevdef = shgetp_null(ctx->defines, def.key);
                 if (prevdef && prevdef->is_defined) {
                     if (prevdef->forced) {
                         preprocess_warning(&macro_name, "Attempted consesquent #define of forced define.");
                         goto nextline;
                     } else {
                         // preprocess_warning(&macro_name, "Macro redefinition.");
-                        // NOTE: system headers would cause this to trigger a lot, though redefinitions
-                        //       are against the C standard. So something is amok.
+                        // TODO: check that definitions are equal
                     }
                 }
-                shputs(ctx->defines, def);
+                if (!prevdef) {
+                    shputs(ctx->defines, def);
+                } else {
+                    *prevdef = def;
+                }
             } else if (tk_equal(&directive, "undef")) {
                 Token def = pre_next_token(&s);
                 STACK_TERMINATE(iden, def.start, def.length);
@@ -1212,7 +1209,8 @@ static char intro_defs [] =
 "  #define_forced __forceinline inline\n"
 "  #define_forced __THROW \n"
 "#endif\n"
-"#define_forced __inline inline\n"
+"#define __inline inline\n"
+"#define __restrict restrict\n"
 
 // MINGW
 "#define _VA_LIST_DEFINED 1\n"
@@ -1239,7 +1237,6 @@ run_preprocessor(int argc, char ** argv) {
 
     PreInfo info = {0};
 
-    stbds_rand_seed(time(NULL));
     sh_new_arena(ctx->defines);
 
     static const struct{char * name; SpecialMacro value;} special_macros [] = {
@@ -1411,8 +1408,6 @@ run_preprocessor(int argc, char ** argv) {
     }
 
     if (!no_sys) {
-        FileInfo temp_file = {0};
-
         ctx->minimal_parse = true;
 
         char program_dir [1024];
@@ -1434,10 +1429,16 @@ run_preprocessor(int argc, char ** argv) {
             ctx->sys_header_last = arrlen(include_paths) - 1;
 
             if (cfg.defines) {
-                temp_file.buffer = cfg.defines;
-                temp_file.filename = path;
-                ctx->current_file = &temp_file;
-                preprocess_buffer(ctx);
+                FileInfo * config_file = calloc(1, sizeof(*config_file));
+                config_file->buffer = cfg.defines;
+                config_file->filename = path;
+                arrput(ctx->loc.file_buffers, config_file);
+                ctx->current_file = config_file;
+                int ret = preprocess_buffer(ctx);
+                if (ret < 0) {
+                    info.ret = -1;
+                    return info;
+                }
             }
         } else {
             fprintf(stderr, "Could not find intro.cfg.\n");
@@ -1448,10 +1449,17 @@ run_preprocessor(int argc, char ** argv) {
             preprocess_only = true;
             temp_minimal_parse = true;
         } else {
-            temp_file.buffer = intro_defs;
-            temp_file.filename = "__INTRO_DEFS__";
-            ctx->current_file = &temp_file;
-            preprocess_buffer(ctx);
+            FileInfo * intro_defs_file = calloc(1, sizeof(*intro_defs_file));
+            intro_defs_file->buffer_size = strlen(intro_defs);
+            intro_defs_file->buffer = intro_defs;
+            intro_defs_file->filename = "__INTRO_DEFS__";
+            arrput(ctx->loc.file_buffers, intro_defs_file);
+            ctx->current_file = intro_defs_file;
+            int ret = preprocess_buffer(ctx);
+            if (ret < 0) {
+                info.ret = -1;
+                return info;
+            }
         }
 
         ctx->minimal_parse = temp_minimal_parse;

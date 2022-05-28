@@ -5,7 +5,7 @@ GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
 
 CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
 
-SRC := intro.c lib/introlib.c lib/intro_imgui.cpp
+SRC := intro.c lib/introlib.c
 MAGIC_DEFAULT_PROFILE := debug
 
 define PROFILE.release
@@ -33,8 +33,8 @@ define PROFILE.sanitize
 endef
 
 define PROFILE.test
-  $(PROFILE.release)
-  PROFILEDIR := release
+  $(PROFILE.debug)
+  PROFILEDIR := debug
 endef
 
 define PROFILE.config
@@ -57,7 +57,7 @@ endef
 
 include magic.mk
 
-CXXFLAGS += $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
+CXXFLAGS := $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
 CFLAGS += -std=gnu99
 
 .PHONY: build test install clean cleanall config

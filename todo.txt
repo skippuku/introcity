@@ -1,5 +1,3 @@
-!!!! stb_ds hash maps can fail to find slots for macro definitions and it's fucking up the preprocessor. To mitigate this, I set the seed to time, so you can just run it again if it fails for that reason.
-
 attribute:
     attribute type: type
         as_enum for when you want an integer to be treated like an enum

@@ -865,11 +865,10 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         }
         IntroType * prev = shget(ctx->type_map, name);
         if (prev) {
-            // TODO: this is was false firing...
-            //if (intro_origin(prev) != intro_origin(decl->type)) {
-            //    parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
-            //    return -1;
-            //}
+            if (intro_origin(prev) != intro_origin(decl->type)) {
+                parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
+                return -1;
+            }
         } else {
             IntroType new_type = *decl->type;
             new_type.name = name;
