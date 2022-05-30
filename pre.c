@@ -94,7 +94,13 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
     strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
     strputf(p_s, "%s%.*s" WHITE, highlight_color, (int)(highlight_end - highlight_start), highlight_start);
     strputf(p_s, "%.*s\n", (int)(segment_end - highlight_end), highlight_end);
-    for (int i=0; i < highlight_start - segment_start; i++) arrput(*p_s, ' ');
+    for (int i=0; i < highlight_start - segment_start; i++) {
+        if (segment_start[i] == '\t') {
+            arrput(*p_s, '\t');
+        } else {
+            arrput(*p_s, ' ');
+        }
+    }
     for (int i=0; i < highlight_end - highlight_start; i++) arrput(*p_s, '~');
     strputf(p_s, "\n");
 }

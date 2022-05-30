@@ -41,7 +41,6 @@ parse:
         ignore templates
 
 pre:
-    !! fix highlighting with tabs
     more options for what parts have information generated
         option to exclude by default, enable with #if __INTRO__
     save location of includes and defines
