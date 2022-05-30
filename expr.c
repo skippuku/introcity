@@ -1,5 +1,5 @@
 #include "lexer.c"
-#include "global.h"
+#include "global.c"
 
 #define EXPR_BUCKET_CAP (1<<12)
 

@@ -1,5 +1,5 @@
-#ifndef GLOBAL_H
-#define GLOBAL_H
+#ifndef GLOBAL_C
+#define GLOBAL_C
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +42,7 @@
 #ifdef DEBUG
   #if (defined __GNUC__ || defined __clang__) && (defined __x86_64__ || defined __i386__)
     #define db_break() do{__asm__ __volatile__ ("int $3\n\t");}while(0)
-  #elif defined __MSVC__
+  #elif defined _MSC_VER
     #define db_break() __debugbreak()
   #endif
   #define db_assert(x) assert(x)
@@ -55,16 +55,12 @@
 
 #if defined __clang__
   #define COMPILER_STR "clang"
-int _1; // clang
 #elif defined __GNUC__
   #define COMPILER_STR "gcc"
-int _2; // gcc 
 #elif defined _MSC_VER
   #define COMPILER_STR "msvc"
-int _3; // msvc
 #else
   #define COMPILER_STR "compiler"
-int _4; // compiler
 #endif
 
 typedef struct {
@@ -127,10 +123,10 @@ typedef struct {
 
 typedef struct {
     void * key;
-    IntroType * parent;
-    int member_index;
+    IntroType * container_type;
+    int member_index_in_container;
     int indirection_level;
-    char * parent_member_name;
+    char * member_name_in_container;
     const char * top_level_name;
 } NestInfo;
 
@@ -141,6 +137,7 @@ typedef struct IntroInfo {
     uint8_t * value_buffer;
     IntroTypePtrList ** arg_lists;
     IntroFunction ** functions;
+    char ** string_set;
     uint32_t count_types;
     uint32_t count_arg_lists;
     uint32_t count_functions;
@@ -447,4 +444,4 @@ dbhmlen(void * m) {
     return (m)? hmlen(m) : -1;
 }
 #endif
-#endif // UTIL_H
+#endif // UTIL_C

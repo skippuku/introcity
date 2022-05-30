@@ -1,6 +1,6 @@
 #include "lib/intro.h"
 #include "lexer.c"
-#include "global.h"
+#include "global.c"
 
 static const IntroType known_types [] = {
     {"void",     NULL, INTRO_UNKNOWN},
@@ -17,6 +17,12 @@ static const IntroType known_types [] = {
     {"_Bool",    NULL, INTRO_U8 },
     {"va_list",  NULL, INTRO_VA_LIST},
 };
+
+typedef struct {
+    char * key;
+    int32_t type;
+    int32_t value_type;
+} AttributeMap;
 
 struct ParseContext {
     char * buffer;
@@ -39,6 +45,9 @@ struct ParseContext {
     struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
     struct {char * key; IntroFunction * value;} * function_map;
     struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
+
+    AttributeMap * attribute_map;
+    char ** string_set;
 };
 
 static void
@@ -318,7 +327,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         if (decl.base->name == NULL) {
             NestInfo info = {0};
             info.key = decl.base;
-            info.member_index = arrlen(members);
+            info.member_index_in_container = arrlen(members);
             IntroType * tt = decl.type;
             while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
                 tt = tt->parent;
@@ -347,7 +356,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         for (int i=0; i < arrlen(nests); i++) {
             NestInfo info = nests[i];
-            info.parent = stored;
+            info.container_type = stored;
             hmputs(ctx->nest_map, info);
         }
         arrfree(nests);
@@ -1101,7 +1110,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         db_assert(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
     }
 
-    create_initial_attributes();
+    create_initial_attributes(ctx);
 
     DeclState decl = {.state = DECL_GLOBAL};
 
@@ -1142,5 +1151,6 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     o_info->count_arg_lists = arrlen(o_info->arg_lists);
     o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
+    o_info->string_set = ctx->string_set;
     return 0;
 }

@@ -1,5 +1,5 @@
 #include "lib/intro.h"
-#include "global.h"
+#include "global.c"
 
 static const char *
 get_ref_name(IntroInfo * info, const IntroType * t) {
@@ -17,29 +17,22 @@ get_ref_name(IntroInfo * info, const IntroType * t) {
     }
 }
 
-// TODO: rename parent to container (grand_parent -> meta_container) since parent already means something to types
-// TODO: just pass the nest
 static char *
-get_parent_member_name(IntroInfo * info, IntroType * parent, int parent_index, int indirection_level, const char ** o_top_level_name) {
-    NestInfo * nest = hmgetp_null(info->nest_map, parent);
-    if (nest) {
-        IntroType * grand_parent = nest->parent;
-        int grand_parent_index = nest->member_index;
-
-        char * result = get_parent_member_name(info, grand_parent, grand_parent_index, nest->indirection_level, o_top_level_name);
-        strputf(&result, ".%s", parent->i_struct->members[parent_index].name);
-
+get_container_member_name(IntroInfo * info, NestInfo * nest, const char ** o_top_level_name) {
+    NestInfo * container = hmgetp_null(info->nest_map, nest->container_type);
+    if (container) {
+        char * result = get_container_member_name(info, container, o_top_level_name);
+        strputf(&result, ".%s", nest->container_type->i_struct->members[nest->member_index_in_container].name);
         return result;
     } else {
         char * result = NULL;
-        strputf(&result, "%s", parent->i_struct->members[parent_index].name);
+        strputf(&result, "%s", nest->container_type->i_struct->members[nest->member_index_in_container].name);
 
-        for (int i=0; i < indirection_level; i++) {
+        for (int i=0; i < nest->indirection_level; i++) {
             strputf(&result, "[0]");
         }
 
-        const char * top_level_name = get_ref_name(info, parent);
-        *o_top_level_name = top_level_name;
+        *o_top_level_name = get_ref_name(info, nest->container_type);
         return result;
     }
 }
@@ -103,7 +96,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     // generate info needed to get offset and sizeof for anonymous types
     for (int i=0; i < hmlen(info->nest_map); i++) {
         NestInfo * nest = &info->nest_map[i];
-        nest->parent_member_name = get_parent_member_name(info, nest->parent, nest->member_index, nest->indirection_level, &nest->top_level_name);
+        nest->member_name_in_container = get_container_member_name(info, nest, &nest->top_level_name);
     }
 
     char * s = NULL;
@@ -155,9 +148,9 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     }
     strputf(&s, "};\n\n");
 
-    strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(note_set));
-    for (int i=0; i < arrlen(note_set); i++) {
-        strputf(&s, "%s\"%s\",\n", tab, note_set[i]);
+    strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(info->string_set));
+    for (int i=0; i < arrlen(info->string_set); i++) {
+        strputf(&s, "%s\"%s\",\n", tab, info->string_set[i]);
     }
     strputf(&s, "};\n\n");
 
@@ -184,7 +177,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
             if (!nest) {
                 strputf(&s, "sizeof(%s)", ref_name);
             } else {
-                strputf(&s, "sizeof(((%s*)0)->%s)", nest->top_level_name, nest->parent_member_name);
+                strputf(&s, "sizeof(((%s*)0)->%s)", nest->top_level_name, nest->member_name_in_container);
             }
             if (t->category == INTRO_STRUCT || t->category == INTRO_UNION) {
                 strputf(&s, ", %u, %u, {\n", t->i_struct->count_members, t->i_struct->is_union);
@@ -196,8 +189,8 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
                         strputf(&s, "offsetof(%s, %s)", ref_name, m->name);
                     } else {
                         strputf(&s, "offsetof(%s, %s.%s) - offsetof(%s, %s)",
-                                nest->top_level_name, nest->parent_member_name, m->name,
-                                nest->top_level_name, nest->parent_member_name);
+                                nest->top_level_name, nest->member_name_in_container, m->name,
+                                nest->top_level_name, nest->member_name_in_container);
                     }
                     if (m->count_attributes > 0) {
                         strputf(&s, ", %u, &__intro_attr[%i]},\n", m->count_attributes, attr_list_index);
@@ -334,7 +327,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "%s__intro_values,\n", tab);
     strputf(&s, "%s__intro_fns,\n", tab);
     strputf(&s, "%s%u,\n", tab, info->count_types);
-    strputf(&s, "%s%i,\n", tab, (int)arrlenu(note_set));
+    strputf(&s, "%s%i,\n", tab, (int)arrlenu(info->string_set));
     strputf(&s, "%s%i,\n", tab, (int)arrlenu(info->value_buffer));
     strputf(&s, "%s%u,\n", tab, info->count_functions);
     strputf(&s, "};\n");

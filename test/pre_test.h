@@ -34,9 +34,9 @@ typedef struct {float x,y;} RealType;
 
 typedef BUILD_DYNAMIC_ARRAY(int) *int_arr_t;
 
-#include "pre_inc.h"
+//#include "pre_inc.h"
 
-typedef BUILD_DYNAMIC_ARRAY(NotAType) *test_err_arr_t; // intentional error
+//typedef BUILD_DYNAMIC_ARRAY(NotAType) *test_err_arr_t; // intentional error
 
 // from the c99 standard
 int

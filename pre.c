@@ -1,6 +1,6 @@
 #include <time.h>
 
-#include "global.h"
+#include "global.c"
 #include "lexer.c"
 
 static const char * filename_stdin = "__stdin__";
@@ -48,6 +48,7 @@ typedef struct {
     char * result_buffer;
     FileInfo * current_file;
     Define * defines;
+    const char ** include_paths;
     MemArena * arena;
     struct {
         char * custom_target;
@@ -63,6 +64,7 @@ typedef struct {
     NameSet * dependency_set;
     ExprContext * expr_ctx;
     ExpandContext expand_ctx;
+    char * expansion_site;
     LocationContext loc;
 
     const char * base_file;
@@ -80,8 +82,6 @@ typedef struct {
     FileInfo * chunk_file;
     char * begin_chunk;
 } PasteState;
-
-const char ** include_paths = NULL;
 
 #define BOLD_RED "\e[1;31m"
 #define BOLD_YELLOW "\e[1;33m"
@@ -478,11 +478,11 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         }break;
 
         case MACRO_LINE: {
-            const FileInfo * current_file = find_origin(&ctx->loc, ctx->loc.file, macro_tk->start); // TODO: use parent macro if there is one
+            const FileInfo * current_file = find_origin(&ctx->loc, ctx->loc.file, ctx->expansion_site);
             int line_num = 0;
             if (current_file) {
                 char * start_of_line_;
-                line_num = count_newlines_in_range(current_file->buffer, macro_tk->start, &start_of_line_);
+                line_num = count_newlines_in_range(current_file->buffer, ctx->expansion_site, &start_of_line_);
             }
             strputf(&buf, "%i", line_num);
             token_type = TK_IDENTIFIER;
@@ -826,6 +826,7 @@ preprocess_buffer(PreContext * ctx) {
     arrput(ctx->loc.list, loc_push_file);
 
     while (1) {
+        ctx->expansion_site = s;
         char * start_of_line = s;
         struct {
             bool exists;
@@ -844,7 +845,7 @@ preprocess_buffer(PreContext * ctx) {
             }
 
             if (is_digit(*directive.start) || tk_equal(&directive, "line")) {
-                // TODO
+                // TODO: line directives
             } else if (tk_equal(&directive, "include") || (tk_equal(&directive, "include_next") && (inc_file.is_next = true))) {
                 Token * expanded = expand_line(ctx, &s, true);
                 Token next = expanded[0];
@@ -873,7 +874,6 @@ preprocess_buffer(PreContext * ctx) {
                 char ** arg_list = NULL;
                 bool is_func_like = (*ms == '(');
                 bool variadic = false;
-                // TODO: errors here do not put the line correctly
                 if (is_func_like) {
                     ms++;
                     while (1) {
@@ -1018,8 +1018,8 @@ preprocess_buffer(PreContext * ctx) {
                         goto include_matched_file;
                     }
                 }
-                for (int i=0; i < arrlen(include_paths); i++) {
-                    const char * include_path = include_paths[i];
+                for (int i=0; i < arrlen(ctx->include_paths); i++) {
+                    const char * include_path = ctx->include_paths[i];
                     if (inc_file.is_next) {
                         if (0==strcmp(file_dir, include_path)) {
                             inc_file.is_next = false;
@@ -1310,7 +1310,7 @@ run_preprocessor(int argc, char ** argv) {
 
             case 'I': {
                 const char * new_path = ADJACENT();
-                arrput(include_paths, new_path);
+                arrput(ctx->include_paths, new_path);
             }break;
 
             case 'E': {
@@ -1431,10 +1431,10 @@ run_preprocessor(int argc, char ** argv) {
         }
         if (cfg_buffer) {
             Config cfg = load_config(cfg_buffer);
-            ctx->sys_header_first = arrlen(include_paths);
-            const char ** dest = arraddnptr(include_paths, arrlen(cfg.sys_include_paths));
+            ctx->sys_header_first = arrlen(ctx->include_paths);
+            const char ** dest = arraddnptr(ctx->include_paths, arrlen(cfg.sys_include_paths));
             memcpy(dest, cfg.sys_include_paths, arrlen(cfg.sys_include_paths) * sizeof(char *));
-            ctx->sys_header_last = arrlen(include_paths) - 1;
+            ctx->sys_header_last = arrlen(ctx->include_paths) - 1;
 
             if (cfg.defines) {
                 FileInfo * config_file = calloc(1, sizeof(*config_file));
