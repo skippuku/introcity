@@ -36,6 +36,7 @@ typedef struct {
     Token * list;
     char ** o_s;
     char * last_macro_name;
+    bool in_expression;
 } ExpandContext;
 
 enum TargetMode {
@@ -356,14 +357,14 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
             exit(1);
         }
         count_tokens += 1;
-        if (paren_level == 1 && *tk.start == ',') {
+        if (paren_level == 1 && tk.type == TK_COMMA) {
             arrput(arg_list, arg_tks);
             arg_tks = NULL;
             continue;
         }
-        if (*tk.start == '(') {
+        if (tk.type == TK_L_PARENTHESIS) {
             paren_level += 1;
-        } else if (*tk.start == ')') {
+        } else if (tk.type == TK_R_PARENTHESIS) {
             paren_level -= 1;
             if (paren_level == 0) {
                 arrput(arg_list, arg_tks);
@@ -440,11 +441,14 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         case MACRO_NOT_SPECIAL: break; // never reached
 
         case MACRO_defined: {
+            if (!ctx->expand_ctx.in_expression) {
+                return false;
+            }
             bool preceding_space = macro_tk->preceding_space;
             int index = macro_tk_index;
             Token tk = internal_macro_next_token(ctx, &index);
             bool is_paren = false;
-            if (tk.start && *tk.start == '(') {
+            if (tk.type == TK_L_PARENTHESIS) {
                 is_paren = true;
                 tk = internal_macro_next_token(ctx, &index);
             }
@@ -457,7 +461,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             char * replace = (def.is_defined)? "1" : "0";
             if (is_paren) {
                 tk = internal_macro_next_token(ctx, &index);
-                if (*tk.start != ')') {
+                if (tk.type != TK_R_PARENTHESIS) {
                     preprocess_error(&tk, "Expected ')'.");
                     exit(1);
                 }
@@ -706,7 +710,7 @@ expand_line(PreContext * ctx, char ** o_s, bool is_include) {
             break;
         } else if (ptk.type == TK_COMMENT) {
             continue;
-        } else if (is_include && *ptk.start == '<') {
+        } else if (is_include && ptk.type == TK_L_ANGLE) {
             char * closing = find_closing(ptk.start);
             if (!closing) {
                 preprocess_error(&ptk, "No closing '>'.");
@@ -723,6 +727,7 @@ expand_line(PreContext * ctx, char ** o_s, bool is_include) {
                 ctx->expand_ctx = (ExpandContext){
                     .macro_index_stack = NULL,
                     .list = ptks,
+                    .in_expression = !is_include,
                     .o_s = o_s,
                 };
                 macro_scan(ctx, index);
@@ -837,7 +842,7 @@ preprocess_buffer(PreContext * ctx) {
         Token tk = pre_next_token(&s);
         bool def_forced = false;
 
-        if (*tk.start == '#') {
+        if (tk.type == TK_HASH) {
             Token directive = pre_next_token(&s);
             while (directive.type == TK_COMMENT) directive = pre_next_token(&s);
             if (directive.type != TK_IDENTIFIER) {
@@ -882,7 +887,7 @@ preprocess_buffer(PreContext * ctx) {
                         if (tk.type == TK_IDENTIFIER) {
                             char * arg = copy_and_terminate(ctx->arena, tk.start, tk.length);
                             arrput(arg_list, arg);
-                        } else if (*tk.start == ')') {
+                        } else if (tk.type == TK_R_PARENTHESIS) {
                             break;
                         } else if (memcmp(tk.start, "...", 3) == 0) {
                             variadic = true;
@@ -894,9 +899,9 @@ preprocess_buffer(PreContext * ctx) {
 
                         tk = pre_next_token(&ms);
                         while (tk.type == TK_COMMENT) tk = pre_next_token(&ms);
-                        if (*tk.start == ')') {
+                        if (tk.type == TK_R_PARENTHESIS) {
                             break;
-                        } else if (*tk.start == ',') {
+                        } else if (tk.type == TK_COMMA) {
                             if (variadic) {
                                 preprocess_error(&tk, "You can't do that, man.");
                                 return -1;
@@ -937,7 +942,9 @@ preprocess_buffer(PreContext * ctx) {
                 Define * prevdef = shgetp_null(ctx->defines, def.key);
                 if (prevdef && prevdef->is_defined) {
                     if (prevdef->forced) {
-                        preprocess_warning(&macro_name, "Attempted consesquent #define of forced define.");
+                        if (!ctx->is_sys_header) {
+                            preprocess_warning(&macro_name, "Attempted consesquent #define of forced define.");
+                        }
                         goto nextline;
                     } else {
                         // preprocess_warning(&macro_name, "Macro redefinition.");
@@ -1227,7 +1234,10 @@ static char intro_defs [] =
 "#endif\n"
 
 // clang
-"#define __has_include_next(x) 0\n" // TODO: should probably implement this instead of lazy lying
+"#define __has_include_next(x) 0\n" // TODO: should probably implement this instead of just lying
+
+"#define_forced bool bool\n"
+"typedef bool _Bool;\n"
 ;
 
 PreInfo
@@ -1415,7 +1425,7 @@ run_preprocessor(int argc, char ** argv) {
     }
 
     if (!no_sys) {
-        ctx->minimal_parse = true;
+        ctx->minimal_parse = false;
 
         char path [4096];
         if (!cfg_file) {

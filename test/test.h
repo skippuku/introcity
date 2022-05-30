@@ -80,6 +80,9 @@ struct {
         GLOBAL_PAUSE,
         GLOBAL_LOADING,
     } state;
+
+    bool defined; // make sure intro doesn't try to expand this
+    _Bool test_boo;
 } global_state;
 
 typedef struct {

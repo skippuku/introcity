@@ -1,8 +1,8 @@
 attribute:
+    !! struct/union values
     attribute type: type
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
-    !! struct/union values
     somehow handle data at an offset to a pointer ex. stb_ds
     members of complex type can specify an attribute as a value: I(default default)
     noserialize (for pointers)
@@ -12,12 +12,12 @@ attribute:
     expression attribute type
         select: attribute describes when a member is valid, ex. unions
         length: change to expression ex. I(length map_width * map_height)
+    parse c++ struct defaults as intro defaults?
 
 city:
     stb_ds arrays (requires stb_ds attribute)
 
 config:
-    !! figure out where the file goes
     allow config to be overwritten by file in working directory or file given with cmdline argument
     allow config to be appended with another config?
     change c type sizes for different platforms
@@ -25,7 +25,6 @@ config:
     windows batch script?
 
 parse:
-    !! fix failure on equal signs in unexpected (c++) places
     !! handle sizeof struct/union in expression
     stop parsing after a .intro include as to not depend on types defined later
     handle bit field accessing
@@ -42,11 +41,12 @@ parse:
         ignore templates
 
 pre:
-    !! fix: preprocessor tries to expand 'defined' outside of #if expressions
+    !! fix highlighting with tabs
     more options for what parts have information generated
         option to exclude by default, enable with #if __INTRO__
     save location of includes and defines
     parse #line directives
+    trim big newline gaps
     create #line directives?
 
 gen:

@@ -14,7 +14,7 @@ static const IntroType known_types [] = {
     {"int64_t",  NULL, INTRO_S64},
     {"float",    NULL, INTRO_F32},
     {"double",   NULL, INTRO_F64},
-    {"_Bool",    NULL, INTRO_U8 },
+    {"bool",     NULL, INTRO_U8 },
     {"va_list",  NULL, INTRO_VA_LIST},
 };
 
@@ -962,6 +962,10 @@ find_end: ;
         } else {
             bool do_find_closing = false;
             bool func_body = false;
+            if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {
+                *o_s = tk.start;
+                return RET_DECL_CONTINUE;
+            }
             if (in_expr) {
                 if (tk.type == TK_L_BRACE || tk.type == TK_L_BRACKET || tk.type == TK_L_PARENTHESIS) {
                     do_find_closing = true;
@@ -974,10 +978,6 @@ find_end: ;
                 do_find_closing = true;
                 func_body = true;
                 func->has_body = true;
-            }
-            if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {
-                *o_s = tk.start;
-                return RET_DECL_CONTINUE;
             }
             if (do_find_closing) {
                 *o_s = find_closing(tk.start);
@@ -1017,7 +1017,7 @@ parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_dec
     DeclState decl = {.state = DECL_ARGS};
     while (1) {
         int ret = parse_declaration(ctx, o_s, &decl);
-        if (ret == RET_DECL_FINISHED) {
+        if (ret == RET_DECL_FINISHED || ret == RET_FOUND_END) {
             break;
         } else if (ret < 0) {
             exit(1);

@@ -43,7 +43,7 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
             bool raw_union = false;
             switch(type->category) {
             case INTRO_U8: {
-                if (type == ITYPE(_Bool)) {
+                if (type == ITYPE(bool)) {
                     name = "bool";
                 } else {
                     name = "u8";
