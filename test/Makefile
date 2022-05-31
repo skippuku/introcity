@@ -1,11 +1,12 @@
 INTROLIB := ../build/debug/introlib.o
-INTRO_PARSE := ../intro
+INTRO_PARSE := ../build/release/intro
 CPPFLAGS += -I../lib
 CFLAGS = -g -MMD -MT '$@'
-SRC = $(wildcard *.c)
+SRC := $(wildcard *.c)
 INTERACTIVE := interactive_test
-EXE = $(SRC:%.c=db_%)
-TESTS = $(filter-out db_$(INTERACTIVE),$(EXE))
+EXE := $(SRC:%.c=db_%)
+TESTS := $(filter-out db_$(INTERACTIVE),$(EXE))
+ICFG := ../intro.cfg
 
 export ASAN_OPTIONS = detect_leaks=0
 
@@ -17,12 +18,16 @@ all: $(EXE)
 
 run: $(TESTS)
 	@./../scripts/run_tests.sh $(TESTS)
+	$(INTRO_PARSE) --cfg $(ICFG) ../intro.c -o intro.c.intro
 
 $(INTRO_PARSE):
-	@$(MAKE) -C .. debug
+	@$(MAKE) -C .. release
+
+$(ICFG):
+	@$(MAKE) -C .. config
 
 %.intro: % $(INTRO_PARSE) FORCE
-	$(INTRO_PARSE) $(CPPFLAGS) $< -o $@
+	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) $< -o $@
 
 FORCE:
 

@@ -18,7 +18,7 @@ PREFIX=/usr/local
 set -x
 
 mkdir -p $PREFIX/bin
-cp -f intro $PREFIX/bin/intro
+cp -f build/release/intro $PREFIX/bin/intro
 chmod 755 $PREFIX/bin/intro # read/execute
 
 mkdir -p /etc/introcity

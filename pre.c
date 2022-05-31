@@ -1251,7 +1251,9 @@ preprocess_filename(PreContext * ctx, char * filename) {
 }
 
 static char intro_defs [] =
-"#define_forced __INTRO__ 1\n"
+"#ifndef __INTRO_MINIMAL__\n"
+"#define __INTRO__ 1\n"
+"#endif\n"
 
 "#if !defined __GNUC__\n"
 "  #define_forced __forceinline inline\n"
@@ -1510,18 +1512,23 @@ run_preprocessor(int argc, char ** argv) {
         if (ctx->m_options.enabled && !ctx->m_options.D) {
             preprocess_only = true;
             temp_minimal_parse = true;
-        } else {
-            FileInfo * intro_defs_file = calloc(1, sizeof(*intro_defs_file));
-            intro_defs_file->buffer_size = strlen(intro_defs);
-            intro_defs_file->buffer = intro_defs;
-            intro_defs_file->filename = "__INTRO_DEFS__";
-            arrput(ctx->loc.file_buffers, intro_defs_file);
-            ctx->current_file = intro_defs_file;
-            int ret = preprocess_buffer(ctx);
-            if (ret < 0) {
-                info.ret = -1;
-                return info;
-            }
+            Define def = {
+                .key = "__INTRO_MINIMAL__",
+                .is_defined = true,
+            };
+            shputs(ctx->defines, def);
+        }
+
+        FileInfo * intro_defs_file = calloc(1, sizeof(*intro_defs_file));
+        intro_defs_file->buffer_size = strlen(intro_defs);
+        intro_defs_file->buffer = intro_defs;
+        intro_defs_file->filename = "__INTRO_DEFS__";
+        arrput(ctx->loc.file_buffers, intro_defs_file);
+        ctx->current_file = intro_defs_file;
+        int ret = preprocess_buffer(ctx);
+        if (ret < 0) {
+            info.ret = -1;
+            return info;
         }
 
         ctx->minimal_parse = temp_minimal_parse;

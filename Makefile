@@ -42,13 +42,13 @@ define PROFILE.sanitize
   MAGIC_TARGET := build
 endef
 
-define PROFILE.test
-  $(PROFILE.debug)
-  PROFILEDIR := debug
-endef
-
 define PROFILE.config
   $(PROFILE.release)
+  PROFILEDIR := release
+endef
+
+define PROFILE.test
+  MAGIC_NODEP := 1
 endef
 
 define PROFILE.install
@@ -70,15 +70,14 @@ CFLAGS += -std=gnu99
 
 .PHONY: build test install clean cleanall config
 
-build: $(EXE)
+build: $(OBJDIR)/$(EXE)
 	@echo "Build complete for $(PROFILE)."
 
-$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
+$(OBJDIR)/$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-test: build
-	@$(MAKE) --directory=test/ run
-	./$(EXE) intro.c -o test/intro.c.intro
+test:
+	@$(MAKE) --no-print-directory --directory=test/ run
 
 config: $(EXE)
 	./$(EXE) --gen-config --compiler $(CC) --file intro.cfg
