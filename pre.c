@@ -184,7 +184,7 @@ find_origin(LocationContext * lctx, FileInfo * current, char * ptr) {
 }
 
 static void
-message_internal(char * start_of_line, char * filename, int line, char * hl_start, char * hl_end, char * message, int message_type) {
+message_internal(char * start_of_line, const char * filename, int line, char * hl_start, char * hl_end, const char * message, int message_type) {
     char * end_of_line = strchr(hl_end, '\n');
     if (!end_of_line) {
         end_of_line = hl_end;
@@ -238,6 +238,40 @@ preprocess_message_internal(LocationContext * lctx, const Token * tk, char * mes
 
 #define preprocess_error(tk, message)   preprocess_message_internal(&ctx->loc, tk, message, 0)
 #define preprocess_warning(tk, message) preprocess_message_internal(&ctx->loc, tk, message, 1)
+
+void
+location_note(const LocationContext * lctx, IntroLocation location, const char * msg) {
+    FileInfo * file = NULL;
+    for (int i=0; i < lctx->count; i++) {
+        FileInfo * f = lctx->file_buffers[i];
+        if (0==strcmp(f->filename, location.path)) {
+            file = f;
+            break;
+        }
+    }
+    if (file == NULL) {
+        fprintf(stderr, "Could not find location for note.\n");
+        return;
+    }
+    char * s = file->buffer;
+    int line = 1;
+    while (s < file->buffer + file->buffer_size) {
+        bool done = false;
+        if (*s == '\n') {
+            line++;
+            if (line == location.line) {
+                done = true;
+            }
+        }
+        s++;
+        if (done) break;
+    }
+    char * start_of_line = s;
+    s += location.column;
+
+    Token tk = pre_next_token(&s);
+    message_internal(start_of_line, location.path, line, tk.start, tk.start + tk.length, msg, 1);
+}
 
 static Token
 create_stringized(PreContext * ctx, Token * list) {
@@ -1436,7 +1470,10 @@ run_preprocessor(int argc, char ** argv) {
         char path [4096];
         if (!cfg_file) {
             char program_dir [4096];
-            path_dir(program_dir, argv[0], NULL);
+            char program_path_norm [4096];
+            strcpy(program_path_norm, argv[0]);
+            path_normalize(program_path_norm);
+            path_dir(program_dir, program_path_norm, NULL);
             if (get_config_path(path, program_dir)) {
                 cfg_file = path;
             }
@@ -1466,6 +1503,7 @@ run_preprocessor(int argc, char ** argv) {
             }
         } else {
             fprintf(stderr, "Could not find intro.cfg.\n");
+            exit(1);
         }
 
         bool temp_minimal_parse = false;

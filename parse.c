@@ -29,7 +29,7 @@ struct ParseContext {
     MemArena * arena;
     NameSet * ignore_typedefs;
     struct{char * key; IntroType * value;} * type_map;
-    struct{IntroType key; IntroType * value; FileLoc * loc;} * type_set;
+    struct{IntroType key; IntroType * value;} * type_set;
     NameSet * keyword_set;
     NameSet * enum_name_set;
     NestInfo * nest_map;
@@ -874,8 +874,16 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         }
         IntroType * prev = shget(ctx->type_map, name);
         if (prev) {
-            if (intro_origin(prev) != intro_origin(decl->type)) {
+            const IntroType * og_prev = intro_origin(prev);
+            const IntroType * og_this = intro_origin(decl->type);
+            bool effectively_equal = og_prev->category == og_this->category
+                                  && og_prev->parent == og_this->parent
+                                  && og_prev->__data == og_this->__data;
+            if (!effectively_equal) {
                 parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
+                if (prev->location.path) {
+                    location_note(&ctx->loc, prev->location, "Previous definition here.");
+                }
                 return -1;
             }
         } else {
