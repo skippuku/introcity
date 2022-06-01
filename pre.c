@@ -1302,14 +1302,27 @@ preprocess_filename(PreContext * ctx, char * filename) {
     return preprocess_buffer(ctx);
 }
 
+static char help_dialog [] =
+"intro - parser and introspection data generator\n"
+"USAGE: intro [OPTIONS] file\n"
+"\n"
+"OPTIONS:\n"
+" -o       specify output file\n"
+" -        use stdin as input\n"
+" --cfg    specify config file\n"
+" -I -D -U -E -M -MP -MM -MD -MMD -MG -MT -MF (like gcc)\n"
+" -MT_     output space separated dependency list with no target\n"
+" -MTn     output newline separated dependency list with no target\n"
+;
+
 static char intro_defs [] =
 "#ifndef __INTRO_MINIMAL__\n"
 "#define __INTRO__ 1\n"
 "#endif\n"
 
 "#if !defined __GNUC__\n"
-"  #define_forced __forceinline inline\n"
-"  #define_forced __THROW \n"
+"#define_forced __forceinline inline\n"
+"#define_forced __THROW \n"
 "#endif\n"
 "#define __inline inline\n"
 "#define __restrict restrict\n"
@@ -1386,15 +1399,20 @@ run_preprocessor(int argc, char ** argv) {
                 arg = argv[i] + 2;
                 if (0==strcmp(arg, "no-sys")) {
                     no_sys = true;
-                } else if (0==strcmp(arg, "expr-test")) {
-                    expr_test();
-                    exit(0);
                 } else if (0==strcmp(arg, "cfg")) {
                     cfg_file = argv[++i];
+                } else if (0==strcmp(arg, "help")) {
+                    fputs(help_dialog, stderr);
+                    exit(0);
                 } else {
                     fprintf(stderr, "Unknown option: '%s'\n", arg);
                     exit(1);
                 }
+            }break;
+
+            case 'h': {
+                fputs(help_dialog, stderr);
+                exit(0);
             }break;
 
             case 'D': {
@@ -1490,13 +1508,13 @@ run_preprocessor(int argc, char ** argv) {
             }break;
 
             unknown_option: {
-                fprintf(stderr, "Error: Unknown argumen '%s'\n", arg);
+                fprintf(stderr, "Error: Unknown option '%s'\n", arg);
                 exit(1);
             }break;
             }
         } else {
             if (filepath) {
-                fprintf(stderr, "Error: More than 1 file passed.\n");
+                fprintf(stderr, "Error: More than 1 input file.\n");
                 exit(1);
             } else {
                 filepath = arg;

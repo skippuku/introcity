@@ -18,14 +18,12 @@ attribute:
     parse c++ struct defaults as intro defaults?
 
 city:
-    stb_ds arrays (requires stb_ds attribute)
+    stb_ds arrays (requires stb_ds attribute) (note: i plan to handle this in a way that will not require substantial changes to the city implementation)
 
 config:
     allow config to be appended with another config?
     handle c type sizes
     static assert in .intro file if types don't match
-    windows install?
-        msys?
 
 parse:
     !! handle sizeof struct/union in expression
@@ -35,15 +33,16 @@ parse:
     const flag?
     parse float expressions (for value attributes)
         be aware of types in expressions
-    parse constants
+    parse globals (for libraries that use extern)
     rudimentary C++ support
-        operator overloads
         function overloads
-        member functions
         namespaces
+        member functions
         ignore templates
+        operator overloads?
 
 pre:
+    don't evaluate location line until it is known the type will be in info
     more options for what parts have information generated
         option to exclude by default, enable with #if __INTRO__
     save location of includes and defines
@@ -54,8 +53,8 @@ pre:
 gen:
     !! clang doesn't like flexible array initialization in c++
         might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
-    option to flag types you care about and only output information necessary for those types
     option to create typedefs for structs and enums
+    place all data in one big buffer acessible only through the context, write protect the buffer
     typeof with _Generic?
 
 lib:
@@ -73,8 +72,7 @@ examples:
     !! more of these
 
 doc:
-    parser --help status
-    man page
+    man page?
 
 misc:
     use custom allocators more + cleanup

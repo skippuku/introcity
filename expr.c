@@ -87,7 +87,7 @@ typedef struct {
     ExprInstruction instructions [];
 } ExprProcedure;
 
-static void
+static void UNUSED
 free_expr_context(ExprContext * ectx) {
     free_arena(ectx->arena);
     shfree(ectx->constant_map);
@@ -426,32 +426,3 @@ run_expression(ExprProcedure * proc) {
     return result;
 }
 #pragma GCC diagnostic pop
-
-void
-expr_test() {
-    char buf [1024];
-    printf("Enter a c expression: ");
-    assert(fgets(buf, sizeof(buf), stdin));
-    char * s = buf;
-    Token * tks = NULL;
-    while (1) {
-        Token tk = next_token(&s);
-        if (tk.type == TK_END) {
-            break;
-        }
-        arrput(tks, tk);
-    }
-
-    ExprContext ectx = {
-        .mode = MODE_PRE,
-        .arena = new_arena(EXPR_BUCKET_CAP),
-    };
-    ExprNode * tree = build_expression_tree(&ectx, tks, arrlen(tks), NULL);
-    ExprProcedure * expr = build_expression_procedure(tree);
-    intmax_t result = run_expression(expr);
-
-    free(expr);
-    free_expr_context(&ectx);
-
-    printf("result: %i\n", (int)result);
-}
