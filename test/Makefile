@@ -16,11 +16,11 @@ export ASAN_OPTIONS = detect_leaks=0
 all: $(EXE)
 	@echo "Build complete."
 
-run: $(TESTS)
+run: $(TESTS) $(INTRO_PARSE)
 	@./../scripts/run_tests.sh $(TESTS)
 	$(INTRO_PARSE) --cfg $(ICFG) ../intro.c -o intro.c.intro
 
-$(INTRO_PARSE):
+$(INTRO_PARSE): FORCE
 	@$(MAKE) -C .. release
 
 $(ICFG):

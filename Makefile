@@ -24,8 +24,10 @@ define PROFILE.release
   MAGIC_TARGET := build
 endef
 
+PROFILE_FLAGS := -fprofile-instr-generate -fcoverage-mapping
 define PROFILE.profile
-  CFLAGS += -g -O2
+  CFLAGS += -O2 $(PROFILE_FLAGS)
+  LDFLAGS += $(PROFILE_FLAGS)
   MAGIC_TARGET := build
 endef
 

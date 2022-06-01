@@ -3,6 +3,10 @@
 #include "global.c"
 #include "lexer.c"
 
+#ifdef __SSE2__
+#include <immintrin.h>
+#endif
+
 static const char * filename_stdin = "__stdin__";
 
 typedef enum {
@@ -105,8 +109,43 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
     strputf(p_s, "\n");
 }
 
+static inline int
+count_newlines_unaligned(char * start, int count) {
+    __m128i mask;
+    memset(&mask, 1, count);
+    __m128i line = _mm_loadu_si128((void *)start);
+    line = _mm_and_si128(mask, line);
+    __m128i vsum = _mm_sad_epu8(line, _mm_setzero_si128());
+    int isum = _mm_cvtsi128_si32(vsum) + _mm_extract_epi16(vsum, 4);
+    return isum;
+}
+
 static int
 count_newlines_in_range(char * s, char * end, char ** o_last_line) {
+#ifdef __SSE2__
+    int result = 1;
+    int count_to_aligned = (16 - ((uintptr_t)s & 15)) & 15;
+    result += count_newlines_unaligned(s, MIN(count_to_aligned, end - s));
+    s += count_to_aligned;
+    if (s < end) {
+        while (s+16 < end) {
+            const __m128i newlines = _mm_set1_epi8('\n');
+            const __m128i mask = _mm_set1_epi8(1);
+            __m128i line = _mm_load_si128((void *)s);
+            __m128i cmp = _mm_cmpeq_epi8(line, newlines);
+            cmp = _mm_and_si128(cmp, mask);
+            __m128i vsum = _mm_sad_epu8(cmp, _mm_setzero_si128());
+            int isum = _mm_cvtsi128_si32(vsum) + _mm_extract_epi16(vsum, 4);
+            result += isum;
+            s += 16;
+        }
+        db_assert(end - s >= 0);
+        result += count_newlines_unaligned(s, end - s);
+    }
+    while (*--end != '\n');
+    *o_last_line = end;
+    return result;
+#else
     int result = 1;
     *o_last_line = s;
     while (s < end) {
@@ -116,11 +155,12 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
         }
     }
     return result;
+#endif
 }
 
 FileInfo *
 get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_line, char ** o_start_of_line) {
-    FileLoc pos_loc;
+    FileLoc * pos_loc;
     int loc_index = -1;
     int max = (lctx->count)? lctx->count : arrlen(lctx->list);
     for (int i=lctx->index; i < max; i++) {
@@ -129,7 +169,7 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
         if (offset < loc.offset) {
             lctx->index = i;
             loc_index = i-1;
-            pos_loc = lctx->list[loc_index];
+            pos_loc = &lctx->list[loc_index];
             break;
         } else {
             if (loc.file) lctx->file = loc.file;
@@ -155,12 +195,24 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
         fprintf(stderr, "Internal error: failed to find file for error report.");
         exit(-1);
     }
-    *o_pos = file_buffer + (pos_loc.file_offset + ((*o_pos - buffer_begin) - pos_loc.offset));
+    *o_pos = file_buffer + (pos_loc->file_offset + ((*o_pos - buffer_begin) - pos_loc->offset));
     assert(*o_pos < file_buffer + lctx->file->buffer_size);
 
-    char * last_line;
-    *o_line = count_newlines_in_range(file_buffer, *o_pos, &last_line);
-    *o_start_of_line = last_line;
+    char * start_search;
+    int line_num;
+    if (lctx->pos < *o_pos && lctx->pos >= file_buffer && lctx->pos < file_buffer + lctx->file->buffer_size) {
+        start_search = lctx->pos;
+        line_num = lctx->line_num;
+    } else {
+        start_search = file_buffer;
+        line_num = 0;
+    }
+    line_num += count_newlines_in_range(start_search, *o_pos, o_start_of_line);
+
+    lctx->line_num = *o_line;
+    lctx->pos = *o_pos;
+
+    *o_line = line_num;
     return lctx->file;
 }
 

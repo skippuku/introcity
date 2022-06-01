@@ -103,6 +103,8 @@ typedef struct {
     int64_t index;
     FileInfo * file;
     int * stack;
+    int line_num;
+    char * pos;
 } LocationContext;
 
 typedef struct {
