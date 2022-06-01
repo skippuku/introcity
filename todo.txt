@@ -1,5 +1,6 @@
 attribute:
     !! struct/union values
+        see: the struct layout precipice
     attribute type: type
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
@@ -18,11 +19,11 @@ city:
     stb_ds arrays (requires stb_ds attribute)
 
 config:
-    allow config to be overwritten by file in working directory or file given with cmdline argument
     allow config to be appended with another config?
-    change c type sizes for different platforms
+    handle c type sizes
     static assert in .intro file if types don't match
-    windows batch script?
+    windows install?
+        msys?
 
 parse:
     !! handle sizeof struct/union in expression
@@ -49,6 +50,8 @@ pre:
     create #line directives?
 
 gen:
+    !! clang doesn't like flexible array initialization in c++
+        might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
     option to flag types you care about and only output information necessary for those types
     option to create typedefs for structs and enums
     typeof with _Generic?
@@ -74,7 +77,7 @@ doc:
 misc:
     use custom allocators more + cleanup
     parse program options and pass only relevant ones to sub-processes
-    maybe the preprocessor should output tokens instead of text
+    preprocessor should output tokens instead of text
 
 The struct layout precipice:
     Struct layout is dependent on the platform ABI.

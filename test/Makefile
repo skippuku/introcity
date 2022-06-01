@@ -23,6 +23,9 @@ run: $(TESTS) $(INTRO_PARSE)
 $(INTRO_PARSE): FORCE
 	@$(MAKE) -C .. release
 
+$(INTROLIB): FORCE
+	@$(MAKE) -C .. debug
+
 $(ICFG):
 	@$(MAKE) -C .. config
 
@@ -31,7 +34,7 @@ $(ICFG):
 
 FORCE:
 
-$(EXE): db_%: %.c
+$(EXE): db_%: %.c $(INTROLIB)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $< $(INTROLIB) -o $@
 
 clean:

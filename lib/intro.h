@@ -15,6 +15,14 @@ extern "C" {
 
 #define ITYPE(x) (&__intro_types[ITYPE_##x])
 
+#ifndef INTRO_ANON_UNION_NAME
+  #if __STDC_VERSION__ < 199901L
+    #define INTRO_ANON_UNION_NAME u
+  #else
+    #define INTRO_ANON_UNION_NAME
+  #endif
+#endif
+
 typedef enum IntroCategory {
     INTRO_UNKNOWN = 0x0,
 
@@ -79,7 +87,7 @@ struct IntroType {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
         IntroTypePtrList * args;
-    };
+    } INTRO_ANON_UNION_NAME;
     IntroLocation location;
 };
 

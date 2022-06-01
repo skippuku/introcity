@@ -67,9 +67,15 @@ Return true if `type` is a struct, union, or enum.
 
 ### `intro_size`
 ```C
-int intro_size(const IntroType * type);
+INTRO_INLINE int intro_size(const IntroType * type);
 ```
 Return the size of a type in bytes.
+
+### `intro_origin`
+```C
+INTRO_INLINE const IntroType * intro_origin(const IntroType * type);
+```
+Follow typedefs until the original type is found, then return that type.
 
 # attribute information
 
