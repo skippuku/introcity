@@ -1,5 +1,4 @@
 IMGUI_PATH := ../modules/imgui/
-EXE := intro
 
 ifeq (,$(OS))
   UNAME := $(shell uname -s)
@@ -47,6 +46,7 @@ endef
 define PROFILE.config
   $(PROFILE.release)
   PROFILEDIR := release
+  MAGIC_TARGET := build
 endef
 
 define PROFILE.test
@@ -70,12 +70,14 @@ include magic.mk
 CXXFLAGS := $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
 CFLAGS += -std=gnu99
 
+EXE := $(OBJDIR)/intro
+
 .PHONY: build test install clean cleanall config
 
-build: $(OBJDIR)/$(EXE)
+build: $(EXE)
 	@echo "Build complete for $(PROFILE)."
 
-$(OBJDIR)/$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
+$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 test:
