@@ -13,6 +13,8 @@ attribute:
     expression attribute type
         select: attribute describes when a member is valid, ex. unions
         length: change to expression ex. I(length map_width * map_height)
+    attributes on enum values
+    friendly_name attribute I("friendly name")
     parse c++ struct defaults as intro defaults?
 
 city:
