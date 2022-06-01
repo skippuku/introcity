@@ -85,7 +85,7 @@ For more examples, check out the test directory.
 `make release` will build a release version of the parser at build/release/intro.   
 You may want to run `make test` to ensure everything is working correctly.  
 
-### Linux
+### Linux / MSYS2
 `sudo make install` should set you up so you can invoke "intro" from anywhere.
 
 ## Integration

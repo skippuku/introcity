@@ -2,7 +2,7 @@
 
 if [ "$EUID" -ne 0 ]; then
     echo "need root privileges. try sudo."
-    exit
+    exit 1
 fi
 
 if [ $(dirname $0) = . ]; then
@@ -10,8 +10,12 @@ if [ $(dirname $0) = . ]; then
     cd ..
 fi
 
-if [ ! -f intro ]; then
+if [ ! -f intro.cfg ]; then
     sudo -u ${SUDO_USER} -- make config || exit 1
+fi
+
+if [ ! -f build/release/intro ]; then
+    sudo -u ${SUDO_USER} -- make release || exit 1
 fi
 
 PREFIX=/usr/local

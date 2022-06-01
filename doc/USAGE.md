@@ -5,10 +5,10 @@
 *intro* looks for the configuration file in the following order and uses the first path that resolves to an existing file:
  - (CWD)/intro.cfg
  - (CWD)/.intro.cfg
- - ~/.config/introcity/intro.cfg (linux/bsd)
+ - ~/.config/introcity/intro.cfg (linux/msys)
  - %LOCALAPPDATA%/introcity/intro.cfg (windows)
  - (program directory)/intro.cfg
- - /etc/introcity/intro.cfg (linux/bsd)
+ - /etc/introcity/intro.cfg (linux/msys)
 
 A configuration can also be manually passed using `--cfg <file>`.  
   

@@ -7,6 +7,10 @@ ifeq (,$(OS))
   endif
 endif
 
+ifeq (Windows_NT,$(OS))
+  CFLAGS += -DMSYS2_PATHS
+endif
+
 ifneq (0,$(shell id -u))
   GIT_VERSION := $(shell git describe --abbrev=7 --tags --dirty --always)
 else
@@ -88,10 +92,11 @@ config: $(EXE)
 
 install:
 ifeq (Linux,$(OS))
-	./scripts/install.sh
+	./scripts/install_linux.sh
 	@echo "install successful, enjoy!"
-else
-	@echo "install target is not supported for this OS."
+else ifeq (Windows_NT,$(OS))
+	./scripts/install_msys2.sh
+	@echo "install successful, enjoy!"
 endif
 
 clean:
