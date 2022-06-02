@@ -4,3 +4,4 @@ lib/ext/
 README.md
 magic.mk
 build/
+scripts/

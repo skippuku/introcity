@@ -1,7 +1,11 @@
 #include <time.h>
 
-#include "global.h"
+#include "global.c"
 #include "lexer.c"
+
+#ifdef __SSE2__
+#include <immintrin.h>
+#endif
 
 static const char * filename_stdin = "__stdin__";
 
@@ -36,6 +40,7 @@ typedef struct {
     Token * list;
     char ** o_s;
     char * last_macro_name;
+    bool in_expression;
 } ExpandContext;
 
 enum TargetMode {
@@ -48,6 +53,7 @@ typedef struct {
     char * result_buffer;
     FileInfo * current_file;
     Define * defines;
+    const char ** include_paths;
     MemArena * arena;
     struct {
         char * custom_target;
@@ -63,6 +69,7 @@ typedef struct {
     NameSet * dependency_set;
     ExprContext * expr_ctx;
     ExpandContext expand_ctx;
+    char * expansion_site;
     LocationContext loc;
 
     const char * base_file;
@@ -81,8 +88,6 @@ typedef struct {
     char * begin_chunk;
 } PasteState;
 
-const char ** include_paths = NULL;
-
 #define BOLD_RED "\e[1;31m"
 #define BOLD_YELLOW "\e[1;33m"
 #define CYAN "\e[0;36m"
@@ -93,13 +98,54 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
     strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
     strputf(p_s, "%s%.*s" WHITE, highlight_color, (int)(highlight_end - highlight_start), highlight_start);
     strputf(p_s, "%.*s\n", (int)(segment_end - highlight_end), highlight_end);
-    for (int i=0; i < highlight_start - segment_start; i++) arrput(*p_s, ' ');
+    for (int i=0; i < highlight_start - segment_start; i++) {
+        if (segment_start[i] == '\t') {
+            arrput(*p_s, '\t');
+        } else {
+            arrput(*p_s, ' ');
+        }
+    }
     for (int i=0; i < highlight_end - highlight_start; i++) arrput(*p_s, '~');
     strputf(p_s, "\n");
 }
 
+static inline int
+count_newlines_unaligned(char * start, int count) {
+    __m128i mask;
+    memset(&mask, 1, count);
+    __m128i line = _mm_loadu_si128((void *)start);
+    line = _mm_and_si128(mask, line);
+    __m128i vsum = _mm_sad_epu8(line, _mm_setzero_si128());
+    int isum = _mm_cvtsi128_si32(vsum) + _mm_extract_epi16(vsum, 4);
+    return isum;
+}
+
 static int
 count_newlines_in_range(char * s, char * end, char ** o_last_line) {
+#ifdef __SSE2__
+    int result = 1;
+    int count_to_aligned = (16 - ((uintptr_t)s & 15)) & 15;
+    result += count_newlines_unaligned(s, MIN(count_to_aligned, end - s));
+    s += count_to_aligned;
+    if (s < end) {
+        while (s+16 < end) {
+            const __m128i newlines = _mm_set1_epi8('\n');
+            const __m128i mask = _mm_set1_epi8(1);
+            __m128i line = _mm_load_si128((void *)s);
+            __m128i cmp = _mm_cmpeq_epi8(line, newlines);
+            cmp = _mm_and_si128(cmp, mask);
+            __m128i vsum = _mm_sad_epu8(cmp, _mm_setzero_si128());
+            int isum = _mm_cvtsi128_si32(vsum) + _mm_extract_epi16(vsum, 4);
+            result += isum;
+            s += 16;
+        }
+        db_assert(end - s >= 0);
+        result += count_newlines_unaligned(s, end - s);
+    }
+    while (*--end != '\n');
+    *o_last_line = end;
+    return result;
+#else
     int result = 1;
     *o_last_line = s;
     while (s < end) {
@@ -109,11 +155,12 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
         }
     }
     return result;
+#endif
 }
 
 FileInfo *
 get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_line, char ** o_start_of_line) {
-    FileLoc pos_loc;
+    FileLoc * pos_loc;
     int loc_index = -1;
     int max = (lctx->count)? lctx->count : arrlen(lctx->list);
     for (int i=lctx->index; i < max; i++) {
@@ -122,7 +169,7 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
         if (offset < loc.offset) {
             lctx->index = i;
             loc_index = i-1;
-            pos_loc = lctx->list[loc_index];
+            pos_loc = &lctx->list[loc_index];
             break;
         } else {
             if (loc.file) lctx->file = loc.file;
@@ -148,12 +195,24 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
         fprintf(stderr, "Internal error: failed to find file for error report.");
         exit(-1);
     }
-    *o_pos = file_buffer + (pos_loc.file_offset + ((*o_pos - buffer_begin) - pos_loc.offset));
+    *o_pos = file_buffer + (pos_loc->file_offset + ((*o_pos - buffer_begin) - pos_loc->offset));
     assert(*o_pos < file_buffer + lctx->file->buffer_size);
 
-    char * last_line;
-    *o_line = count_newlines_in_range(file_buffer, *o_pos, &last_line);
-    *o_start_of_line = last_line;
+    char * start_search;
+    int line_num;
+    if (lctx->pos < *o_pos && lctx->pos >= file_buffer && lctx->pos < file_buffer + lctx->file->buffer_size) {
+        start_search = lctx->pos;
+        line_num = lctx->line_num;
+    } else {
+        start_search = file_buffer;
+        line_num = 0;
+    }
+    line_num += count_newlines_in_range(start_search, *o_pos, o_start_of_line);
+
+    lctx->line_num = *o_line;
+    lctx->pos = *o_pos;
+
+    *o_line = line_num;
     return lctx->file;
 }
 
@@ -177,7 +236,7 @@ find_origin(LocationContext * lctx, FileInfo * current, char * ptr) {
 }
 
 static void
-message_internal(char * start_of_line, char * filename, int line, char * hl_start, char * hl_end, char * message, int message_type) {
+message_internal(char * start_of_line, const char * filename, int line, char * hl_start, char * hl_end, const char * message, int message_type) {
     char * end_of_line = strchr(hl_end, '\n');
     if (!end_of_line) {
         end_of_line = hl_end;
@@ -231,6 +290,40 @@ preprocess_message_internal(LocationContext * lctx, const Token * tk, char * mes
 
 #define preprocess_error(tk, message)   preprocess_message_internal(&ctx->loc, tk, message, 0)
 #define preprocess_warning(tk, message) preprocess_message_internal(&ctx->loc, tk, message, 1)
+
+void
+location_note(const LocationContext * lctx, IntroLocation location, const char * msg) {
+    FileInfo * file = NULL;
+    for (int i=0; i < lctx->count; i++) {
+        FileInfo * f = lctx->file_buffers[i];
+        if (0==strcmp(f->filename, location.path)) {
+            file = f;
+            break;
+        }
+    }
+    if (file == NULL) {
+        fprintf(stderr, "Could not find location for note.\n");
+        return;
+    }
+    char * s = file->buffer;
+    int line = 1;
+    while (s < file->buffer + file->buffer_size) {
+        bool done = false;
+        if (*s == '\n') {
+            line++;
+            if (line == location.line) {
+                done = true;
+            }
+        }
+        s++;
+        if (done) break;
+    }
+    char * start_of_line = s;
+    s += location.column;
+
+    Token tk = pre_next_token(&s);
+    message_internal(start_of_line, location.path, line, tk.start, tk.start + tk.length, msg, 1);
+}
 
 static Token
 create_stringized(PreContext * ctx, Token * list) {
@@ -356,14 +449,14 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
             exit(1);
         }
         count_tokens += 1;
-        if (paren_level == 1 && *tk.start == ',') {
+        if (paren_level == 1 && tk.type == TK_COMMA) {
             arrput(arg_list, arg_tks);
             arg_tks = NULL;
             continue;
         }
-        if (*tk.start == '(') {
+        if (tk.type == TK_L_PARENTHESIS) {
             paren_level += 1;
-        } else if (*tk.start == ')') {
+        } else if (tk.type == TK_R_PARENTHESIS) {
             paren_level -= 1;
             if (paren_level == 0) {
                 arrput(arg_list, arg_tks);
@@ -385,7 +478,7 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
         arrput(unexpanded_list, tks);
     }
 
-    const ExpandContext prev_ctx = ctx->expand_ctx;
+    ExpandContext prev_ctx = ctx->expand_ctx;
     for (int arg_i=0; arg_i < arrlen(arg_list); arg_i++) {
         for (int tk_i=0; tk_i < arrlen(arg_list[arg_i]); tk_i++) {
             if (arg_list[arg_i][tk_i].type == TK_IDENTIFIER) {
@@ -399,6 +492,7 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
             }
         }
     }
+    prev_ctx.macro_index_stack = ctx->expand_ctx.macro_index_stack;
     ctx->expand_ctx = prev_ctx;
 
     result.unexpanded_list = unexpanded_list;
@@ -439,11 +533,14 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         case MACRO_NOT_SPECIAL: break; // never reached
 
         case MACRO_defined: {
+            if (!ctx->expand_ctx.in_expression) {
+                return false;
+            }
             bool preceding_space = macro_tk->preceding_space;
             int index = macro_tk_index;
             Token tk = internal_macro_next_token(ctx, &index);
             bool is_paren = false;
-            if (tk.start && *tk.start == '(') {
+            if (tk.type == TK_L_PARENTHESIS) {
                 is_paren = true;
                 tk = internal_macro_next_token(ctx, &index);
             }
@@ -452,10 +549,11 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 exit(1);
             }
             STACK_TERMINATE(defined_iden, tk.start, tk.length);
-            char * replace = (shgeti(ctx->defines, defined_iden) >= 0)? "1" : "0";
+            Define def = shgets(ctx->defines, defined_iden);
+            char * replace = (def.is_defined)? "1" : "0";
             if (is_paren) {
                 tk = internal_macro_next_token(ctx, &index);
-                if (*tk.start != ')') {
+                if (tk.type != TK_R_PARENTHESIS) {
                     preprocess_error(&tk, "Expected ')'.");
                     exit(1);
                 }
@@ -476,11 +574,11 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         }break;
 
         case MACRO_LINE: {
-            const FileInfo * current_file = find_origin(&ctx->loc, ctx->loc.file, macro_tk->start); // TODO: use parent macro if there is one
+            const FileInfo * current_file = find_origin(&ctx->loc, ctx->loc.file, ctx->expansion_site);
             int line_num = 0;
             if (current_file) {
                 char * start_of_line_;
-                line_num = count_newlines_in_range(current_file->buffer, macro_tk->start, &start_of_line_);
+                line_num = count_newlines_in_range(current_file->buffer, ctx->expansion_site, &start_of_line_);
             }
             strputf(&buf, "%i", line_num);
             token_type = TK_IDENTIFIER;
@@ -704,7 +802,7 @@ expand_line(PreContext * ctx, char ** o_s, bool is_include) {
             break;
         } else if (ptk.type == TK_COMMENT) {
             continue;
-        } else if (is_include && *ptk.start == '<') {
+        } else if (is_include && ptk.type == TK_L_ANGLE) {
             char * closing = find_closing(ptk.start);
             if (!closing) {
                 preprocess_error(&ptk, "No closing '>'.");
@@ -721,6 +819,7 @@ expand_line(PreContext * ctx, char ** o_s, bool is_include) {
                 ctx->expand_ctx = (ExpandContext){
                     .macro_index_stack = NULL,
                     .list = ptks,
+                    .in_expression = !is_include,
                     .o_s = o_s,
                 };
                 macro_scan(ctx, index);
@@ -769,31 +868,24 @@ pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
                     depth--;
                 } else if (tk_equal(&tk, "else")) {
                     if (elif_ok && depth == 1) {
-                        while (tk.type != TK_NEWLINE && tk.type != TK_END) {
-                            tk = pre_next_token(o_s);
-                        }
-                        *o_s = tk.start;
-                        return;
+                        depth = 0;
                     }
                 } else if (tk_equal(&tk, "elif")) {
                     if (elif_ok && depth == 1) {
                         bool expr_result = parse_expression(ctx, o_s);
                         if (expr_result) {
-                            return;
+                            depth = 0;
                         }
                     }
                 }
-                goto nextline;
             }
-        } else {
-        nextline:
-            while (tk.type != TK_NEWLINE && tk.type != TK_END) {
-                tk = pre_next_token(o_s);
-            }
-            if (depth == 0 || tk.type == TK_END) {
-                *o_s = tk.start;
-                return;
-            }
+        }
+        while (tk.type != TK_NEWLINE && tk.type != TK_END) {
+            tk = pre_next_token(o_s);
+        }
+        if (depth == 0 || tk.type == TK_END) {
+            *o_s = tk.start;
+            return;
         }
     }
 }
@@ -831,6 +923,7 @@ preprocess_buffer(PreContext * ctx) {
     arrput(ctx->loc.list, loc_push_file);
 
     while (1) {
+        ctx->expansion_site = s;
         char * start_of_line = s;
         struct {
             bool exists;
@@ -841,7 +934,7 @@ preprocess_buffer(PreContext * ctx) {
         Token tk = pre_next_token(&s);
         bool def_forced = false;
 
-        if (*tk.start == '#') {
+        if (tk.type == TK_HASH) {
             Token directive = pre_next_token(&s);
             while (directive.type == TK_COMMENT) directive = pre_next_token(&s);
             if (directive.type != TK_IDENTIFIER) {
@@ -849,7 +942,7 @@ preprocess_buffer(PreContext * ctx) {
             }
 
             if (is_digit(*directive.start) || tk_equal(&directive, "line")) {
-                // TODO
+                // TODO: line directives
             } else if (tk_equal(&directive, "include") || (tk_equal(&directive, "include_next") && (inc_file.is_next = true))) {
                 Token * expanded = expand_line(ctx, &s, true);
                 Token next = expanded[0];
@@ -878,7 +971,6 @@ preprocess_buffer(PreContext * ctx) {
                 char ** arg_list = NULL;
                 bool is_func_like = (*ms == '(');
                 bool variadic = false;
-                // TODO: errors here do not put the line correctly
                 if (is_func_like) {
                     ms++;
                     while (1) {
@@ -887,7 +979,7 @@ preprocess_buffer(PreContext * ctx) {
                         if (tk.type == TK_IDENTIFIER) {
                             char * arg = copy_and_terminate(ctx->arena, tk.start, tk.length);
                             arrput(arg_list, arg);
-                        } else if (*tk.start == ')') {
+                        } else if (tk.type == TK_R_PARENTHESIS) {
                             break;
                         } else if (memcmp(tk.start, "...", 3) == 0) {
                             variadic = true;
@@ -899,9 +991,9 @@ preprocess_buffer(PreContext * ctx) {
 
                         tk = pre_next_token(&ms);
                         while (tk.type == TK_COMMENT) tk = pre_next_token(&ms);
-                        if (*tk.start == ')') {
+                        if (tk.type == TK_R_PARENTHESIS) {
                             break;
-                        } else if (*tk.start == ',') {
+                        } else if (tk.type == TK_COMMA) {
                             if (variadic) {
                                 preprocess_error(&tk, "You can't do that, man.");
                                 return -1;
@@ -939,18 +1031,23 @@ preprocess_buffer(PreContext * ctx) {
                     def.func_like = true;
                     def.variadic = variadic;
                 }
-                const Define * prevdef = shgetp(ctx->defines, def.key);
+                Define * prevdef = shgetp_null(ctx->defines, def.key);
                 if (prevdef && prevdef->is_defined) {
                     if (prevdef->forced) {
-                        preprocess_warning(&macro_name, "Attempted consesquent #define of forced define.");
+                        if (!ctx->is_sys_header) {
+                            preprocess_warning(&macro_name, "Attempted consesquent #define of forced define.");
+                        }
                         goto nextline;
                     } else {
                         // preprocess_warning(&macro_name, "Macro redefinition.");
-                        // NOTE: system headers would cause this to trigger a lot, though redefinitions
-                        //       are against the C standard. So something is amok.
+                        // TODO: check that definitions are equal
                     }
                 }
-                shputs(ctx->defines, def);
+                if (!prevdef) {
+                    shputs(ctx->defines, def);
+                } else {
+                    *prevdef = def;
+                }
             } else if (tk_equal(&directive, "undef")) {
                 Token def = pre_next_token(&s);
                 STACK_TERMINATE(iden, def.start, def.length);
@@ -1020,8 +1117,8 @@ preprocess_buffer(PreContext * ctx) {
                         goto include_matched_file;
                     }
                 }
-                for (int i=0; i < arrlen(include_paths); i++) {
-                    const char * include_path = include_paths[i];
+                for (int i=0; i < arrlen(ctx->include_paths); i++) {
+                    const char * include_path = ctx->include_paths[i];
                     if (inc_file.is_next) {
                         if (0==strcmp(file_dir, include_path)) {
                             inc_file.is_next = false;
@@ -1205,14 +1302,30 @@ preprocess_filename(PreContext * ctx, char * filename) {
     return preprocess_buffer(ctx);
 }
 
+static char help_dialog [] =
+"intro - parser and introspection data generator\n"
+"USAGE: intro [OPTIONS] file\n"
+"\n"
+"OPTIONS:\n"
+" -o       specify output file\n"
+" -        use stdin as input\n"
+" --cfg    specify config file\n"
+" -I -D -U -E -M -MP -MM -MD -MMD -MG -MT -MF (like gcc)\n"
+" -MT_     output space separated dependency list with no target\n"
+" -MTn     output newline separated dependency list with no target\n"
+;
+
 static char intro_defs [] =
-"#define_forced __INTRO__ 1\n"
+"#ifndef __INTRO_MINIMAL__\n"
+"#define __INTRO__ 1\n"
+"#endif\n"
 
 "#if !defined __GNUC__\n"
-"  #define_forced __forceinline inline\n"
-"  #define_forced __THROW \n"
+"#define_forced __forceinline inline\n"
+"#define_forced __THROW \n"
 "#endif\n"
-"#define_forced __inline inline\n"
+"#define __inline inline\n"
+"#define __restrict restrict\n"
 
 // MINGW
 "#define _VA_LIST_DEFINED 1\n"
@@ -1226,6 +1339,12 @@ static char intro_defs [] =
 "#define_forced __asm__(x) \n"
 "#define_forced __volatile__(x) \n"
 "#endif\n"
+
+// clang
+"#define __has_include_next(x) 0\n" // TODO: should probably implement this instead of just lying
+
+"#define_forced bool bool\n"
+"typedef bool _Bool;\n"
 ;
 
 PreInfo
@@ -1239,7 +1358,6 @@ run_preprocessor(int argc, char ** argv) {
 
     PreInfo info = {0};
 
-    stbds_rand_seed(time(NULL));
     sh_new_arena(ctx->defines);
 
     static const struct{char * name; SpecialMacro value;} special_macros [] = {
@@ -1265,6 +1383,7 @@ run_preprocessor(int argc, char ** argv) {
     bool preprocess_only = false;
     bool no_sys = false;
     char * filepath = NULL;
+    char * cfg_file = NULL;
 
     Token *const undef_replace_list = NULL; // reserve an address. remains unused
     Token * default_replace_list = NULL;
@@ -1280,13 +1399,20 @@ run_preprocessor(int argc, char ** argv) {
                 arg = argv[i] + 2;
                 if (0==strcmp(arg, "no-sys")) {
                     no_sys = true;
-                } else if (0==strcmp(arg, "expr-test")) {
-                    expr_test();
+                } else if (0==strcmp(arg, "cfg")) {
+                    cfg_file = argv[++i];
+                } else if (0==strcmp(arg, "help")) {
+                    fputs(help_dialog, stderr);
                     exit(0);
                 } else {
                     fprintf(stderr, "Unknown option: '%s'\n", arg);
                     exit(1);
                 }
+            }break;
+
+            case 'h': {
+                fputs(help_dialog, stderr);
+                exit(0);
             }break;
 
             case 'D': {
@@ -1306,7 +1432,7 @@ run_preprocessor(int argc, char ** argv) {
 
             case 'I': {
                 const char * new_path = ADJACENT();
-                arrput(include_paths, new_path);
+                arrput(ctx->include_paths, new_path);
             }break;
 
             case 'E': {
@@ -1382,13 +1508,13 @@ run_preprocessor(int argc, char ** argv) {
             }break;
 
             unknown_option: {
-                fprintf(stderr, "Error: Unknown argumen '%s'\n", arg);
+                fprintf(stderr, "Error: Unknown option '%s'\n", arg);
                 exit(1);
             }break;
             }
         } else {
             if (filepath) {
-                fprintf(stderr, "Error: More than 1 file passed.\n");
+                fprintf(stderr, "Error: More than 1 input file.\n");
                 exit(1);
             } else {
                 filepath = arg;
@@ -1411,47 +1537,68 @@ run_preprocessor(int argc, char ** argv) {
     }
 
     if (!no_sys) {
-        FileInfo temp_file = {0};
+        ctx->minimal_parse = false;
 
-        ctx->minimal_parse = true;
-
-        char program_dir [1024];
-        char path [1024];
-        strcpy(program_dir, argv[0]);
-        path_normalize(program_dir);
-        path_dir(program_dir, program_dir, NULL);
-
+        char path [4096];
+        if (!cfg_file) {
+            char program_dir [4096];
+            char program_path_norm [4096];
+            strcpy(program_path_norm, argv[0]);
+            path_normalize(program_path_norm);
+            path_dir(program_dir, program_path_norm, NULL);
+            if (get_config_path(path, program_dir)) {
+                cfg_file = path;
+            }
+        }
         char * cfg_buffer = NULL;
-        bool have_config = get_config_path(path, program_dir);
-        if (have_config) {
-            cfg_buffer = intro_read_file(path, NULL);
+        if (cfg_file) {
+            cfg_buffer = intro_read_file(cfg_file, NULL);
         }
         if (cfg_buffer) {
             Config cfg = load_config(cfg_buffer);
-            ctx->sys_header_first = arrlen(include_paths);
-            const char ** dest = arraddnptr(include_paths, arrlen(cfg.sys_include_paths));
+            ctx->sys_header_first = arrlen(ctx->include_paths);
+            const char ** dest = arraddnptr(ctx->include_paths, arrlen(cfg.sys_include_paths));
             memcpy(dest, cfg.sys_include_paths, arrlen(cfg.sys_include_paths) * sizeof(char *));
-            ctx->sys_header_last = arrlen(include_paths) - 1;
+            ctx->sys_header_last = arrlen(ctx->include_paths) - 1;
 
             if (cfg.defines) {
-                temp_file.buffer = cfg.defines;
-                temp_file.filename = path;
-                ctx->current_file = &temp_file;
-                preprocess_buffer(ctx);
+                FileInfo * config_file = calloc(1, sizeof(*config_file));
+                config_file->buffer = cfg.defines;
+                config_file->filename = copy_and_terminate(ctx->arena, path, strlen(path));
+                arrput(ctx->loc.file_buffers, config_file);
+                ctx->current_file = config_file;
+                int ret = preprocess_buffer(ctx);
+                if (ret < 0) {
+                    info.ret = -1;
+                    return info;
+                }
             }
         } else {
             fprintf(stderr, "Could not find intro.cfg.\n");
+            exit(1);
         }
 
         bool temp_minimal_parse = false;
         if (ctx->m_options.enabled && !ctx->m_options.D) {
             preprocess_only = true;
             temp_minimal_parse = true;
-        } else {
-            temp_file.buffer = intro_defs;
-            temp_file.filename = "__INTRO_DEFS__";
-            ctx->current_file = &temp_file;
-            preprocess_buffer(ctx);
+            Define def = {
+                .key = "__INTRO_MINIMAL__",
+                .is_defined = true,
+            };
+            shputs(ctx->defines, def);
+        }
+
+        FileInfo * intro_defs_file = calloc(1, sizeof(*intro_defs_file));
+        intro_defs_file->buffer_size = strlen(intro_defs);
+        intro_defs_file->buffer = intro_defs;
+        intro_defs_file->filename = "__INTRO_DEFS__";
+        arrput(ctx->loc.file_buffers, intro_defs_file);
+        ctx->current_file = intro_defs_file;
+        int ret = preprocess_buffer(ctx);
+        if (ret < 0) {
+            info.ret = -1;
+            return info;
         }
 
         ctx->minimal_parse = temp_minimal_parse;

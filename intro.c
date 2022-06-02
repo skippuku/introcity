@@ -15,7 +15,7 @@
 
 #include "lib/intro.h"
 #include "lexer.c"
-#include "global.h"
+#include "global.c"
 #include "config.c"
 #include "expr.c"
 #include "pre.c"

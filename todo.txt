@@ -1,10 +1,9 @@
-!!!! stb_ds hash maps can fail to find slots for macro definitions and it's fucking up the preprocessor. To mitigate this, I set the seed to time, so you can just run it again if it fails for that reason.
-
 attribute:
+    !! struct/union values
+        see: the struct layout precipice
     attribute type: type
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
-    !! struct/union values
     somehow handle data at an offset to a pointer ex. stb_ds
     members of complex type can specify an attribute as a value: I(default default)
     noserialize (for pointers)
@@ -14,20 +13,19 @@ attribute:
     expression attribute type
         select: attribute describes when a member is valid, ex. unions
         length: change to expression ex. I(length map_width * map_height)
+    attributes on enum values
+    friendly_name attribute I("friendly name")
+    parse c++ struct defaults as intro defaults?
 
 city:
-    stb_ds arrays (requires stb_ds attribute)
+    stb_ds arrays (requires stb_ds attribute) (note: i plan to handle this in a way that will not require substantial changes to the city implementation)
 
 config:
-    !! figure out where the file goes
-    allow config to be overwritten by file in working directory or file given with cmdline argument
     allow config to be appended with another config?
-    change c type sizes for different platforms
+    handle c type sizes
     static assert in .intro file if types don't match
-    windows batch script?
 
 parse:
-    !! fix failure on equal signs in unexpected (c++) places
     !! handle sizeof struct/union in expression
     stop parsing after a .intro include as to not depend on types defined later
     handle bit field accessing
@@ -35,25 +33,28 @@ parse:
     const flag?
     parse float expressions (for value attributes)
         be aware of types in expressions
-    parse constants
+    parse globals (for libraries that use extern)
     rudimentary C++ support
-        operator overloads
         function overloads
-        member functions
         namespaces
+        member functions
         ignore templates
+        operator overloads?
 
 pre:
-    !! fix: preprocessor tries to expand 'defined' outside of #if expressions
+    don't evaluate location line until it is known the type will be in info
     more options for what parts have information generated
         option to exclude by default, enable with #if __INTRO__
     save location of includes and defines
     parse #line directives
+    trim big newline gaps
     create #line directives?
 
 gen:
-    option to flag types you care about and only output information necessary for those types
+    !! clang doesn't like flexible array initialization in c++
+        might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
     option to create typedefs for structs and enums
+    place all data in one big buffer acessible only through the context, write protect the buffer
     typeof with _Generic?
 
 lib:
@@ -71,13 +72,12 @@ examples:
     !! more of these
 
 doc:
-    parser --help status
-    man page
+    man page?
 
 misc:
     use custom allocators more + cleanup
     parse program options and pass only relevant ones to sub-processes
-    maybe the preprocessor should output tokens instead of text
+    preprocessor should output tokens instead of text
 
 The struct layout precipice:
     Struct layout is dependent on the platform ABI.

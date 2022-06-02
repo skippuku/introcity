@@ -1,15 +1,6 @@
-// TODO: move these into ParseContext
-static struct attribute_map_s {
-    char * key;
-    int32_t type;
-    int32_t value_type;
-} * attribute_map = NULL;
-
-static char ** note_set = NULL;
-
 void
-create_initial_attributes() {
-    const struct attribute_map_s initial [] = {
+create_initial_attributes(ParseContext * ctx) {
+    const AttributeMap initial [] = {
         {"id",      INTRO_ATTR_ID,      INTRO_V_INT}, // NOTE: maybe this should be part of IntroMember since it is common?
         {"default", INTRO_ATTR_DEFAULT, INTRO_V_VALUE},
         {"length",  INTRO_ATTR_LENGTH,  INTRO_V_MEMBER},
@@ -18,9 +9,9 @@ create_initial_attributes() {
         {"alias",   INTRO_ATTR_ALIAS,   INTRO_V_STRING},
     };
     // NOTE: might need to do this later:
-    //sh_new_arena(attribute_map);
+    //sh_new_arena(ctx->attribute_map);
     for (int i=0; i < LENGTH(initial); i++) {
-        shputs(attribute_map, initial[i]);
+        shputs(ctx->attribute_map, initial[i]);
     }
 }
 
@@ -75,27 +66,27 @@ parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk
         return -1;
     }
 
-    int map_index = shgeti(attribute_map, name);
+    int map_index = shgeti(ctx->attribute_map, name);
     if (map_index >= 0) {
         parse_error(ctx, name_ref, "Attribute name is reserved.");
         return -1;
     }
 
-    for (int i=0; i < shlen(attribute_map); i++) {
-        if (attribute_map[i].type == type) {
+    for (int i=0; i < shlen(ctx->attribute_map); i++) {
+        if (ctx->attribute_map[i].type == type) {
             char * msg = NULL;
-            strputf(&msg, "Attribute type (%i) is reserved by attribute '%s'.", type, attribute_map[i].key);
+            strputf(&msg, "Attribute type (%i) is reserved by attribute '%s'.", type, ctx->attribute_map[i].key);
             parse_error(ctx, type_tk, msg);
             arrfree(msg);
             return 2;
         }
     }
 
-    struct attribute_map_s entry;
+    AttributeMap entry;
     entry.key = name;
     entry.type = type;
     entry.value_type = value_type;
-    shputs(attribute_map, entry);
+    shputs(ctx->attribute_map, entry);
 
     return 0;
 }
@@ -318,20 +309,19 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
         STACK_TERMINATE(terminated_name, tk.start, tk.length);
-        int map_index = shgeti(attribute_map, terminated_name);
+        int map_index = shgeti(ctx->attribute_map, terminated_name);
         if (map_index < 0) {
             parse_error(ctx, &tk, "No such attribute.");
             return -1;
         }
 
-        data.type = attribute_map[map_index].type;
-        data.value_type = attribute_map[map_index].value_type; // NOTE: you could just lookup the attribute's value type
+        data.type = ctx->attribute_map[map_index].type;
+        data.value_type = ctx->attribute_map[map_index].value_type; // NOTE: you could just lookup the attribute's value type
 
         switch(data.value_type) {
         case INTRO_V_FLAG: {
             if (data.type == INTRO_ATTR_TYPE) {
                 IntroType * type = i_struct->members[member_index].type;
-                // TODO IMPORTANT: likely memory corruption, check with valgrind
                 if (!(type->category == INTRO_POINTER && strcmp(type->parent->name, "IntroType") == 0)) {
                     parse_error(ctx, &tk, "Member must be of type 'IntroType *' to have type attribute.");
                     char typename [1024];
@@ -382,8 +372,8 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
                 }
                 result = copy_and_terminate(ctx->arena, tk.start+1, tk.length-2);
             }
-            int32_t index = arrlen(note_set);
-            arrput(note_set, result);
+            int32_t index = arrlen(ctx->string_set);
+            arrput(ctx->string_set, result);
             data.v.i = index;
         } break;
 

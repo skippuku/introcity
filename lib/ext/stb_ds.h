@@ -1409,7 +1409,10 @@ void *stbds_hmput_key(void *a, size_t elemsize, void *key, size_t keysize, int m
       for (i = 0; i < limit; ++i) {
         if (bucket->hash[i] == hash) {
           if (stbds_is_key_equal(raw_a, elemsize, key, keysize, keyoffset, mode, bucket->index[i])) {
+            // fix pointed out to me by Sean here: https://github.com/nothings/stb/issues/1332
             stbds_temp(a) = bucket->index[i];
+            if (mode >= STBDS_HM_STRING)
+              stbds_temp_key(a) = * (char **) ((char *) raw_a + elemsize*bucket->index[i] + keyoffset);
             return STBDS_ARR_TO_HASH(a,elemsize);
           }
         } else if (bucket->hash[i] == 0) {

@@ -28,7 +28,8 @@ If there is a stray integer with no attribute defined, it is assumed to be an id
 ```C
     int   a I(id 1); // OK
     char  b I(2);    // OK
-    float c I(1);    // ERROR, duplicate ID
+    char  b I(1985); // OK
+    float c I(2);    // ERROR, duplicate ID
 ```
 
 ### default

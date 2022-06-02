@@ -1,6 +1,6 @@
 #include "lib/intro.h"
 #include "lexer.c"
-#include "global.h"
+#include "global.c"
 
 static const IntroType known_types [] = {
     {"void",     NULL, INTRO_UNKNOWN},
@@ -14,16 +14,22 @@ static const IntroType known_types [] = {
     {"int64_t",  NULL, INTRO_S64},
     {"float",    NULL, INTRO_F32},
     {"double",   NULL, INTRO_F64},
-    {"_Bool",    NULL, INTRO_U8 },
+    {"bool",     NULL, INTRO_U8 },
     {"va_list",  NULL, INTRO_VA_LIST},
 };
+
+typedef struct {
+    char * key;
+    int32_t type;
+    int32_t value_type;
+} AttributeMap;
 
 struct ParseContext {
     char * buffer;
     MemArena * arena;
     NameSet * ignore_typedefs;
     struct{char * key; IntroType * value;} * type_map;
-    struct{IntroType key; IntroType * value; FileLoc * loc;} * type_set;
+    struct{IntroType key; IntroType * value;} * type_set;
     NameSet * keyword_set;
     NameSet * enum_name_set;
     NestInfo * nest_map;
@@ -39,6 +45,9 @@ struct ParseContext {
     struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
     struct {char * key; IntroFunction * value;} * function_map;
     struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
+
+    AttributeMap * attribute_map;
+    char ** string_set;
 };
 
 static void
@@ -318,7 +327,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         if (decl.base->name == NULL) {
             NestInfo info = {0};
             info.key = decl.base;
-            info.member_index = arrlen(members);
+            info.member_index_in_container = arrlen(members);
             IntroType * tt = decl.type;
             while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
                 tt = tt->parent;
@@ -347,7 +356,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         for (int i=0; i < arrlen(nests); i++) {
             NestInfo info = nests[i];
-            info.parent = stored;
+            info.container_type = stored;
             hmputs(ctx->nest_map, info);
         }
         arrfree(nests);
@@ -865,11 +874,18 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         }
         IntroType * prev = shget(ctx->type_map, name);
         if (prev) {
-            // TODO: this is was false firing...
-            //if (intro_origin(prev) != intro_origin(decl->type)) {
-            //    parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
-            //    return -1;
-            //}
+            const IntroType * og_prev = intro_origin(prev);
+            const IntroType * og_this = intro_origin(decl->type);
+            bool effectively_equal = og_prev->category == og_this->category
+                                  && og_prev->parent == og_this->parent
+                                  && og_prev->__data == og_this->__data;
+            if (!effectively_equal) {
+                parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
+                if (prev->location.path) {
+                    location_note(&ctx->loc, prev->location, "Previous definition here.");
+                }
+                return -1;
+            }
         } else {
             IntroType new_type = *decl->type;
             new_type.name = name;
@@ -954,6 +970,10 @@ find_end: ;
         } else {
             bool do_find_closing = false;
             bool func_body = false;
+            if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {
+                *o_s = tk.start;
+                return RET_DECL_CONTINUE;
+            }
             if (in_expr) {
                 if (tk.type == TK_L_BRACE || tk.type == TK_L_BRACKET || tk.type == TK_L_PARENTHESIS) {
                     do_find_closing = true;
@@ -966,10 +986,6 @@ find_end: ;
                 do_find_closing = true;
                 func_body = true;
                 func->has_body = true;
-            }
-            if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {
-                *o_s = tk.start;
-                return RET_DECL_CONTINUE;
             }
             if (do_find_closing) {
                 *o_s = find_closing(tk.start);
@@ -1009,7 +1025,7 @@ parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_dec
     DeclState decl = {.state = DECL_ARGS};
     while (1) {
         int ret = parse_declaration(ctx, o_s, &decl);
-        if (ret == RET_DECL_FINISHED) {
+        if (ret == RET_DECL_FINISHED || ret == RET_FOUND_END) {
             break;
         } else if (ret < 0) {
             exit(1);
@@ -1102,7 +1118,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         db_assert(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
     }
 
-    create_initial_attributes();
+    create_initial_attributes(ctx);
 
     DeclState decl = {.state = DECL_GLOBAL};
 
@@ -1143,5 +1159,6 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     o_info->count_arg_lists = arrlen(o_info->arg_lists);
     o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
+    o_info->string_set = ctx->string_set;
     return 0;
 }

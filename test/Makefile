@@ -1,11 +1,12 @@
 INTROLIB := ../build/debug/introlib.o
-INTRO_PARSE := ../intro
+INTRO_PARSE := ../build/release/intro
 CPPFLAGS += -I../lib
 CFLAGS = -g -MMD -MT '$@'
-SRC = $(wildcard *.c)
+SRC := $(wildcard *.c)
 INTERACTIVE := interactive_test
-EXE = $(SRC:%.c=db_%)
-TESTS = $(filter-out db_$(INTERACTIVE),$(EXE))
+EXE := $(SRC:%.c=db_%)
+TESTS := $(filter-out db_$(INTERACTIVE),$(EXE))
+ICFG := ../intro.cfg
 
 export ASAN_OPTIONS = detect_leaks=0
 
@@ -15,44 +16,25 @@ export ASAN_OPTIONS = detect_leaks=0
 all: $(EXE)
 	@echo "Build complete."
 
-CRED   := \e[31m
-CGREEN := \e[32m
-CCYAN  := \e[36m
-CRESET := \e[0m
+run: $(TESTS) $(INTRO_PARSE)
+	@./../scripts/run_tests.sh $(TESTS)
+	$(INTRO_PARSE) --cfg $(ICFG) ../intro.c -o intro.c.intro
 
-.ONESHELL:
-run: $(TESTS)
-	@echo > log.txt
-	fails=0
-	for f in $(TESTS); do
-		printf "\n----------------\nTEST $$f\n----------------\n" >> log.txt
-		printf "%-30b" "TEST $(CCYAN)$$f$(CRESET)"
-		err=$$(./$$f 2>&1 >> log.txt)
-		ok=$$?
-		printf -- "$$err" >> log.txt
-		if [ $$ok -eq 0 ]; then
-			printf "$(CGREEN)OK"
-		else
-			printf "$(CRED)FAILED$(CRESET)\n"
-			printf "    $$err"
-			fails=1
-		fi
-		printf "$(CRESET)\n"
-	done
-	[ $$fails -eq 0 ] \
-	  && printf "$(CGREEN)All tests passed." \
-	  || printf "$(CRED)Some tests failed."
-	printf "$(CRESET)\n"
-
-$(INTRO_PARSE):
+$(INTRO_PARSE): FORCE
 	@$(MAKE) -C .. release
 
+$(INTROLIB): FORCE
+	@$(MAKE) -C .. debug
+
+$(ICFG):
+	@$(MAKE) -C .. config
+
 %.intro: % $(INTRO_PARSE) FORCE
-	$(INTRO_PARSE) $(CPPFLAGS) $< -o $@
+	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) $< -o $@
 
 FORCE:
 
-$(EXE): db_%: %.c
+$(EXE): db_%: %.c $(INTROLIB)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $< $(INTROLIB) -o $@
 
 clean:

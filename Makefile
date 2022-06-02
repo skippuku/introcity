@@ -1,11 +1,24 @@
 IMGUI_PATH := ../modules/imgui/
-EXE := intro
 
-GIT_VERSION = $(shell git describe --abbrev=7 --tags --dirty --always)
+ifeq (,$(OS))
+  UNAME := $(shell uname -s)
+  ifeq (Linux,$(UNAME))
+    OS := Linux
+  endif
+endif
 
+ifeq (Windows_NT,$(OS))
+  CFLAGS += -DMSYS2_PATHS
+endif
+
+ifneq (0,$(shell id -u))
+  GIT_VERSION := $(shell git describe --abbrev=7 --tags --dirty --always)
+else
+  GIT_VERSION := unknown
+endif
 CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
 
-SRC := intro.c lib/introlib.c lib/intro_imgui.cpp
+SRC := intro.c lib/introlib.c
 MAGIC_DEFAULT_PROFILE := debug
 
 define PROFILE.release
@@ -14,8 +27,10 @@ define PROFILE.release
   MAGIC_TARGET := build
 endef
 
+PROFILE_FLAGS := -fprofile-instr-generate -fcoverage-mapping
 define PROFILE.profile
-  CFLAGS += -g -O2
+  CFLAGS += -O2 $(PROFILE_FLAGS)
+  LDFLAGS += $(PROFILE_FLAGS)
   MAGIC_TARGET := build
 endef
 
@@ -32,19 +47,18 @@ define PROFILE.sanitize
   MAGIC_TARGET := build
 endef
 
-define PROFILE.test
-  $(PROFILE.release)
-  PROFILEDIR := release
-endef
-
 define PROFILE.config
   $(PROFILE.release)
   PROFILEDIR := release
-  MAGIC_TARGET :=
+  MAGIC_TARGET := build
+endef
+
+define PROFILE.test
+  MAGIC_NODEP := 1
 endef
 
 define PROFILE.install
-  $(PROFILE.config)
+  MAGIC_NODEP := 1
 endef
 
 define PROFILE.clean
@@ -57,8 +71,10 @@ endef
 
 include magic.mk
 
-CXXFLAGS += $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
+CXXFLAGS := $(CFLAGS) -std=c++11 -I$(IMGUI_PATH)
 CFLAGS += -std=gnu99
+
+EXE := $(OBJDIR)/intro
 
 .PHONY: build test install clean cleanall config
 
@@ -68,21 +84,20 @@ build: $(EXE)
 $(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-test: build
-	@$(MAKE) --directory=test/ run
-	./$(EXE) intro.c -o test/intro.c.intro
+test:
+	@$(MAKE) --no-print-directory --directory=test/ run
 
-config: intro.cfg
+config: $(EXE)
+	./$(EXE) --gen-config --compiler $(CC) --file intro.cfg
 
-intro.cfg: $(EXE)
-	./$(EXE) --gen-config --compiler $(CC) --file $@
-
-PREFIX = /usr/local
-
-install: build intro.cfg
-	mkdir -p $(PREFIX)/bin
-	cp -f $(EXE) $(PREFIX)/bin/intro
-	chmod 755 $(PREFIX)/bin/intro
+install:
+ifeq (Linux,$(OS))
+	./scripts/install_linux.sh
+	@echo "install successful, enjoy!"
+else ifeq (Windows_NT,$(OS))
+	./scripts/install_msys2.sh
+	@echo "install successful, enjoy!"
+endif
 
 clean:
 	rm -rf $(BUILDDIR)/*

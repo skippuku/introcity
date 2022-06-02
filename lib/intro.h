@@ -15,6 +15,14 @@ extern "C" {
 
 #define ITYPE(x) (&__intro_types[ITYPE_##x])
 
+#ifndef INTRO_ANON_UNION_NAME
+  #if __STDC_VERSION__ < 199901L && !defined(__cplusplus) && !defined(__GNUC__)
+    #define INTRO_ANON_UNION_NAME u
+  #else
+    #define INTRO_ANON_UNION_NAME
+  #endif
+#endif
+
 typedef enum IntroCategory {
     INTRO_UNKNOWN = 0x0,
 
@@ -79,7 +87,7 @@ struct IntroType {
         IntroStruct * i_struct;
         IntroEnum * i_enum;
         IntroTypePtrList * args;
-    };
+    } INTRO_ANON_UNION_NAME;
     IntroLocation location;
 };
 
@@ -255,7 +263,7 @@ bool intro_create_city_file(const char * filename, void * src, const IntroType *
 void * intro_create_city(const void * src, const IntroType * s_type, size_t *o_size);
 int intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size);
 
-#define intro_imgui_edit(data, data_type, name) intro_imgui_edit_ctx(INTRO_CTX, data, data_type, name)
+#define intro_imgui_edit(data, data_type) intro_imgui_edit_ctx(INTRO_CTX, data, data_type, #data)
 void intro_imgui_edit_ctx(IntroContext * ctx, void * data, const IntroType * data_type, const char * name);
 
 #ifdef __cplusplus

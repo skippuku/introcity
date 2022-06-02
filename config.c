@@ -8,13 +8,17 @@ get_config_path(char * o_path, const char * exe_dir) {
     arrput(paths, "intro.cfg");
     arrput(paths, ".intro.cfg");
 
+#if defined(__linux__) || defined(BSD) || defined(MSYS2_PATHS)
+  #define LINUX_PATHS 1
+#endif
+
 #define ADD_PATH() do{ \
     strcat(temp, "/intro.cfg"); \
     path_normalize(temp); \
     arrput(paths, copy_and_terminate(arena, temp, strlen(temp))); \
 } while(0)
 
-#if defined(__linux__) || defined(BSD)
+#ifdef LINUX_PATHS
     char * configdir = getenv("XDG_CONFIG_HOME");
     if (configdir) {
         strcpy(temp, configdir);
@@ -37,16 +41,17 @@ get_config_path(char * o_path, const char * exe_dir) {
     }
 #endif
 
-    if (exe_dir) {
+    if (0 != strcmp(exe_dir, ".")) {
         strcpy(temp, exe_dir);
         ADD_PATH();
     }
 
-#if defined(__linux__) || defined(BSD)
+#ifdef LINUX_PATHS
     strcpy(temp, "/etc/introcity");
     ADD_PATH();
 #endif
 #undef ADD_PATH
+#undef LINUX_PATHS
 
     bool ok = false;
     for (int i=0; i < arrlen(paths); i++) {
@@ -156,7 +161,7 @@ load_config(const char * buf) {
 
 void
 generate_config(int argc, char ** argv) {
-    // At the moment, it is assumed the compiler handles gcc-style arguments
+    // At the moment, this will probably only work with gcc and clang
 
     Config cfg = {0};
     MemArena * arena = new_arena(1024);
