@@ -111,6 +111,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
 
 static inline int
 count_newlines_unaligned(char * start, int count) {
+#if 0
     __m128i mask;
     memset(&mask, 1, count);
     __m128i line = _mm_loadu_si128((void *)start);
@@ -118,6 +119,15 @@ count_newlines_unaligned(char * start, int count) {
     __m128i vsum = _mm_sad_epu8(line, _mm_setzero_si128());
     int isum = _mm_cvtsi128_si32(vsum) + _mm_extract_epi16(vsum, 4);
     return isum;
+#else
+    int result = 0;
+    char * s = start;
+    while (s < start + count) {
+        if (*s == '\n') result += 1;
+        s++;
+    }
+    return result;
+#endif
 }
 
 static int

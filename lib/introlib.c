@@ -118,7 +118,7 @@ intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t 
     IntroVariant var;
     if (intro_attribute_x(ctx, attr_spec_location, attr_id, &var)) {
         assert(var.type_id == TYPEID_S32);
-        *o_int = *(int32_t *)var.data;
+        memcpy(o_int, var.data, sizeof(*o_int));
         return true;
     } else {
         return false;
@@ -126,11 +126,11 @@ intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t 
 }
 
 bool
-intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_float) {
+intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, float * o_float) {
     IntroVariant var;
     if (intro_attribute_x(ctx, attr_spec_location, attr_id, &var)) {
         assert(var.type_id == TYPEID_F32);
-        *o_float = *(float *)var.data;
+        memcpy(o_float, var.data, sizeof(*o_float));
         return true;
     } else {
         return false;
@@ -142,7 +142,7 @@ intro_attribute_length_x(IntroContext * ctx, const void * container, const Intro
     assert(container_type->category == INTRO_STRUCT);
     IntroVariant var;
     if (intro_attribute_x(ctx, m->attr, INTRO_ATTR_LENGTH, &var)) {
-        int32_t length_m_index = *(int32_t *)var.data;
+        int32_t length_m_index = (int32_t)(size_t)var.data;
         const IntroMember * length_m = &container_type->i_struct->members[length_m_index];
         const void * length_data = container + length_m->offset;
         int64_t result = intro_int_value(length_data, length_m->type);
@@ -154,6 +154,7 @@ intro_attribute_length_x(IntroContext * ctx, const void * container, const Intro
     }
 }
 
+#if 0
 uint32_t
 intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
     // NOTE: this hashes the pointer itself, not the string.
@@ -175,6 +176,7 @@ intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
         return i;
     }
 }
+#endif
 
 static void
 intro_offset_pointers(void * dest, const IntroType * type, void * base) {
@@ -194,7 +196,7 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
     size_t size = intro_size(m->type);
     int32_t value_offset;
     if (m->type->category == INTRO_STRUCT) {
-        intro_set_values_ctx(ctx, dest + m->offset, m->type, value_attribute);
+        intro_set_values_x(ctx, dest + m->offset, m->type, value_attribute);
     } else if (intro_has_attribute_x(ctx, m->attr, INTRO_ATTR_TYPE)) {
         memcpy(dest + m->offset, &struct_type, sizeof(void *));
     } else if (intro_attribute_int_x(ctx, m->attr, value_attribute, &value_offset)) {
@@ -212,7 +214,7 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
         int elem_size = intro_size(m->type->parent);
         for (int i=0; i < m->type->array_size; i++) {
             void * elem_address = dest + m->offset + i * elem_size;
-            intro_set_values_ctx(ctx, elem_address, m->type->parent, value_attribute);
+            intro_set_values_x(ctx, elem_address, m->type->parent, value_attribute);
         }
     } else {
         memset(dest + m->offset, 0, size);
@@ -220,7 +222,7 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
 }
 
 void
-intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute) {
+intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute) {
     for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
         intro_set_member_value_ctx(ctx, dest, type, m_index, value_attribute);
     }
@@ -228,7 +230,7 @@ intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, ui
 
 void
 intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
-    intro_set_values_ctx(ctx, dest, type, INTRO_ATTR_DEFAULT);
+    intro_set_values_x(ctx, dest, type, INTRO_ATTR_DEFAULT);
 }
 
 static void

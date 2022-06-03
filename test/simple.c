@@ -20,7 +20,7 @@ main(int argc, char ** argv) {
         obj.buffer[i] = i * i;
     }
 
-    const IntroType * t_obj = intro_type_with_name("TestAttributes");
+    const IntroType * t_obj = ITYPE(TestAttributes);
     assert(t_obj && t_obj->category == INTRO_STRUCT);
 
     printf("obj = ");

@@ -20,12 +20,26 @@ static const IntroType known_types [] = {
 
 typedef struct {
     uint32_t id;
-    IntroAttributeType type;
+    uint32_t final_id;
     IntroType * type_ptr;
+    IntroAttributeType type;
     bool global;
     bool without_namespace;
     bool invalid_without_namespace;
+    bool next_is_same;
 } AttributeParseInfo;
+
+enum SpecialMemberIndex {
+    MIDX_TYPE = INT32_MIN,
+    MIDX_ALL,
+    MIDX_ALL_RECURSE,
+};
+
+typedef struct {
+    char * location;
+    IntroType * type;
+    int32_t member_index;
+} AttributeDirective;
 
 struct ParseContext {
     char * buffer;
@@ -51,6 +65,7 @@ struct ParseContext {
 
     struct{ char * key; AttributeParseInfo value; } * attribute_map;
     struct{ char * key; int value; } * attribute_token_map;
+    AttributeDirective * attribute_directives;
     char ** string_set;
     uint32_t attribute_id_counter;
 };
@@ -167,27 +182,28 @@ store_type(ParseContext * ctx, IntroType type, char * pos) {
     return stored;
 }
 
-int
-maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk, AttributeSpecifier ** p_attribute_specifiers) {
+void
+maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t member_index, Token * o_tk) {
     if (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
         Token paren = next_token(o_s);
         if (paren.type != TK_L_PARENTHESIS) {
             parse_error(ctx, &paren, "Expected '('.");
-            return -1;
+            exit(1);
         }
-        AttributeSpecifier spec;
-        spec.location = paren.start;
-        spec.i = i;
-        arrput(*p_attribute_specifiers, spec);
+        AttributeDirective directive = {
+            .type = NULL,
+            .location = paren.start,
+            .member_index = member_index,
+        };
+        arrput(ctx->attribute_directives, directive);
         char * closing = find_closing(paren.start);
         if (!closing) {
             parse_error(ctx, &paren, "Missing closing ')'.");
-            return -1;
+            exit(1);
         }
         *o_s = closing + 1;
         *o_tk = next_token(o_s);
     }
-    return 0;
 }
 
 static int
@@ -275,7 +291,8 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         strputf(&complex_type_name, "%s %.*s",
                 (is_union)? "union" : "struct", name_tk.length, name_tk.start);
 
-        if (shgeti(ctx->type_map, complex_type_name) < 0) {
+        IntroType * stored = shget(ctx->type_map, complex_type_name);
+        if (!stored) {
             IntroType temp_type = {0};
             temp_type.name = complex_type_name;
             store_type(ctx, temp_type, NULL);
@@ -291,9 +308,12 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         return -1;
     }
 
+    int start_attribute_directives = arrlen(ctx->attribute_directives);
     IntroMember * members = NULL;
     NestInfo * nests = NULL;
-    DeclState decl = {.state = DECL_MEMBERS};
+    DeclState decl = {
+        .state = DECL_MEMBERS,
+    };
     while (1) {
         decl.member_index = arrlen(members);
         int ret = parse_declaration(ctx, o_s, &decl);
@@ -350,13 +370,14 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     memcpy(result->members, members, sizeof(IntroMember) * arrlen(members));
     arrfree(members);
 
+    IntroType * stored;
     {
         IntroType type = {0};
         type.name = complex_type_name;
         type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
         type.i_struct = result;
         
-        IntroType * stored = store_type(ctx, type, position);
+        stored = store_type(ctx, type, position);
         arrfree(complex_type_name);
 
         for (int i=0; i < arrlen(nests); i++) {
@@ -367,23 +388,14 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrfree(nests);
     }
 
-#if 0 // TODO
-    if (arrlen(decl.attribute_specifiers) > 0) {
-        IntroAttributeData * d;
-        uint32_t count;
-        for (int i=0; i < arrlen(decl.attribute_specifiers); i++) {
-            int member_index = decl.attribute_specifiers[i].i;
-            char * location = decl.attribute_specifiers[i].location;
-            int error = parse_attributes(ctx, location, result, member_index, &d, &count);
-            if (error) return error;
-            result->members[member_index].attributes = d;
-            result->members[member_index].count_attributes = count;
+    if (arrlen(ctx->attribute_directives) > start_attribute_directives) {
+        for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
+            AttributeDirective * p_directive = &ctx->attribute_directives[i];
+            if (p_directive->type == NULL) { // this will be set if it is from a nested struct definition
+                p_directive->type = stored;
+            }
         }
-
-        handle_deferred_defaults(ctx, result);
     }
-#endif
-    arrfree(decl.attribute_specifiers);
 
     return 0;
 }
@@ -920,12 +932,11 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     }
 
 find_end: ;
-    decl->bitfield = 0;
     bool in_expr = false;
     while (1) {
         Token tk = next_token(o_s);
         if (decl->state == DECL_MEMBERS) {
-            maybe_expect_attribute(ctx, o_s, decl->member_index, &tk, &decl->attribute_specifiers);
+            maybe_expect_attribute(ctx, o_s, decl->member_index, &tk);
         }
         if (tk.type == TK_COMMA) {
             if (decl->state != DECL_ARGS) {
@@ -939,8 +950,8 @@ find_end: ;
         } else if (tk.type == TK_EQUAL) {
             in_expr = true;
         } else if (tk.type == TK_COLON && decl->state == DECL_MEMBERS) {
-            intmax_t bitfield = parse_constant_expression(ctx, o_s);
-            decl->bitfield = (uint8_t)bitfield;
+            UNUSED intmax_t bitfield = parse_constant_expression(ctx, o_s);
+            //decl->bitfield = (uint8_t)bitfield; // TODO
             continue;
         } else {
             bool do_find_closing = false;
@@ -1103,10 +1114,10 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     while (1) {
         int ret = parse_declaration(ctx, &s, &decl);
 
-        if (ret < 0) {
-            return -1;
-        } else if (ret == RET_FOUND_END) {
+        if (ret == RET_FOUND_END) {
             break;
+        } else if (ret < 0) {
+            return -1;
         }
     }
 
@@ -1129,6 +1140,8 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
             add_to_gen_info(ctx, o_info, func->type);
         }
     }
+
+    handle_attributes(ctx, o_info);
 
     o_info->count_types = arrlen(o_info->types);
     o_info->nest_map = ctx->nest_map;

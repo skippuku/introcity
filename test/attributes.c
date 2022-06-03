@@ -2,16 +2,15 @@
 #include <intro.h>
 #include <ext/stb_ds.h>
 
-typedef enum I(attribute) {
-    ATTR_JOINT I(member joint),
-    ATTR_HANDLE I(flag handle),
-
-    ATTR_SCALE I(float scale),
-    ATTR_NUM I(int num),
-    ATTR_FRIEND I(member friend),
-    ATTR_DEATH_VALUE I(value death_value),
-    ATTR_EXP I(flag exp),
-} CustomAttributes;
+I(attribute my_ (
+    joint: member,
+    scale: float,
+    num: int,
+    friend: member,
+    death_value: value(@inherit),
+    exp: flag,
+    handle: flag,
+))
 
 typedef struct {
     char * name I(length length_name, handle);
@@ -40,7 +39,7 @@ special_alloc(void * dest_struct, const IntroType * type) {
     int owner_index = -1;
     for (int mi=0; mi < type->i_struct->count_members; mi++) {
         const IntroMember * m = &type->i_struct->members[mi];
-        if (intro_attribute_flag(m, ATTR_HANDLE)) {
+        if (intro_has_attribute(m, my_handle)) {
             assert(m->type->category == INTRO_POINTER);
             owner_index = mi;
 
@@ -50,7 +49,7 @@ special_alloc(void * dest_struct, const IntroType * type) {
                 const IntroMember * m = &type->i_struct->members[mi];
                 int friend_index;
                 if (mi == owner_index
-                    || (intro_attribute_int(m, ATTR_JOINT, &friend_index)
+                    || (intro_attribute_int(m, my_joint, &friend_index)
                         && friend_index == owner_index))
                 {
                     int element_size = intro_size(m->type->parent);
@@ -84,7 +83,7 @@ void
 special_free(void * dest_struct, const IntroType * type) {
     for (int mi=0; mi < type->i_struct->count_members; mi++) {
         const IntroMember * m = &type->i_struct->members[mi];
-        if (intro_attribute_flag(m, ATTR_HANDLE)) {
+        if (intro_has_attribute(m, my_handle)) {
             void * member_value = *(void **)(dest_struct + m->offset);
             free(member_value);
         }
@@ -132,32 +131,29 @@ main() {
                           *m_v1   = &ITYPE(AttributeTest)->i_struct->members[1],
                           *m_v2   = &ITYPE(AttributeTest)->i_struct->members[2];
 
-        assert(intro_attribute_int(m_name, INTRO_ATTR_NOTE, &i));
+        assert(intro_attribute_int(m_name, i_note, &i));
         assert(0==strcmp(__intro_notes[i], "this is the name"));
 
-        assert(intro_attribute_int(m_name, ATTR_NUM, &i) && i == 47);
+        assert(intro_attribute_int(m_name, my_num, &i) && i == 47);
 
         assert(0==strcmp(test.name, "spock"));
 
-        assert(!intro_attribute_flag(m_name, ATTR_EXP));
+        assert(!intro_has_attribute(m_name, my_exp));
 
-        assert(intro_attribute_int(m_name, INTRO_ATTR_ID, &i) && i == 9);
-        assert(m_name->id == 9);
+        assert(intro_attribute_int(m_name, i_id, &i) && i == 9);
 
         assert(test.v1 == 67);
-        assert(m_v1->id == 10);
-        assert(intro_attribute_int(m_v1, ATTR_FRIEND, &i) && i == 2);
-        assert(intro_attribute_float(m_v1, ATTR_SCALE, &f) && f == 8.5);
-        assert(intro_attribute_flag(m_v1, ATTR_EXP));
+        assert(intro_attribute_int(m_v1, my_friend, &i) && i == 2);
+        assert(intro_attribute_float(m_v1, my_scale, &f) && f == 8.5);
+        assert(intro_has_attribute(m_v1, my_exp));
 
         assert(test.v2 == 0.0f);
-        assert(m_v2->id == 11);
-        assert(intro_attribute_flag(m_v2, ATTR_EXP));
-        assert(intro_attribute_int(m_v2, ATTR_FRIEND, &i) && i == 1);
-        assert(intro_attribute_int(m_v2, INTRO_ATTR_NOTE, &i));
+        assert(intro_has_attribute(m_v2, my_exp));
+        assert(intro_attribute_int(m_v2, my_friend, &i) && i == 1);
+        assert(intro_attribute_int(m_v2, i_note, &i));
         assert(0==strcmp(__intro_notes[i], "i don't know what to put in here guys"));
 
-        intro_set_values(&test, ITYPE(AttributeTest), ATTR_DEATH_VALUE);
+        intro_set_values(&test, ITYPE(AttributeTest), my_death_value);
         assert(test.name == NULL);
         assert(test.v1 == -9);
         assert(test.v2 == 2.5);

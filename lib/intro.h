@@ -158,20 +158,22 @@ I(attribute i_ (
     cstring:  flag,           // 8
 ))
 
-I(apply_to char * (cstring))
+// TODO: problem: reserved flags don't work out.
+
+//I(apply_to char * (cstring)) // TODO
 
 typedef uint32_t IntroGuiColor; // (TODO) I(gui_edit_color);
 
 I(attribute gui_ (
-    scale: float,
-    min:   value(@inherit),
-    max:   value(@inherit),
-    color: value(IntroGuiColor) @global({1.0, 1.0, 1.0}),
-    edit_color: flag,
+    name:   string,
+    min:    value(@inherit),
+    max:    value(@inherit),
+    scale:  float,
     vector: flag,
+    color:  value(IntroGuiColor),
     show:   flag @global,
     edit:   flag @global,
-    name:   string,
+    edit_color: flag,
 ))
 
 typedef enum IntroAttributeType {
@@ -187,42 +189,41 @@ typedef enum IntroAttributeType {
 } IntroAttributeType;
 
 typedef enum IntroBuiltinAttribute {
-    INTRO_ATTR_REMOVE    = (int)UINT32_MAX,
-    INTRO_ATTR_BITFIELD  = 0,
-    INTRO_ATTR_ID        = 1,
-    INTRO_ATTR_DEFAULT   = 2,
-    INTRO_ATTR_LENGTH    = 3,
-    INTRO_ATTR_TYPE      = 4,
-    INTRO_ATTR_NOTE      = 5,
-    INTRO_ATTR_ALIAS     = 6,
-    INTRO_ATTR_CITY      = 7,
-    INTRO_ATTR_CSTRING   = 8,
+    INTRO_ATTR_REMOVE   = (int)UINT32_MAX,
+    INTRO_ATTR_BITFIELD = 0,
+    INTRO_ATTR_ID       = 1,
+    INTRO_ATTR_DEFAULT  = 2,
+    INTRO_ATTR_LENGTH   = 3,
+    INTRO_ATTR_TYPE     = 4,
+    INTRO_ATTR_NOTE     = 5,
+    INTRO_ATTR_ALIAS    = 6,
+    INTRO_ATTR_CITY     = 7,
+    INTRO_ATTR_CSTRING  = 8,
     INTRO_ATTR_COUNT
 } IntroBuiltinAttribute;
 
 typedef struct IntroAttribute {
     const char * name;
-    IntroAttributeType attr_type;
+    int attr_type;
     uint32_t type_id;
 } IntroAttribute;
 
 typedef struct IntroAttributeSpec {
-    INTRO_ALIGN(16) uint32_t bitset [INTRO_MAX_ATTRIBUTES / 32]; // 128 bits
+    INTRO_ALIGN(16) uint32_t bitset [(INTRO_MAX_ATTRIBUTES+31) / 32]; // 128 bits
     uint32_t value_offsets [];
 } IntroAttributeSpec;
 
 typedef struct IntroContext {
-    IntroType * types          I(length count_types);
-    const char ** notes        I(length count_notes);
-    uint8_t * values           I(length size_values);
+    IntroType * types   I(length count_types);
+    const char ** notes I(length count_notes);
+    uint8_t * values    I(length size_values);
     IntroFunction ** functions I(length count_functions);
-    struct {
+    struct IntroAttributeContext {
         IntroAttribute * available;
         IntroAttributeSpec * spec_buffer;
         uint32_t count_available;
-        uint16_t flag_mask_index;
+        uint16_t first_flag;
     } attr; 
-    struct{ void * key; uint32_t value; } * __attr_id_map;
 
     uint32_t count_types;
     uint32_t count_notes;
@@ -243,9 +244,8 @@ typedef struct IntroVariant {
 #define INTRO_INLINE static inline
 #endif
 
-#define intro_var_get(var, T)  ((var.type_id == ITYPE##T)? *(T *)var.data : (T)0)
-#define intro_var_gets(var, T) ((var.type_id == ITYPE##T)? *(T *)var.data : (T){})
-#define intro_var_ptr(var, T)  (((INTRO_CTX)->types[var.type_id]->parent == ITYPE(T))? (T *)var.data : (T *)0)
+#define intro_var_get(var, T) (assert(var.type_id == ITYPE##T), *(T *)var.data)
+#define intro_var_ptr(var, T) (((INTRO_CTX)->types[var.type_id]->parent == ITYPE(T))? (T *)var.data : (T *)0)
 
 INTRO_INLINE bool
 intro_is_scalar(const IntroType * type) {
@@ -295,7 +295,7 @@ intro_origin(const IntroType * type) {
     return type;
 }
 
-#define intro_has_attribute(p_member, attr) intro_has_attribute_x(INTRO_CTX, p_member, IATTR_##attr)
+#define intro_has_attribute(m, a) intro_has_attribute_x(INTRO_CTX, m->attr, IATTR_##a)
 INTRO_INLINE bool
 intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
     assert(attr_id < INTRO_MAX_ATTRIBUTES);
@@ -311,20 +311,20 @@ typedef struct {
 } IntroPrintOptions;
 
 // ATTRIBUTE INFO
-#define intro_attribute(loc, attr, out) intro_attribute_x(INTRO_CTX, loc, IATTR_##attr, out)
+#define intro_attribute(m, a, out) intro_attribute_x(INTRO_CTX, m->attr, IATTR_##a, out)
 bool intro_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, IntroVariant * o_var);
-#define intro_attribute_int(loc, attr, out) intro_attribute_int_x(INTRO_CTX, loc, IATTR_##attr, out)
+#define intro_attribute_int(m, a, out) intro_attribute_int_x(INTRO_CTX, m->attr, IATTR_##a, out)
 bool intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int);
-#define intro_attribute_float(loc, attr, out) intro_attribute_float_x(INTRO_CTX, loc, IATTR_##attr, out)
-bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int);
+#define intro_attribute_float(m, a, out) intro_attribute_float_x(INTRO_CTX, m->attr, IATTR_##a, out)
+bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, float * o_float);
 #define intro_attribute_length(c, ct, m, out) intro_attribute_length_x(INTRO_CTX, c, ct, m, out)
 bool intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length);
 uint32_t intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str);
 
 // INITIALIZERS
 void intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);
-#define intro_set_values(dest, type, attribute) intro_set_values_ctx(INTRO_CTX, dest, type, attribute)
-void intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute);
+#define intro_set_values(dest, type, a) intro_set_values_x(INTRO_CTX, dest, type, IATTR_##a)
+void intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute);
 #define intro_set_defaults(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
 #define intro_default(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
 void intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type);

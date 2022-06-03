@@ -69,7 +69,7 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
                         do_indent(out, depth + 1);
                         fprintf(out, "%s: ", m->name);
                         int m_flags = 0;
-                        if (intro_attribute_flag(m, INTRO_ATTR_LENGTH)) {
+                        if (intro_has_attribute(m, i_length)) {
                             m_flags |= FLAG_ARRAY_LIKE;
                         }
                         fprint_odin_type(out, m->type, depth + 1, m_flags);

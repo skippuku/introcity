@@ -92,10 +92,6 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
             }
 
             tk = next_token(o_s);
-            if (tk.type != TK_IDENTIFIER) {
-                parse_error(ctx, &tk, "Expected attribute type.");
-                return -1;
-            }
             memcpy(temp, tk.start, tk.length);
             temp[tk.length] = 0;
             int a_tk = shget(ctx->attribute_token_map, temp);
@@ -139,16 +135,16 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
             if (tk.type == TK_AT) {
                 tk = next_token(o_s);
                 if (tk_equal(&tk, "global")) {
+                    if (info.type != INTRO_AT_FLAG) {
+                        parse_error(ctx, &tk, "Only flag attributes can have the trait global.");
+                        return -1;
+                    }
                     info.global = true;
                 } else {
                     parse_error(ctx, &tk, "Invalid trait.");
                     return -1;
                 }
                 tk = next_token(o_s);
-                if (tk.type == TK_L_PARENTHESIS) {
-                    *o_s = find_closing(tk.start) + 1;
-                    tk = next_token(o_s);
-                }
             }
 
             shput(ctx->attribute_map, namespaced, info);
@@ -185,7 +181,7 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
     return 0;
 }
 
-bool
+static bool
 check_id_valid(const IntroStruct * i_struct, int id) {
 #if 0
     if (id < 0 || ((id & 0xFFFF) != id)) {
@@ -281,6 +277,7 @@ store_ptr(ParseContext * ctx, void * data, size_t size) {
 
 ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint32_t * o_count);
 
+// TODO: change to parse_expression
 ptrdiff_t
 parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_count) {
     if ((type->category >= INTRO_U8 && type->category <= INTRO_S64) || type->category == INTRO_ENUM) {
@@ -400,7 +397,8 @@ handle_value_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, 
 }
 
 int
-parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int member_index, AttributeData * o_result) {
+parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_index, AttributeData * o_result) {
+    IntroStruct * i_struct = type->i_struct;
     AttributeData data = {0};
     Token tk = next_token(o_s);
     if (tk.type == TK_IDENTIFIER) {
@@ -412,7 +410,7 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
         }
 
         AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
-        data.id = attr_info.id;
+        data.id = attr_info.final_id;
         IntroAttributeType attribute_type = attr_info.type;
 
         switch(attribute_type) {
@@ -516,7 +514,8 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
 }
 
 int
-parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int member_index, AttributeData ** o_result, uint32_t * o_count_attributes) {
+parse_attributes(ParseContext * ctx, char * s, IntroType * type, int member_index, AttributeData ** o_result, uint32_t * o_count_attributes) {
+    IntroStruct * i_struct = type->i_struct;
     AttributeData * attributes = NULL;
 
     Token tk = next_token(&s);
@@ -543,7 +542,7 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
                 }
             } else {
                 s = tk.start;
-                int error = parse_attribute(ctx, &s, i_struct, member_index, &data);
+                int error = parse_attribute(ctx, &s, type, member_index, &data);
                 if (error) return -1;
             }
             arrput(attributes, data);
@@ -578,7 +577,101 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
     return 0;
 }
 
-void
+static void
+add_attribute(IntroInfo * o_info, AttributeParseInfo * info, AttributeParseInfo * next_info, char * name) {
+    int final_id = arrlen(o_info->attr.available);
+    IntroAttribute attribute = {
+        .name = name,
+        .attr_type = info->type,
+        .type_id = hmget(o_info->index_by_ptr_map, info->type_ptr),
+    };
+    info->final_id = final_id;
+    if (next_info) next_info->final_id = final_id;
+    arrput(o_info->attr.available, attribute);
+}
+
+static void
+handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
+    int * flags = NULL;
+    arrsetcap(flags, 16);
+    arrsetcap(o_info->attr.available, 32);
+
+    for (int i=0; i < hmlen(ctx->attribute_map); i++) {
+        AttributeParseInfo * info = &ctx->attribute_map[i].value;
+        AttributeParseInfo * next_info = NULL;
+        int index = i;
+        if (i+1 < hmlen(ctx->attribute_map)) {
+            next_info = &ctx->attribute_map[i+1].value;
+            if (next_info->id != info->id) {
+                next_info = NULL;
+            } else {
+                i++;
+            }
+        }
+        if (info->type == INTRO_AT_FLAG) {
+            arrput(flags, index);
+            if (next_info) {
+                info->next_is_same = true;
+            }
+            continue;
+        }
+        add_attribute(o_info, info, next_info, ctx->attribute_map[index].key);
+    }
+
+    o_info->attr.first_flag = arrlen(o_info->attr.available);
+    for (int i=0; i < arrlen(flags); i++) {
+        int index = flags[i];
+        char * name = ctx->attribute_map[index].key;
+        AttributeParseInfo * info = &ctx->attribute_map[index].value;
+        AttributeParseInfo * next_info = (info->next_is_same)? &ctx->attribute_map[index+1].value : NULL;
+        add_attribute(o_info, info, next_info, name);
+    }
+    arrfree(flags);
+
+    IntroAttributeSpec * empty = arraddnptr(o_info->attr.spec_buffer, 1);
+    memset(empty, 0, sizeof(*empty));
+
+    for (int directive_i=0; directive_i < arrlen(ctx->attribute_directives); directive_i++) {
+        AttributeDirective directive = ctx->attribute_directives[directive_i];
+        AttributeData * attr_data = NULL;
+        uint32_t count = 0;
+        int ret = parse_attributes(ctx, directive.location, directive.type, directive.member_index, &attr_data, &count);
+        if (ret < 0) exit(1);
+
+        uint32_t spec_index = arrlen(o_info->attr.spec_buffer);
+
+        int count_without_flags = 0;
+        for (int i=0; i < count; i++) {
+            if (attr_data[i].id < o_info->attr.first_flag) count_without_flags++;
+        }
+        int count_16_byte_sections_needed = 1 + ((count_without_flags * sizeof(uint32_t)) + 15) / 16;
+        IntroAttributeSpec * spec = arraddnptr(o_info->attr.spec_buffer, count_16_byte_sections_needed);
+        memset(spec, 0, count_16_byte_sections_needed * sizeof(*spec));
+
+        for (int i=0; i < count; i++) {
+            uint32_t bit_set_index = attr_data[i].id >> 5; 
+            uint32_t bit_index = attr_data[i].id & 31;
+            uint32_t attr_mask = 1 << bit_index;
+            spec->bitset[bit_set_index] |= attr_mask;
+
+            spec->value_offsets[i] = *(uint32_t *)&attr_data[i].v.i;
+        }
+
+        switch(directive.member_index) {
+        case MIDX_TYPE: {
+            directive.type->attr = spec_index;
+        }break;
+
+        default: {
+            directive.type->i_struct->members[directive.member_index].attr = spec_index;
+        }break;
+        }
+    }
+
+    o_info->attr.count_available = arrlen(o_info->attr.available);
+}
+
+static void UNUSED
 handle_deferred_defaults(ParseContext * ctx, IntroStruct * i_struct) {
 #if 0 // TODO
     for (int i=0; i < arrlen(ctx->deferred_length_defaults); i++) {

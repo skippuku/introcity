@@ -140,6 +140,7 @@ typedef struct IntroInfo {
     IntroTypePtrList ** arg_lists;
     IntroFunction ** functions;
     char ** string_set;
+    struct IntroAttributeContext attr;
     uint32_t count_types;
     uint32_t count_arg_lists;
     uint32_t count_functions;
@@ -202,12 +203,6 @@ typedef enum {
 typedef struct ParseContext ParseContext;
 
 typedef struct {
-    char * location;
-    int32_t i;
-    Token tk;
-} AttributeSpecifier;
-
-typedef struct {
     IntroType * base;
     IntroType * type;
     bool reuse_base;
@@ -221,11 +216,9 @@ typedef struct {
     Token base_tk;
     Token name_tk;
 
-    AttributeSpecifier * attribute_specifiers;
     char ** arg_names;
 
     int32_t member_index;
-    uint8_t bitfield;
     bool func_specifies_args;
 } DeclState;
 

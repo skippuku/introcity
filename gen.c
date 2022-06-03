@@ -117,32 +117,6 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     // forward declare type list
     strputf(&s, "extern IntroType __intro_types [%u];\n\n", info->count_types);
 
-    // attributes
-#if 0 // TODO
-    strputf(&s, "const IntroAttributeData __intro_attr [] = {\n");
-    for (int type_index = 0; type_index < info->count_types; type_index++) {
-        const IntroType * type = info->types[type_index];
-        if ((type->category == INTRO_STRUCT || type->category == INTRO_UNION) && type->parent == NULL) {
-            for (int member_index = 0; member_index < type->i_struct->count_members; member_index++) {
-                const IntroMember * m = &type->i_struct->members[member_index];
-                if (m->count_attributes > 0) {
-                    for (int attr_index = 0; attr_index < m->count_attributes; attr_index++) {
-                        const IntroAttributeData * attr = &m->attributes[attr_index];
-                        strputf(&s, "%s{%i, %s, 0x%x},\n", tab, attr->type, attr_value_str(attr->value_type), attr->v.i);
-                    }
-                }
-            }
-        }
-    }
-    strputf(&s, "};\n\n");
-#endif
-
-    strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(info->string_set));
-    for (int i=0; i < arrlen(info->string_set); i++) {
-        strputf(&s, "%s\"%s\",\n", tab, info->string_set[i]);
-    }
-    strputf(&s, "};\n\n");
-
     // complex type information (enums, structs, unions)
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         IntroType * t = info->types[type_index];
@@ -180,7 +154,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
                                 nest->top_level_name, nest->member_name_in_container, m->name,
                                 nest->top_level_name, nest->member_name_in_container);
                     }
-                    strputf(&s, ", 0},\n");
+                    strputf(&s, ", 0x%x},\n", m->attr);
                 }
             } else if (t->category == INTRO_ENUM) {
                 strputf(&s, ", %u, %u, %u, {\n", t->i_enum->count_members, t->i_enum->is_flags, t->i_enum->is_sequential);
@@ -275,6 +249,36 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     }
     strputf(&s, "};\n\n");
 
+    // attributes
+    strputf(&s, "const IntroAttribute __intro_attr_t [] = {\n");
+    for (int attr_index = 0; attr_index < info->attr.count_available; attr_index++) {
+        IntroAttribute attr = info->attr.available[attr_index];
+        strputf(&s, "%s{\"%s\", 0x%x, %u},\n", tab, attr.name, attr.attr_type, attr.type_id);
+    }
+    strputf(&s, "};\n\n");
+
+    strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(info->string_set));
+    for (int i=0; i < arrlen(info->string_set); i++) {
+        strputf(&s, "%s\"%s\",\n", tab, info->string_set[i]);
+    }
+    strputf(&s, "};\n\n");
+
+    strputf(&s, "enum {\n");
+    for (int i=0; i < info->attr.count_available; i++) {
+        strputf(&s, "%sIATTR_%s,\n", tab, info->attr.available[i].name);
+    }
+    strputf(&s, "};\n\n");
+
+    strputf(&s, "const unsigned char __intro_attr_data [] = {");
+    for (int i=0; i < arrlen(info->attr.spec_buffer) * sizeof(info->attr.spec_buffer[0]); i++) {
+        if (i % 16 == 0) {
+            strputf(&s, "\n%s", tab);
+        }
+        uint8_t byte = ((uint8_t *)info->attr.spec_buffer)[i];
+        strputf(&s, "0x%02x,", byte);
+    }
+    strputf(&s, "\n};\n\n");
+
     // values
     strputf(&s, "unsigned char __intro_values [%i] = {", (int)arrlen(info->value_buffer));
     for (int i=0; i < arrlen(info->value_buffer); i++) {
@@ -282,7 +286,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
             strputf(&s, "\n%s", tab);
         }
         uint8_t byte = info->value_buffer[i];
-        strputf(&s, "0x%02x, ", byte);
+        strputf(&s, "0x%02x,", byte);
     }
     strputf(&s, "\n};\n\n");
 
@@ -309,9 +313,13 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "%s__intro_notes,\n", tab);
     strputf(&s, "%s__intro_values,\n", tab);
     strputf(&s, "%s__intro_fns,\n", tab);
-    strputf(&s, "%s%u,\n", tab, info->count_types);
-    strputf(&s, "%s%i,\n", tab, (int)arrlenu(info->string_set));
-    strputf(&s, "%s%i,\n", tab, (int)arrlenu(info->value_buffer));
+    strputf(&s, "%s{(IntroAttribute *)__intro_attr_t, ", tab);
+    strputf(&s, "%s(IntroAttributeSpec *)__intro_attr_data, ", tab);
+    strputf(&s, "%s%u, ", tab, info->attr.count_available);
+    strputf(&s, "%s%u,},\n", tab, info->attr.first_flag);
+    strputf(&s, "%s%u,", tab, info->count_types);
+    strputf(&s, "%s%i,", tab, (int)arrlenu(info->string_set));
+    strputf(&s, "%s%i,", tab, (int)arrlenu(info->value_buffer));
     strputf(&s, "%s%u,\n", tab, info->count_functions);
     strputf(&s, "};\n");
 

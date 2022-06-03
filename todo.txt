@@ -44,6 +44,7 @@ parse:
         operator overloads?
 
 pre:
+    !! include errors are fucked (again)
     don't evaluate location line until it is known the type will be in info
     more options for what parts have information generated
         option to exclude by default, enable with #if __INTRO__
