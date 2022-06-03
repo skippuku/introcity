@@ -68,99 +68,104 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
         while (1) {
             AttributeParseInfo info = {0};
             info.id = ctx->attribute_id_counter++;
+
             tk = next_token(o_s);
             if (tk.type == TK_R_PARENTHESIS) {
                 break;
-            } else if (tk.type == TK_IDENTIFIER) {
-                memcpy(temp, tk.start, tk.length);
-                temp[tk.length] = 0;
-                int a_tk = shget(ctx->attribute_token_map, temp);
-                if (a_tk >= INTRO_AT_COUNT) {
-                    parse_error(ctx, &tk, "Invalid attribute type.");
-                    return -1;
-                }
-                info.type = a_tk;
-                tk = next_token(o_s);
-                if (tk.type == TK_L_PARENTHESIS && a_tk == INTRO_AT_VALUE) {
-                    tk = next_token(o_s);
-                    if (tk.type == TK_AT) {
-                        tk = next_token(o_s);
-                        if (!tk_equal(&tk, "inherit")) {
-                            parse_error(ctx, &tk, "Invalid trait.");
-                            return -1;
-                        }
-                        tk = next_token(o_s);
-                        info.type_ptr = NULL;
-                    } else {
-                        *o_s = tk.start;
-                        DeclState decl = {.state = DECL_CAST};
-                        int ret = parse_declaration(ctx, o_s, &decl);
-                        if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
-                            info.type_ptr = decl.type;
-                        } else if (ret == RET_NOT_TYPE) {
-                            parse_error(ctx, &decl.base_tk, "Not a type.");
-                            return -1;
-                        } else {
-                            return -1;
-                        }
-                        tk = next_token(o_s);
-                    }
-                    if (tk.type != TK_R_PARENTHESIS) {
-                        parse_error(ctx, &tk, "Expected ')'.");
-                        return -1;
-                    }
-                    tk = next_token(o_s);
-                }
+            } else if (tk.type != TK_IDENTIFIER) {
+                parse_error(ctx, &tk, "Expected identifier for attribute name.");
+            }
+            char namespaced [1024];
+            char unspaced [1024];
+            memcpy(unspaced, tk.start, tk.length);
+            unspaced[tk.length] = 0;
+            strcpy(namespaced, namespace);
+            strcat(namespaced, unspaced);
+            if (shgeti(ctx->attribute_map, namespaced) >= 0) {
+                parse_error(ctx, &tk, "Attribute name is reserved.");
+                return -1;
+            }
+            tk = next_token(o_s);
+            if (tk.type != TK_COLON) {
+                parse_error(ctx, &tk, "Expected ':'.");
+                return -1;
+            }
 
-                if (tk.type != TK_IDENTIFIER) {
-                    parse_error(ctx, &tk, "Expected identifier.");
-                    return -1;
-                }
-                char namespaced [1024];
-                char unspaced [1024];
-                memcpy(unspaced, tk.start, tk.length);
-                unspaced[tk.length] = 0;
-                strcpy(namespaced, namespace);
-                strcat(namespaced, unspaced);
-
+            tk = next_token(o_s);
+            if (tk.type != TK_IDENTIFIER) {
+                parse_error(ctx, &tk, "Expected attribute type.");
+                return -1;
+            }
+            memcpy(temp, tk.start, tk.length);
+            temp[tk.length] = 0;
+            int a_tk = shget(ctx->attribute_token_map, temp);
+            if (a_tk >= INTRO_AT_COUNT) {
+                parse_error(ctx, &tk, "Invalid attribute type.");
+                return -1;
+            }
+            info.type = a_tk;
+            tk = next_token(o_s);
+            if (tk.type == TK_L_PARENTHESIS && a_tk == INTRO_AT_VALUE) {
                 tk = next_token(o_s);
                 if (tk.type == TK_AT) {
                     tk = next_token(o_s);
-                    if (tk_equal(&tk, "global")) {
-                        info.global = true;
-                    } else {
+                    if (!tk_equal(&tk, "inherit")) {
                         parse_error(ctx, &tk, "Invalid trait.");
                         return -1;
                     }
                     tk = next_token(o_s);
-                    if (tk.type == TK_L_PARENTHESIS) {
-                        *o_s = find_closing(tk.start) + 1;
-                        tk = next_token(o_s);
+                    info.type_ptr = NULL;
+                } else {
+                    *o_s = tk.start;
+                    DeclState decl = {.state = DECL_CAST};
+                    int ret = parse_declaration(ctx, o_s, &decl);
+                    if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
+                        info.type_ptr = decl.type;
+                    } else if (ret == RET_NOT_TYPE) {
+                        parse_error(ctx, &decl.base_tk, "Not a type.");
+                        return -1;
+                    } else {
+                        return -1;
                     }
+                    tk = next_token(o_s);
                 }
-                if (shgeti(ctx->attribute_map, namespaced) >= 0) {
-                    parse_error(ctx, &tk, "Attribute name is reserved.");
+                if (tk.type != TK_R_PARENTHESIS) {
+                    parse_error(ctx, &tk, "Expected ')'.");
                     return -1;
                 }
-                shput(ctx->attribute_map, namespaced, info);
-                ptrdiff_t unspaced_index = shgeti(ctx->attribute_map, unspaced);
-                if (unspaced_index < 0) {
-                    info.without_namespace = true;
-                    shput(ctx->attribute_map, unspaced, info);
-                } else {
-                    ctx->attribute_map[unspaced_index].value.invalid_without_namespace = true;
-                }
+                tk = next_token(o_s);
+            }
 
-                if (tk.type == TK_COMMA) {
-                    continue;
-                } else if (tk.type == TK_R_PARENTHESIS) {
-                    break;
+            if (tk.type == TK_AT) {
+                tk = next_token(o_s);
+                if (tk_equal(&tk, "global")) {
+                    info.global = true;
                 } else {
-                    parse_error(ctx, &tk, "Expected ',' or ')'.");
+                    parse_error(ctx, &tk, "Invalid trait.");
                     return -1;
                 }
+                tk = next_token(o_s);
+                if (tk.type == TK_L_PARENTHESIS) {
+                    *o_s = find_closing(tk.start) + 1;
+                    tk = next_token(o_s);
+                }
+            }
+
+            shput(ctx->attribute_map, namespaced, info);
+            ptrdiff_t unspaced_index = shgeti(ctx->attribute_map, unspaced);
+            if (unspaced_index < 0) {
+                info.without_namespace = true;
+                shput(ctx->attribute_map, unspaced, info);
             } else {
-                parse_error(ctx, &tk, "Invalid symbol.");
+                ctx->attribute_map[unspaced_index].value.invalid_without_namespace = true;
+            }
+
+            if (tk.type == TK_COMMA) {
+                continue;
+            } else if (tk.type == TK_R_PARENTHESIS) {
+                break;
+            } else {
+                parse_error(ctx, &tk, "Expected ',' or ')'.");
                 return -1;
             }
         }

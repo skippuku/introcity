@@ -70,7 +70,7 @@ typedef enum {
 
 typedef struct IntroLocation {
     const char * path;
-    int32_t line;
+    int32_t line; // NOTE: might be a better idea to just save the buffer offset
     int32_t column;
 } IntroLocation;
 
@@ -90,7 +90,7 @@ typedef struct IntroTypePtrList IntroTypePtrList;
 struct IntroType {
     const char * name;
     IntroType * parent;
-    IntroCategory category;
+    IntroCategory category; // NOTE: we can probably just use attributes for this
     uint32_t flags; // not currently implemented
     union {
         void * __data;
@@ -99,7 +99,8 @@ struct IntroType {
         IntroEnum * i_enum;
         IntroTypePtrList * args;
     } INTRO_ANON_UNION_NAME;
-    IntroLocation location;
+    IntroLocation location; // TODO: this should go somewhere else
+    uint32_t attr;
 };
 
 typedef struct IntroMember {
@@ -145,32 +146,32 @@ typedef struct IntroFunction {
 
 // attribute id's are reserved for this group
 I(attribute i_ (
-    int remove,              // UINT32_MAX (not stored)
-    int id,                  // 0
-    int bitfield,            // 1
-    value(@inherit) default, // 2
-    member length,           // 3
-    flag type,               // 4
-    string note,             // 5
-    string alias,            // 6
-    flag city @global,       // 7
-    flag cstring,            // 8
+    remove:   int,            // UINT32_MAX (not stored)
+    id:       int,            // 0
+    bitfield: int,            // 1
+    default:  value(@inherit),// 2
+    length:   member,         // 3
+    type:     flag,           // 4
+    note:     string,         // 5
+    alias:    string,         // 6
+    city:     flag @global,   // 7
+    cstring:  flag,           // 8
 ))
 
 I(apply_to char * (cstring))
 
-typedef float Color3f [3];
+typedef uint32_t IntroGuiColor; // (TODO) I(gui_edit_color);
 
 I(attribute gui_ (
-    float scale,
-    value(@inherit) min,
-    value(@inherit) max,
-    value(Color3f) color @global({1.0, 1.0, 1.0}),
-    flag  log,
-    flag  edit_color,
-    flag  vector,
-    flag  show @global,
-    flag  edit @global,
+    scale: float,
+    min:   value(@inherit),
+    max:   value(@inherit),
+    color: value(IntroGuiColor) @global({1.0, 1.0, 1.0}),
+    edit_color: flag,
+    vector: flag,
+    show:   flag @global,
+    edit:   flag @global,
+    name:   string,
 ))
 
 typedef enum IntroAttributeType {
