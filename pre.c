@@ -98,7 +98,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
     strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
     strputf(p_s, "%s%.*s" WHITE, highlight_color, (int)(highlight_end - highlight_start), highlight_start);
     strputf(p_s, "%.*s\n", (int)(segment_end - highlight_end), highlight_end);
-    for (int i=0; i < highlight_start - segment_start; i++) {
+    for (int i=0; i < highlight_start - segment_start - 1; i++) {
         if (segment_start[i] == '\t') {
             arrput(*p_s, '\t');
         } else {
@@ -244,7 +244,7 @@ message_internal(char * start_of_line, const char * filename, int line, char * h
     char * s = NULL;
     const char * message_type_string = (message_type == 1)? "Warning" : "Error";
     const char * color = (message_type == 1)? BOLD_YELLOW : BOLD_RED;
-    strputf(&s, "%s%s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n\n", color, message_type_string, filename, line, message);
+    strputf(&s, "%s%s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n", color, message_type_string, filename, line, message);
     strput_code_segment(&s, start_of_line, end_of_line, hl_start, hl_end, color);
     fputs(s, stderr);
     arrfree(s);

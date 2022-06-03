@@ -1,6 +1,7 @@
 attribute:
     !! struct/union values
         see: the struct layout precipice
+    allow multiple aliases somehow
     attribute type: type
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
@@ -27,6 +28,7 @@ config:
 
 parse:
     !! handle sizeof struct/union in expression
+    parent should really work for any type, make the functions, pointers, and arrays use something else
     stop parsing after a .intro include as to not depend on types defined later
     handle bit field accessing
     handle strings next to each other
@@ -53,6 +55,7 @@ pre:
 gen:
     !! clang doesn't like flexible array initialization in c++
         might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
+    include macros in introspection data
     option to create typedefs for structs and enums
     place all data in one big buffer acessible only through the context, write protect the buffer
     typeof with _Generic?

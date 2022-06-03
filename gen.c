@@ -78,19 +78,6 @@ category_str(int category) {
     }
 }
 
-static const char *
-attr_value_str(int attr_value) {
-    switch(attr_value) {
-    default:
-    case INTRO_V_FLAG: return "INTRO_V_FLAG";
-    case INTRO_V_INT: return "INTRO_V_INT";
-    case INTRO_V_FLOAT: return "INTRO_V_FLOAT";
-    case INTRO_V_VALUE: return "INTRO_V_VALUE";
-    case INTRO_V_MEMBER: return "INTRO_V_MEMBER";
-    case INTRO_V_STRING: return "INTRO_V_STRING";
-    }
-}
-
 char *
 generate_c_header(IntroInfo * info, const char * output_filename) {
     // generate info needed to get offset and sizeof for anonymous types
@@ -131,6 +118,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "extern IntroType __intro_types [%u];\n\n", info->count_types);
 
     // attributes
+#if 0 // TODO
     strputf(&s, "const IntroAttributeData __intro_attr [] = {\n");
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         const IntroType * type = info->types[type_index];
@@ -147,6 +135,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
         }
     }
     strputf(&s, "};\n\n");
+#endif
 
     strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(info->string_set));
     for (int i=0; i < arrlen(info->string_set); i++) {
@@ -155,7 +144,6 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "};\n\n");
 
     // complex type information (enums, structs, unions)
-    int attr_list_index = 0;
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         IntroType * t = info->types[type_index];
         if (intro_is_complex(t) && hmgeti(complex_type_map, t->i_struct) < 0) {
@@ -184,7 +172,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
                 for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
                     const IntroMember * m = &t->i_struct->members[m_index];
                     int32_t member_type_index = hmget(info->index_by_ptr_map, m->type);
-                    strputf(&s, "%s{\"%s\", &__intro_types[%i], %u, %u, ", tab, m->name, member_type_index, (unsigned int)m->bitfield, (unsigned int)m->id);
+                    strputf(&s, "%s{\"%s\", &__intro_types[%i], ", tab, m->name, member_type_index);
                     if (!nest) {
                         strputf(&s, "offsetof(%s, %s)", ref_name, m->name);
                     } else {
@@ -192,12 +180,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
                                 nest->top_level_name, nest->member_name_in_container, m->name,
                                 nest->top_level_name, nest->member_name_in_container);
                     }
-                    if (m->count_attributes > 0) {
-                        strputf(&s, ", %u, &__intro_attr[%i]},\n", m->count_attributes, attr_list_index);
-                        attr_list_index += m->count_attributes;
-                    } else {
-                        strputf(&s, ", 0},\n");
-                    }
+                    strputf(&s, ", 0},\n");
                 }
             } else if (t->category == INTRO_ENUM) {
                 strputf(&s, ", %u, %u, %u, {\n", t->i_enum->count_members, t->i_enum->is_flags, t->i_enum->is_sequential);

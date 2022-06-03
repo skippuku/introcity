@@ -19,10 +19,13 @@ static const IntroType known_types [] = {
 };
 
 typedef struct {
-    char * key;
-    int32_t type;
-    int32_t value_type;
-} AttributeMap;
+    uint32_t id;
+    IntroAttributeType type;
+    IntroType * type_ptr;
+    bool global;
+    bool without_namespace;
+    bool invalid_without_namespace;
+} AttributeParseInfo;
 
 struct ParseContext {
     char * buffer;
@@ -37,7 +40,7 @@ struct ParseContext {
     uint8_t * value_buffer;
     PtrStore * ptr_stores;
 
-    DifferedDefault * differed_length_defaults;
+    DifferedDefault * deferred_length_defaults;
 
     ExprContext * expr_ctx;
     LocationContext loc;
@@ -46,8 +49,10 @@ struct ParseContext {
     struct {char * key; IntroFunction * value;} * function_map;
     struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
 
-    AttributeMap * attribute_map;
+    struct{ char * key; AttributeParseInfo value; } * attribute_map;
+    struct{ char * key; int value; } * attribute_token_map;
     char ** string_set;
+    uint32_t attribute_id_counter;
 };
 
 static void
@@ -322,7 +327,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
         member.type = decl.type;
-        member.bitfield = decl.bitfield;
+        //member.bitfield = decl.bitfield; // TODO
 
         if (decl.base->name == NULL) {
             NestInfo info = {0};
@@ -362,6 +367,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrfree(nests);
     }
 
+#if 0 // TODO
     if (arrlen(decl.attribute_specifiers) > 0) {
         IntroAttributeData * d;
         uint32_t count;
@@ -374,8 +380,9 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             result->members[member_index].count_attributes = count;
         }
 
-        handle_differed_defaults(ctx, result);
+        handle_deferred_defaults(ctx, result);
     }
+#endif
     arrfree(decl.attribute_specifiers);
 
     return 0;
@@ -405,28 +412,6 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         }
     }
 
-    bool is_attribute = false;
-    AttributeSpecifier * attribute_specifiers = NULL;
-    if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "I")) {
-        tk = next_token(o_s);
-        if (tk.type != TK_L_PARENTHESIS) {
-            parse_error(ctx, &tk, "Expected '('.");
-            return -1;
-        }
-        tk = next_token(o_s);
-        if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "attribute")) {
-            is_attribute = true;
-        } else {
-            parse_error(ctx, &tk, "Invalid.");
-            return -1;
-        }
-        tk = next_token(o_s);
-        if (tk.type != TK_R_PARENTHESIS) {
-            parse_error(ctx, &tk, "Expected ')'.");
-            return -1;
-        }
-        tk = next_token(o_s);
-    }
     if (tk.type != TK_L_BRACE) {
         if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return RET_NOT_DEFINITION;
         parse_error(ctx, &tk, "Expected '{'.");
@@ -452,13 +437,6 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         v.name = register_enum_name(ctx, name);
 
         tk = next_token(o_s);
-        if (is_attribute) {
-            int index = arrlen(attribute_specifiers);
-            maybe_expect_attribute(ctx, o_s, arrlen(members), &tk, &attribute_specifiers);
-            if (arrlen(attribute_specifiers) != index) {
-                attribute_specifiers[index].tk = name;
-            }
-        }
         bool set = false;
         bool is_last = false;
         if (tk.type == TK_COMMA) {
@@ -514,14 +492,6 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         arrfree(complex_type_name);
     }
 
-    if (attribute_specifiers != NULL) {
-        for (int i=0; i < arrlen(attribute_specifiers); i++) {
-            AttributeSpecifier spec = attribute_specifiers[i];
-            int error = parse_attribute_register(ctx, spec.location, spec.i, &spec.tk);
-            if (error) return error;
-        }
-    }
-
     return 0;
 }
 
@@ -535,6 +505,11 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     Token first;
     while (1) {
         first = next_token(o_s);
+        if (decl->state == DECL_GLOBAL && tk_equal(&first, "I")) {
+            int ret = parse_global_directive(ctx, o_s);
+            if (ret < 0) return -1;
+            continue;
+        }
         if (first.type == TK_IDENTIFIER) {
             first_keyword = get_keyword(ctx, first);
             if (!is_ignored(first_keyword)) {
@@ -1008,7 +983,9 @@ find_end: ;
                 } else {
                     *o_s = tk.start;
                 }
+                int state = decl->state;
                 memset(decl, 0, sizeof(*decl));
+                decl->state = state;
                 *o_s = tk.start;
                 return RET_DECL_CONTINUE;
             }
@@ -1118,7 +1095,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         db_assert(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
     }
 
-    create_initial_attributes(ctx);
+    attribute_parse_init(ctx);
 
     DeclState decl = {.state = DECL_GLOBAL};
 

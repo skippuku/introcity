@@ -1,8 +1,0 @@
-intro.cgf search path order:
-
---cfg <path>
-<cwd>/intro.cfg
-<cwd>/.intro.cfg
-~/.config/introcity/intro.cfg   win32: %LOCALAPPDATA%/introcity/intro.cfg
-<exe directory>/intro.cfg
-/etc/introcity/intro.cfg        win32: %ProgramData%/introcity/intro.cfg

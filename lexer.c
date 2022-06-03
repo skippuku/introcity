@@ -48,6 +48,7 @@ typedef struct Token {
         TK_MOD,
         TK_TILDE,
         TK_QUESTION_MARK,
+        TK_AT,
 
         TK_IDENTIFIER,
         TK_STRING,
@@ -224,6 +225,7 @@ pre_next_token(char ** o_s) {
     case '~': tk.type = TK_TILDE; break;
     case '%': tk.type = TK_MOD; break;
     case '?': tk.type = TK_QUESTION_MARK; break;
+    case '@': tk.type = TK_AT; break;
     case '!': tk.type = TK_BANG;
               flags = TK_CHECK_EQUAL; break;
 
@@ -329,6 +331,7 @@ next_token(char ** o_s) {
     case '~': tk.type = TK_TILDE; break;
     case '%': tk.type = TK_MOD; break;
     case '?': tk.type = TK_QUESTION_MARK; break;
+    case '@': tk.type = TK_AT; break;
     case '!': tk.type = TK_BANG;
               flags = TK_CHECK_EQUAL; break;
 
