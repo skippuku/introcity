@@ -99,11 +99,14 @@ struct ParseContext {
     struct{ char * key; AttributeParseInfo value; } * attribute_map;
     struct{ char * key; int value; } * attribute_token_map;
     struct{ char * key; int value; } * builtin_map;
+    AttributeData * attribute_globals;
     AttributeDirective * attribute_directives;
     AttributeDataMap * attribute_data_map;
+    IntroBuiltinAttributeIds builtin;
     char ** string_set;
     uint32_t attribute_id_counter;
     uint32_t attribute_flag_id_counter;
+    IntroInfo * p_info;
 };
 
 static void
@@ -218,7 +221,7 @@ store_type(ParseContext * ctx, IntroType type, char * pos) {
     return stored;
 }
 
-void
+bool
 maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t member_index, Token * o_tk) {
     if (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
         Token paren = next_token(o_s);
@@ -239,7 +242,9 @@ maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t member_index, To
         }
         *o_s = closing + 1;
         *o_tk = next_token(o_s);
+        return true;
     }
+    return false;
 }
 
 static int
@@ -883,6 +888,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     ret = parse_type_annex(ctx, o_s, decl);
     if (ret < 0) return -1;
 
+    IntroType * typedef_type = NULL;
     if (decl->state == DECL_TYPEDEF) {
         char * name;
         if (decl->name_tk.start) {
@@ -922,6 +928,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 arrput(list, stored);
                 hmput(ctx->incomplete_typedefs, decl->type, list);
             }
+            typedef_type = stored;
         }
     }
 
@@ -973,6 +980,10 @@ find_end: ;
         Token tk = next_token(o_s);
         if (decl->state == DECL_MEMBERS) {
             maybe_expect_attribute(ctx, o_s, decl->member_index, &tk);
+        } else if (typedef_type) {
+            if (maybe_expect_attribute(ctx, o_s, MIDX_TYPE, &tk)) {
+                arrlast(ctx->attribute_directives).type = typedef_type;
+            }
         }
         if (tk.type == TK_COMMA) {
             if (decl->state != DECL_ARGS) {
@@ -1176,6 +1187,8 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
             add_to_gen_info(ctx, o_info, func->type);
         }
     }
+
+    ctx->p_info = o_info;
 
     reset_location_context(&ctx->loc);
     handle_attributes(ctx, o_info);

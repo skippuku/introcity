@@ -44,10 +44,10 @@ parse:
         operator overloads?
 
 pre:
+    !! more options for what parts have information generated
+        option to exclude by default, enable with #if __INTRO__
     !! include errors are fucked (again)
     don't evaluate location line until it is known the type will be in info
-    more options for what parts have information generated
-        option to exclude by default, enable with #if __INTRO__
     save location of includes and defines
     parse #line directives
     trim big newline gaps

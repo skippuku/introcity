@@ -154,7 +154,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
                                 nest->top_level_name, nest->member_name_in_container, m->name,
                                 nest->top_level_name, nest->member_name_in_container);
                     }
-                    strputf(&s, ", 0x%x},\n", m->attr);
+                    strputf(&s, ", %u},\n", m->attr);
                 }
             } else if (t->category == INTRO_ENUM) {
                 strputf(&s, ", %u, %u, %u, {\n", t->i_enum->count_members, t->i_enum->is_flags, t->i_enum->is_sequential);
@@ -242,10 +242,13 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
             }
         }
         if (t->location.path) {
-            strputf(&s, ", {\"%s\", %u, %u}},\n", t->location.path, t->location.line, t->location.column);
+            strputf(&s, ", {\"%s\", %u, %u}, ", t->location.path, t->location.line, t->location.column);
         } else {
-            strputf(&s, "},\n");
+            strputf(&s, ", {}, ");
         }
+
+        strputf(&s, "%u", t->attr);
+        strputf(&s, "},\n");
     }
     strputf(&s, "};\n\n");
 
@@ -267,9 +270,6 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     for (int i=0; i < info->attr.count_available; i++) {
         strputf(&s, "%sIATTR_%s = %i,\n", tab, info->attr.available[i].name, i);
     }
-    strputf(&s, "%sIATTR_i_type = %i,\n", tab, INTRO_ATTR_TYPE);
-    strputf(&s, "%sIATTR_i_cstring = %i,\n", tab, INTRO_ATTR_CSTRING);
-    strputf(&s, "%sIATTR_i_city = %i,\n", tab, INTRO_ATTR_CITY);
     strputf(&s, "};\n\n");
 
     strputf(&s, "const unsigned char __intro_attr_data [] = {");
@@ -311,6 +311,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "};\n\n");
 
     // context
+    
     strputf(&s, "IntroContext __intro_ctx = {\n");
     strputf(&s, "%s__intro_types,\n", tab);
     strputf(&s, "%s__intro_notes,\n", tab);
@@ -319,7 +320,11 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     strputf(&s, "%s{(IntroAttribute *)__intro_attr_t, ", tab);
     strputf(&s, "%s(IntroAttributeSpec *)__intro_attr_data, ", tab);
     strputf(&s, "%s%u, ", tab, info->attr.count_available);
-    strputf(&s, "%s%u,},\n", tab, info->attr.first_flag);
+    strputf(&s, "%s%u,", tab, info->attr.first_flag);
+    for (int i=0; i < LENGTH(g_builtin_attributes); i++) {
+        strputf(&s, "IATTR_%s,", g_builtin_attributes[i].key);
+    }
+    strputf(&s, "},\n");
     strputf(&s, "%s%u,", tab, info->count_types);
     strputf(&s, "%s%i,", tab, (int)arrlenu(info->string_set));
     strputf(&s, "%s%i,", tab, (int)arrlenu(info->value_buffer));

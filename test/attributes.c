@@ -27,9 +27,16 @@ typedef struct {
 } JointAllocTest;
 
 typedef struct {
+    float x, y;
+} Vector2 I(gui_vector);
+
+typedef struct {
     char * name I(note "this is the name", num 47, default "spock", 9);
     int v1 I(10, = 67, death_value -9, friend v2, my_scale 8.5, exp);
     float v2 I(id 11, exp, friend v1, death_value 2.5, note "i don't know what to put in here guys");
+    Vector2 speed;
+    Vector2 accel I(gui_scale 0.1);
+    Vector2 internal_vec I(~gui_show);
 } AttributeTest;
 
 #include "attributes.c.intro"

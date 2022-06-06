@@ -157,44 +157,28 @@ typedef enum IntroAttributeType {
     INTRO_AT_COUNT
 } IntroAttributeType;
 
-
-typedef enum IntroBuiltinAttribute {
-    INTRO_ATTR_ID       = 0,
-    INTRO_ATTR_BITFIELD = 1,
-    INTRO_ATTR_DEFAULT  = 2,
-    INTRO_ATTR_LENGTH   = 3,
-    INTRO_ATTR_ALIAS    = 4,
-    INTRO_ATTR_FIRST_UNRESERVED,
-    INTRO_ATTR_TYPE     = INTRO_MAX_ATTRIBUTES - 3,
-    INTRO_ATTR_CSTRING  = INTRO_MAX_ATTRIBUTES - 2,
-    INTRO_ATTR_CITY     = INTRO_MAX_ATTRIBUTES - 1,
-
-    INTRO_ATTR_REMOVE   = INTRO_MAX_ATTRIBUTES + 1,
-} IntroBuiltinAttribute;
-
-// TODO: problem: reserved flags don't work out.
-// attribute id's are reserved for this group
 I(attribute i_ (
-    id:       int,            // INTRO_ATTR_ID
-    bitfield: int,            // INTRO_ATTR_BITFIELD
-    default:  value(@inherit),// INTRO_ATTR_DEFAULT
-    length:   member,         // INTRO_ATTR_LENGTH
-    alias:    string,         // INTRO_ATTR_ALIAS
-    city:     flag @global,   // INTRO_ATTR_CITY
-    cstring:  flag,           // INTRO_ATTR_CSTRING
-    type:     flag,           // INTRO_ATTR_TYPE
-    remove:   __remove,       // INTRO_ATTR_REMOVE (not stored)
+    id:       int,
+    bitfield: int,
+    default:  value(@inherit),
+    length:   member,
+    alias:    string,
+    city:     flag @global,
+    cstring:  flag,
+    type:     flag,
+    remove:   __remove,
 ))
 
 //I(apply_to char * (cstring)) // TODO
 
-typedef uint32_t IntroGuiColor; // (TODO) I(gui_edit_color);
+typedef uint8_t IntroGuiColor [4] I(gui_edit_color);
 
 I(attribute gui_ (
     note:   string,
     name:   string,
     min:    value(@inherit),
     max:    value(@inherit),
+    format: string,
     scale:  float,
     vector: flag,
     color:  value(IntroGuiColor),
@@ -214,17 +198,45 @@ typedef struct IntroAttributeSpec {
     uint32_t value_offsets [];
 } IntroAttributeSpec;
 
+typedef struct IntroBuiltinAttributeIds {
+    uint8_t i_id;
+    uint8_t i_bitfield;
+    uint8_t i_default;
+    uint8_t i_length;
+    uint8_t i_alias;
+    uint8_t i_city;
+    uint8_t i_cstring;
+    uint8_t i_type;
+    uint8_t i_remove;
+
+    uint8_t gui_note;
+    uint8_t gui_name;
+    uint8_t gui_min;
+    uint8_t gui_max;
+    uint8_t gui_format;
+    uint8_t gui_scale;
+    uint8_t gui_vector;
+    uint8_t gui_color;
+    uint8_t gui_show;
+    uint8_t gui_edit;
+    uint8_t gui_edit_color;
+} IntroBuiltinAttributeIds;
+
+typedef struct IntroAttributeContext {
+    IntroAttribute * available I(length count_available);
+    IntroAttributeSpec * spec_buffer;
+    uint32_t count_available;
+    uint16_t first_flag;
+
+    IntroBuiltinAttributeIds builtin;
+} IntroAttributeContext;
+
 typedef struct IntroContext {
     IntroType * types   I(length count_types);
     const char ** notes I(length count_notes);
     uint8_t * values    I(length size_values);
     IntroFunction ** functions I(length count_functions);
-    struct IntroAttributeContext {
-        IntroAttribute * available;
-        IntroAttributeSpec * spec_buffer;
-        uint32_t count_available;
-        uint16_t first_flag;
-    } attr; 
+    IntroAttributeContext attr; 
 
     uint32_t count_types;
     uint32_t count_notes;
@@ -313,7 +325,7 @@ typedef struct {
 
 // ATTRIBUTE INFO
 #define intro_attribute_value(m, a, out) intro_attribute_value_x(INTRO_CTX, m, IATTR_##a, out)
-bool intro_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, IntroVariant * o_var);
+bool intro_attribute_value_x(IntroContext * ctx, const IntroMember * m, uint32_t attr_id, IntroVariant * o_var);
 #define intro_attribute_int(m, a, out) intro_attribute_int_x(INTRO_CTX, m->attr, IATTR_##a, out)
 bool intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int);
 #define intro_attribute_member(m, a, out) intro_attribute_member_x(INTRO_CTX, m->attr, IATTR_##a, out)

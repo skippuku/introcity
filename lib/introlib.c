@@ -173,9 +173,9 @@ intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec_location, uint32
 
 bool
 intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length) {
-    assert(container_type->category == INTRO_STRUCT);
+    assert(container_type->category == INTRO_STRUCT || container_type->category == INTRO_UNION);
     uint32_t value_offset;
-    bool has = get_attribute_value_offset(ctx, m->attr, INTRO_ATTR_LENGTH, &value_offset);
+    bool has = get_attribute_value_offset(ctx, m->attr, ctx->attr.builtin.i_length, &value_offset);
     if (has) {
         int32_t length_m_index;
         memcpy(&length_m_index, &value_offset, sizeof(length_m_index));
@@ -233,7 +233,7 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
     IntroVariant var;
     if (m->type->category == INTRO_STRUCT) {
         intro_set_values_x(ctx, dest + m->offset, m->type, value_attribute);
-    } else if (intro_has_attribute_x(ctx, m->attr, INTRO_ATTR_TYPE)) {
+    } else if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_type)) {
         memcpy(dest + m->offset, &struct_type, sizeof(void *));
     } else if (intro_attribute_value_x(ctx, m, value_attribute, &var)) {
         assert(var.type == m->type);
@@ -268,7 +268,7 @@ intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint
 
 void
 intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
-    intro_set_values_x(ctx, dest, type, INTRO_ATTR_DEFAULT);
+    intro_set_values_x(ctx, dest, type, ctx->attr.builtin.i_default);
 }
 
 static void
@@ -628,7 +628,7 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
                 put_uint(&ctx->info, m->offset, ctx->offset_size);
 
                 int32_t id;
-                if (intro_attribute_int_x(ctx->ictx, m->attr, INTRO_ATTR_ID, &id)) {
+                if (intro_attribute_int_x(ctx->ictx, m->attr, ctx->ictx->attr.builtin.i_id, &id)) {
                     size_t stored = id;
                     stored |= id_test_bit;
                     put_uint(&ctx->info, stored, ctx->offset_size);
@@ -763,7 +763,7 @@ city__safe_copy_struct(
     for (int dm_i=0; dm_i < d_struct->count_members; dm_i++) {
         const IntroMember * dm = &d_struct->members[dm_i];
 
-        if (intro_has_attribute_x(ctx, dm->attr, INTRO_ATTR_TYPE)) {
+        if (intro_has_attribute_x(ctx, dm->attr, ctx->attr.builtin.i_type)) {
             *(const IntroType **)(dest + dm->offset) = d_type;
             continue;
         }
@@ -771,7 +771,7 @@ city__safe_copy_struct(
         const char ** aliases = NULL;
         arrput(aliases, dm->name);
         const char * alias;
-        if ((alias = intro_attribute_string_x(ctx, dm->attr, INTRO_ATTR_ALIAS)) != NULL) {
+        if ((alias = intro_attribute_string_x(ctx, dm->attr, ctx->attr.builtin.i_alias)) != NULL) {
             arrput(aliases, alias);
         }
 
@@ -790,7 +790,7 @@ city__safe_copy_struct(
             } else {
                 int32_t sm_id = sm->attr;
                 int32_t dm_id;
-                if (intro_attribute_int_x(ctx, dm->attr, INTRO_ATTR_ID, &dm_id) && dm_id == sm_id) {
+                if (intro_attribute_int_x(ctx, dm->attr, ctx->attr.builtin.i_id, &dm_id) && dm_id == sm_id) {
                     match = true;
                 }
             }
@@ -835,7 +835,7 @@ city__safe_copy_struct(
             }
         }
         if (!found_match) {
-            intro_set_member_value_ctx(ctx, dest, d_type, dm_i, INTRO_ATTR_DEFAULT);
+            intro_set_member_value_ctx(ctx, dest, d_type, dm_i, ctx->attr.builtin.i_default);
         }
         arrfree(aliases);
     }

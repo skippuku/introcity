@@ -63,6 +63,32 @@
   #define COMPILER_STR "compiler"
 #endif
 
+#define DEF_BUILTIN(name) {#name, offsetof(IntroBuiltinAttributeIds, name)}
+static const struct { const char * key; int value; } g_builtin_attributes [] = {
+    DEF_BUILTIN(i_id),
+    DEF_BUILTIN(i_bitfield),
+    DEF_BUILTIN(i_default),
+    DEF_BUILTIN(i_length),
+    DEF_BUILTIN(i_alias),
+    DEF_BUILTIN(i_city),
+    DEF_BUILTIN(i_cstring),
+    DEF_BUILTIN(i_type),
+    DEF_BUILTIN(i_remove),
+
+    DEF_BUILTIN(gui_note),
+    DEF_BUILTIN(gui_name),
+    DEF_BUILTIN(gui_min),
+    DEF_BUILTIN(gui_max),
+    DEF_BUILTIN(gui_format),
+    DEF_BUILTIN(gui_scale),
+    DEF_BUILTIN(gui_vector),
+    DEF_BUILTIN(gui_color),
+    DEF_BUILTIN(gui_show),
+    DEF_BUILTIN(gui_edit),
+    DEF_BUILTIN(gui_edit_color),
+};
+#undef DEF_BUILTIN
+
 typedef struct {
     int current;
     int current_used;
