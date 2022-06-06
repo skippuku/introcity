@@ -265,8 +265,11 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
 
     strputf(&s, "enum {\n");
     for (int i=0; i < info->attr.count_available; i++) {
-        strputf(&s, "%sIATTR_%s,\n", tab, info->attr.available[i].name);
+        strputf(&s, "%sIATTR_%s = %i,\n", tab, info->attr.available[i].name, i);
     }
+    strputf(&s, "%sIATTR_i_type = %i,\n", tab, INTRO_ATTR_TYPE);
+    strputf(&s, "%sIATTR_i_cstring = %i,\n", tab, INTRO_ATTR_CSTRING);
+    strputf(&s, "%sIATTR_i_city = %i,\n", tab, INTRO_ATTR_CITY);
     strputf(&s, "};\n\n");
 
     strputf(&s, "const unsigned char __intro_attr_data [] = {");

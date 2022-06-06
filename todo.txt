@@ -69,6 +69,7 @@ lib:
     single header?
 
 test:
+    !! add sanitized target
     test for errors that should be raised by the parser
     more rigorous tests
 

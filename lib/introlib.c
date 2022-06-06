@@ -80,45 +80,66 @@ intro_int_value(const void * data, const IntroType * type) {
     return result;
 }
 
-bool
-intro_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, IntroVariant * o_var) {
+static bool
+get_attribute_value_offset(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, uint32_t * out) {
     assert(attr_id < INTRO_MAX_ATTRIBUTES);
-    IntroAttributeSpec * spec = ctx->attr.spec_buffer + attr_spec_location;
-    uint32_t bit_set_index = attr_id >> 5; 
+    IntroAttributeSpec * spec = &ctx->attr.spec_buffer[attr_spec_location];
+    uint32_t bitset_index = attr_id >> 5; 
     uint32_t bit_index = attr_id & 31;
-    uint32_t attr_mask = 1 << bit_index;
-    uint32_t pop_count_mask = attr_mask - 1;
-    bool has = spec->bitset[bit_set_index] & bit_index;
+    uint32_t attr_bit = 1 << bit_index;
+    uint32_t pop_count_mask = attr_bit - 1;
+    bool has = spec->bitset[bitset_index] & attr_bit;
     if (!has) {
         return false;
-    } else {
-        if (!o_var) return true;
-    }
-
-    IntroAttribute attr = ctx->attr.available[attr_id];
-    if (attr.attr_type == INTRO_AT_FLAG) {
-        return true;
     }
 
     int pop = 0;
-    for (int i=0; i < bit_set_index; i++) {
+    for (int i=0; i < bitset_index; i++) {
         pop += __builtin_popcount(spec->bitset[i]);
     }
-    pop += __builtin_popcount(spec->bitset[bit_set_index] & pop_count_mask);
-    uint32_t value_offset = spec->value_offsets[pop];
+    pop += __builtin_popcount(spec->bitset[bitset_index] & pop_count_mask);
+    *out = spec->value_offsets[pop];
+
+    return true;
+}
+
+#define ASSERT_ATTR_TYPE(a_type) assert(ctx->attr.available[attr_id].attr_type == a_type)
+
+bool
+intro_attribute_value_x(IntroContext * ctx, const IntroMember * member, uint32_t attr_id, IntroVariant * o_var) {
+    ASSERT_ATTR_TYPE(INTRO_AT_VALUE);
+    uint32_t attr_spec_location = member->attr;
+    uint32_t value_offset;
+    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    if (!has) return false;
 
     o_var->data = ctx->values + value_offset;
-    o_var->type_id = attr.type_id;
+    uint32_t type_id = ctx->attr.available[attr_id].type_id;
+    o_var->type = (type_id != 0)? &ctx->types[type_id] : member->type;
 
     return true;
 }
 
 bool
 intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int) {
-    IntroVariant var;
-    if (intro_attribute_x(ctx, attr_spec_location, attr_id, &var)) {
-        assert(var.type_id == TYPEID_S32);
-        memcpy(o_int, var.data, sizeof(*o_int));
+    ASSERT_ATTR_TYPE(INTRO_AT_INT);
+    uint32_t value_offset;
+    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    if (has) {
+        memcpy(o_int, &value_offset, sizeof(*o_int));
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool
+intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int) {
+    ASSERT_ATTR_TYPE(INTRO_AT_MEMBER);
+    uint32_t value_offset;
+    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    if (has) {
+        memcpy(o_int, &value_offset, sizeof(*o_int));
         return true;
     } else {
         return false;
@@ -127,22 +148,37 @@ intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t 
 
 bool
 intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, float * o_float) {
-    IntroVariant var;
-    if (intro_attribute_x(ctx, attr_spec_location, attr_id, &var)) {
-        assert(var.type_id == TYPEID_F32);
-        memcpy(o_float, var.data, sizeof(*o_float));
+    ASSERT_ATTR_TYPE(INTRO_AT_FLOAT);
+    uint32_t value_offset;
+    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    if (has) {
+        memcpy(o_float, &value_offset, sizeof(*o_float));
         return true;
     } else {
         return false;
     }
 }
 
+const char *
+intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
+    ASSERT_ATTR_TYPE(INTRO_AT_STRING);
+    uint32_t value_offset;
+    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    if (has) {
+        return ctx->notes[value_offset];
+    } else {
+        return NULL;
+    }
+}
+
 bool
 intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length) {
     assert(container_type->category == INTRO_STRUCT);
-    IntroVariant var;
-    if (intro_attribute_x(ctx, m->attr, INTRO_ATTR_LENGTH, &var)) {
-        int32_t length_m_index = (int32_t)(size_t)var.data;
+    uint32_t value_offset;
+    bool has = get_attribute_value_offset(ctx, m->attr, INTRO_ATTR_LENGTH, &value_offset);
+    if (has) {
+        int32_t length_m_index;
+        memcpy(&length_m_index, &value_offset, sizeof(length_m_index));
         const IntroMember * length_m = &container_type->i_struct->members[length_m_index];
         const void * length_data = container + length_m->offset;
         int64_t result = intro_int_value(length_data, length_m->type);
@@ -194,15 +230,17 @@ void
 intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute) {
     const IntroMember * m = &struct_type->i_struct->members[member_index];
     size_t size = intro_size(m->type);
-    int32_t value_offset;
+    IntroVariant var;
     if (m->type->category == INTRO_STRUCT) {
         intro_set_values_x(ctx, dest + m->offset, m->type, value_attribute);
     } else if (intro_has_attribute_x(ctx, m->attr, INTRO_ATTR_TYPE)) {
         memcpy(dest + m->offset, &struct_type, sizeof(void *));
-    } else if (intro_attribute_int_x(ctx, m->attr, value_attribute, &value_offset)) {
-        void * value_ptr = ctx->values + value_offset;
+    } else if (intro_attribute_value_x(ctx, m, value_attribute, &var)) {
+        assert(var.type == m->type);
+        void * value_ptr = var.data;
         if (m->type->category == INTRO_POINTER) {
-            size_t data_offset = *(size_t *)value_ptr;
+            size_t data_offset;
+            memcpy(&data_offset, value_ptr, sizeof(size_t));
             void * data = ctx->values + data_offset;
             memcpy(dest + m->offset, &data, sizeof(size_t));
         } else {
@@ -732,9 +770,8 @@ city__safe_copy_struct(
 
         const char ** aliases = NULL;
         arrput(aliases, dm->name);
-        int32_t note_index;
-        if (intro_attribute_int_x(ctx, dm->attr, INTRO_ATTR_ALIAS, &note_index)) {
-            const char * alias = ctx->notes[note_index];
+        const char * alias;
+        if ((alias = intro_attribute_string_x(ctx, dm->attr, INTRO_ATTR_ALIAS)) != NULL) {
             arrput(aliases, alias);
         }
 
@@ -751,7 +788,9 @@ city__safe_copy_struct(
                     }
                 }
             } else {
-                if (dm->attr == sm->attr) {
+                int32_t sm_id = sm->attr;
+                int32_t dm_id;
+                if (intro_attribute_int_x(ctx, dm->attr, INTRO_ATTR_ID, &dm_id) && dm_id == sm_id) {
                     match = true;
                 }
             }

@@ -144,27 +144,54 @@ typedef struct IntroFunction {
     const char * arg_names [];
 } IntroFunction;
 
-// attribute id's are reserved for this group
-I(attribute i_ (
-    remove:   int,            // UINT32_MAX (not stored)
-    id:       int,            // 0
-    bitfield: int,            // 1
-    default:  value(@inherit),// 2
-    length:   member,         // 3
-    type:     flag,           // 4
-    note:     string,         // 5
-    alias:    string,         // 6
-    city:     flag @global,   // 7
-    cstring:  flag,           // 8
-))
+typedef enum IntroAttributeType {
+    INTRO_AT_FLAG = 0,
+    INTRO_AT_INT,
+    INTRO_AT_FLOAT,
+    INTRO_AT_VALUE,
+    INTRO_AT_MEMBER,
+    INTRO_AT_STRING,
+    INTRO_AT_TYPE, // unimplemented
+    INTRO_AT_EXPR, // unimplemented
+    INTRO_AT_REMOVE,
+    INTRO_AT_COUNT
+} IntroAttributeType;
+
+
+typedef enum IntroBuiltinAttribute {
+    INTRO_ATTR_ID       = 0,
+    INTRO_ATTR_BITFIELD = 1,
+    INTRO_ATTR_DEFAULT  = 2,
+    INTRO_ATTR_LENGTH   = 3,
+    INTRO_ATTR_ALIAS    = 4,
+    INTRO_ATTR_FIRST_UNRESERVED,
+    INTRO_ATTR_TYPE     = INTRO_MAX_ATTRIBUTES - 3,
+    INTRO_ATTR_CSTRING  = INTRO_MAX_ATTRIBUTES - 2,
+    INTRO_ATTR_CITY     = INTRO_MAX_ATTRIBUTES - 1,
+
+    INTRO_ATTR_REMOVE   = INTRO_MAX_ATTRIBUTES + 1,
+} IntroBuiltinAttribute;
 
 // TODO: problem: reserved flags don't work out.
+// attribute id's are reserved for this group
+I(attribute i_ (
+    id:       int,            // INTRO_ATTR_ID
+    bitfield: int,            // INTRO_ATTR_BITFIELD
+    default:  value(@inherit),// INTRO_ATTR_DEFAULT
+    length:   member,         // INTRO_ATTR_LENGTH
+    alias:    string,         // INTRO_ATTR_ALIAS
+    city:     flag @global,   // INTRO_ATTR_CITY
+    cstring:  flag,           // INTRO_ATTR_CSTRING
+    type:     flag,           // INTRO_ATTR_TYPE
+    remove:   __remove,       // INTRO_ATTR_REMOVE (not stored)
+))
 
 //I(apply_to char * (cstring)) // TODO
 
 typedef uint32_t IntroGuiColor; // (TODO) I(gui_edit_color);
 
 I(attribute gui_ (
+    note:   string,
     name:   string,
     min:    value(@inherit),
     max:    value(@inherit),
@@ -175,32 +202,6 @@ I(attribute gui_ (
     edit:   flag @global,
     edit_color: flag,
 ))
-
-typedef enum IntroAttributeType {
-    INTRO_AT_FLAG = 0,
-    INTRO_AT_INT,
-    INTRO_AT_FLOAT,
-    INTRO_AT_VALUE,
-    INTRO_AT_MEMBER,
-    INTRO_AT_STRING,
-    INTRO_AT_TYPE, // unimplemented
-    INTRO_AT_EXPR, // unimplemented
-    INTRO_AT_COUNT
-} IntroAttributeType;
-
-typedef enum IntroBuiltinAttribute {
-    INTRO_ATTR_REMOVE   = (int)UINT32_MAX,
-    INTRO_ATTR_BITFIELD = 0,
-    INTRO_ATTR_ID       = 1,
-    INTRO_ATTR_DEFAULT  = 2,
-    INTRO_ATTR_LENGTH   = 3,
-    INTRO_ATTR_TYPE     = 4,
-    INTRO_ATTR_NOTE     = 5,
-    INTRO_ATTR_ALIAS    = 6,
-    INTRO_ATTR_CITY     = 7,
-    INTRO_ATTR_CSTRING  = 8,
-    INTRO_ATTR_COUNT
-} IntroBuiltinAttribute;
 
 typedef struct IntroAttribute {
     const char * name;
@@ -231,11 +232,6 @@ typedef struct IntroContext {
     uint32_t count_functions;
 } IntroContext;
 
-typedef struct IntroVariant {
-    void * data;
-    uint32_t type_id;
-} IntroVariant;
-
 #ifndef INTRO_CTX
 #define INTRO_CTX &__intro_ctx
 #endif
@@ -244,8 +240,13 @@ typedef struct IntroVariant {
 #define INTRO_INLINE static inline
 #endif
 
-#define intro_var_get(var, T) (assert(var.type_id == ITYPE##T), *(T *)var.data)
-#define intro_var_ptr(var, T) (((INTRO_CTX)->types[var.type_id]->parent == ITYPE(T))? (T *)var.data : (T *)0)
+typedef struct IntroVariant {
+    void * data;
+    const IntroType * type;
+} IntroVariant;
+
+#define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
+#define intro_var_ptr(var, T) ((type->parent == ITYPE(T))? (T *)var.data : (T *)0)
 
 INTRO_INLINE bool
 intro_is_scalar(const IntroType * type) {
@@ -300,10 +301,10 @@ INTRO_INLINE bool
 intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
     assert(attr_id < INTRO_MAX_ATTRIBUTES);
     IntroAttributeSpec * spec = ctx->attr.spec_buffer + attr_spec_location;
-    uint32_t bit_set_index = attr_id >> 5; 
+    uint32_t bitset_index = attr_id >> 5; 
     uint32_t bit_index = attr_id & 31;
-    uint32_t attr_mask = 1 << bit_index;
-    return (spec->bitset[bit_set_index] & attr_mask);
+    uint32_t attr_bit = 1 << bit_index;
+    return (spec->bitset[bitset_index] & attr_bit);
 }
 
 typedef struct {
@@ -311,15 +312,18 @@ typedef struct {
 } IntroPrintOptions;
 
 // ATTRIBUTE INFO
-#define intro_attribute(m, a, out) intro_attribute_x(INTRO_CTX, m->attr, IATTR_##a, out)
+#define intro_attribute_value(m, a, out) intro_attribute_value_x(INTRO_CTX, m, IATTR_##a, out)
 bool intro_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, IntroVariant * o_var);
 #define intro_attribute_int(m, a, out) intro_attribute_int_x(INTRO_CTX, m->attr, IATTR_##a, out)
 bool intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int);
+#define intro_attribute_member(m, a, out) intro_attribute_member_x(INTRO_CTX, m->attr, IATTR_##a, out)
+bool intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int);
 #define intro_attribute_float(m, a, out) intro_attribute_float_x(INTRO_CTX, m->attr, IATTR_##a, out)
 bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, float * o_float);
+#define intro_attribute_string(m, a) intro_attribute_string_x(INTRO_CTX, m->attr, IATTR_##a)
+const char * intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id);
 #define intro_attribute_length(c, ct, m, out) intro_attribute_length_x(INTRO_CTX, c, ct, m, out)
 bool intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length);
-uint32_t intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str);
 
 // INITIALIZERS
 void intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);

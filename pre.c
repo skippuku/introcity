@@ -111,7 +111,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
 
 static inline int
 count_newlines_unaligned(char * start, int count) {
-#if 0
+#if 1
     __m128i mask;
     memset(&mask, 1, count);
     __m128i line = _mm_loadu_si128((void *)start);
@@ -131,10 +131,12 @@ count_newlines_unaligned(char * start, int count) {
 }
 
 static int
-count_newlines_in_range(char * s, char * end, char ** o_last_line) {
+count_newlines_in_range(char * start, char * end, char ** o_last_line) {
 #ifdef __SSE2__
+    char * s = start;
     int result = 1;
     int count_to_aligned = (16 - ((uintptr_t)s & 15)) & 15;
+    assert(end > s);
     result += count_newlines_unaligned(s, MIN(count_to_aligned, end - s));
     s += count_to_aligned;
     if (s < end) {
@@ -152,7 +154,7 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
         db_assert(end - s >= 0);
         result += count_newlines_unaligned(s, end - s);
     }
-    while (*--end != '\n');
+    while (end > start && *--end != '\n');
     *o_last_line = end;
     return result;
 #else
@@ -1336,6 +1338,7 @@ static char intro_defs [] =
 "#endif\n"
 "#define __inline inline\n"
 "#define __restrict restrict\n"
+"#define _Complex \n" // TODO: ... uhg
 
 // MINGW
 "#define _VA_LIST_DEFINED 1\n"

@@ -23,6 +23,7 @@ typedef struct {
     uint32_t final_id;
     IntroType * type_ptr;
     IntroAttributeType type;
+    bool builtin;
     bool global;
     bool without_namespace;
     bool invalid_without_namespace;
@@ -65,9 +66,11 @@ struct ParseContext {
 
     struct{ char * key; AttributeParseInfo value; } * attribute_map;
     struct{ char * key; int value; } * attribute_token_map;
+    struct{ char * key; int value; } * builtin_map;
     AttributeDirective * attribute_directives;
     char ** string_set;
     uint32_t attribute_id_counter;
+    uint32_t attribute_flag_id_counter;
 };
 
 static void
@@ -1141,6 +1144,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         }
     }
 
+    reset_location_context(&ctx->loc);
     handle_attributes(ctx, o_info);
 
     o_info->count_types = arrlen(o_info->types);

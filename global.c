@@ -107,6 +107,14 @@ typedef struct {
     char * pos;
 } LocationContext;
 
+void
+reset_location_context(LocationContext * lctx) {
+    lctx->index = 0;
+    arrsetlen(lctx->stack, 0);
+    lctx->line_num = 0;
+    lctx->pos = NULL;
+}
+
 typedef struct {
     char * result_buffer;
     char * output_filename;

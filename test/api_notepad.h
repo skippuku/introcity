@@ -38,7 +38,7 @@ I(attribute gui_ (
 ))
 
 I(attribute i_ (
-    alias: const(char * []),
+    alias: value(char * []),
 ))
 
 typedef struct {char * name; int value;} CyContent;
@@ -46,9 +46,9 @@ typedef struct {char * name; int value;} CyContent;
 I(attribute cy_ (
     favorite: flag,
     priority: int,
-    widget:   const(FuncOnNode),
-    hard_mode_default: const(@inherit),
-    options: const(CyContent []),
+    widget:   value(FuncOnNode),
+    hard_mode_default: value(@inherit),
+    options: value(CyContent []),
 ))
 
 struct Settings {

@@ -28,7 +28,7 @@ typedef struct {
 
 typedef struct {
     char * name I(note "this is the name", num 47, default "spock", 9);
-    int v1 I(10, = 67, death_value -9, friend v2, scale 8.5, exp);
+    int v1 I(10, = 67, death_value -9, friend v2, my_scale 8.5, exp);
     float v2 I(id 11, exp, friend v1, death_value 2.5, note "i don't know what to put in here guys");
 } AttributeTest;
 
@@ -49,7 +49,7 @@ special_alloc(void * dest_struct, const IntroType * type) {
                 const IntroMember * m = &type->i_struct->members[mi];
                 int friend_index;
                 if (mi == owner_index
-                    || (intro_attribute_int(m, my_joint, &friend_index)
+                    || (intro_attribute_member(m, my_joint, &friend_index)
                         && friend_index == owner_index))
                 {
                     int element_size = intro_size(m->type->parent);
@@ -126,15 +126,18 @@ main() {
     {
         int32_t i;
         float f;
+        const char * note;
 
         const IntroMember *m_name = &ITYPE(AttributeTest)->i_struct->members[0],
                           *m_v1   = &ITYPE(AttributeTest)->i_struct->members[1],
                           *m_v2   = &ITYPE(AttributeTest)->i_struct->members[2];
 
-        assert(intro_attribute_int(m_name, i_note, &i));
-        assert(0==strcmp(__intro_notes[i], "this is the name"));
+        note = intro_attribute_string(m_name, gui_note);
+        assert(note);
+        assert(0==strcmp(note, "this is the name"));
 
-        assert(intro_attribute_int(m_name, my_num, &i) && i == 47);
+        assert(intro_attribute_int(m_name, my_num, &i));
+        assert(i == 47);
 
         assert(0==strcmp(test.name, "spock"));
 
@@ -143,15 +146,16 @@ main() {
         assert(intro_attribute_int(m_name, i_id, &i) && i == 9);
 
         assert(test.v1 == 67);
-        assert(intro_attribute_int(m_v1, my_friend, &i) && i == 2);
+        assert(intro_attribute_member(m_v1, my_friend, &i) && i == 2);
         assert(intro_attribute_float(m_v1, my_scale, &f) && f == 8.5);
         assert(intro_has_attribute(m_v1, my_exp));
 
         assert(test.v2 == 0.0f);
         assert(intro_has_attribute(m_v2, my_exp));
-        assert(intro_attribute_int(m_v2, my_friend, &i) && i == 1);
-        assert(intro_attribute_int(m_v2, i_note, &i));
-        assert(0==strcmp(__intro_notes[i], "i don't know what to put in here guys"));
+        assert(intro_attribute_member(m_v2, my_friend, &i) && i == 1);
+        note = intro_attribute_string(m_v2, gui_note);
+        assert(note);
+        assert(0==strcmp(note, "i don't know what to put in here guys"));
 
         intro_set_values(&test, ITYPE(AttributeTest), my_death_value);
         assert(test.name == NULL);
