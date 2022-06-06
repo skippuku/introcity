@@ -37,10 +37,42 @@ enum SpecialMemberIndex {
 };
 
 typedef struct {
+    uint32_t id;
+    union {
+        int32_t i;
+        float f;
+    } v;
+} AttributeData;
+
+typedef struct {
     char * location;
     IntroType * type;
     int32_t member_index;
+    uint32_t count;
+    AttributeData * attr_data;
 } AttributeDirective;
+
+typedef struct {
+    IntroType * type;
+    ptrdiff_t member_index;
+} AttributeDataKey;
+
+typedef struct {
+    AttributeDataKey key;
+    AttributeData * value;
+} AttributeDataMap;
+
+typedef struct {
+    ptrdiff_t value_offset;
+    void * data;
+    size_t data_size;
+} PtrStore;
+
+typedef struct {
+    IntroType * type;
+    int32_t member_index, attr_id;
+    uint32_t value;
+} DeferredDefault;
 
 struct ParseContext {
     char * buffer;
@@ -55,7 +87,7 @@ struct ParseContext {
     uint8_t * value_buffer;
     PtrStore * ptr_stores;
 
-    DifferedDefault * deferred_length_defaults;
+    DeferredDefault * deferred_length_defaults;
 
     ExprContext * expr_ctx;
     LocationContext loc;
@@ -68,6 +100,7 @@ struct ParseContext {
     struct{ char * key; int value; } * attribute_token_map;
     struct{ char * key; int value; } * builtin_map;
     AttributeDirective * attribute_directives;
+    AttributeDataMap * attribute_data_map;
     char ** string_set;
     uint32_t attribute_id_counter;
     uint32_t attribute_flag_id_counter;

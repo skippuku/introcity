@@ -1,11 +1,3 @@
-typedef struct {
-    uint32_t id;
-    union {
-        int32_t i;
-        float f;
-    } v;
-} AttributeData;
-
 enum AttributeToken {
     ATTR_TK_GLOBAL = INTRO_AT_COUNT + 1,
     ATTR_TK_INHERIT,
@@ -402,19 +394,20 @@ store_deferred_ptrs(ParseContext * ctx) {
 }
 
 int
-handle_value_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int member_index, AttributeData * data, Token * p_tk) {
-    IntroType * type = i_struct->members[member_index].type;
+handle_value_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_index, AttributeData * data, Token * p_tk) {
+    IntroType * m_type = type->i_struct->members[member_index].type;
     assert(arrlen(ctx->ptr_stores) == 0);
     uint32_t length_value = 0;
-    ptrdiff_t value_offset = parse_value(ctx, type, o_s, &length_value);
+    ptrdiff_t value_offset = parse_value(ctx, m_type, o_s, &length_value);
     if (value_offset < 0) {
         parse_error(ctx, p_tk, "Error parsing value attribute.");
         return -1;
     }
     if (length_value) {
-        DifferedDefault def = {
+        DeferredDefault def = {
+            .type = type,
             .member_index = member_index,
-            .attribute_type = data->id,
+            .attr_id = data->id,
             .value = length_value,
         };
         arrput(ctx->deferred_length_defaults, def);
@@ -508,7 +501,7 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_in
         // TODO: error check: if multiple members use the same member for length, values can't have different lengths
         // NOTE: the previous 2 todo's do not apply if the values are for different attributes
         case INTRO_AT_VALUE: {
-            if (handle_value_attribute(ctx, o_s, i_struct, member_index, &data, &tk)) return -1;
+            if (handle_value_attribute(ctx, o_s, type, member_index, &data, &tk)) return -1;
         } break;
 
         case INTRO_AT_MEMBER: {
@@ -580,7 +573,7 @@ parse_attributes(ParseContext * ctx, char * s, IntroType * type, int member_inde
             arrput(attributes, data);
         } else if (tk.type == TK_EQUAL) {
             data.id = INTRO_ATTR_DEFAULT;
-            if (handle_value_attribute(ctx, &s, i_struct, member_index, &data, &tk)) return -1;
+            if (handle_value_attribute(ctx, &s, type, member_index, &data, &tk)) return -1;
 
             arrput(attributes, data);
         } else if (tk.type == TK_R_PARENTHESIS) {
@@ -636,6 +629,64 @@ attribute_data_sort_callback(const void * p_a, const void * p_b) {
     return a.id - b.id;
 }
 
+void
+add_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_index, AttributeData * data, int32_t count) {
+    AttributeDataKey key = {
+        .type = type,
+        .member_index = member_index,
+    };
+    AttributeDataMap * pcontent = hmgetp_null(ctx->attribute_data_map, key);
+    if (!pcontent) {
+        hmput(ctx->attribute_data_map, key, NULL);
+        pcontent = hmgetp_null(ctx->attribute_data_map, key);
+        assert(pcontent != NULL);
+    }
+    for (int i=0; i < count; i++) {
+        if (data[i].id == INTRO_ATTR_REMOVE) {
+            for (int j=0; j < arrlen(pcontent->value); j++) {
+                if (pcontent->value[j].id == data[i].v.i) {
+                    arrdelswap(pcontent->value, j);
+                }
+            }
+        } else {
+            arrput(pcontent->value, data[i]);
+        }
+    }
+}
+
+static void
+handle_deferred_defaults(ParseContext * ctx) {
+    for (int i=0; i < arrlen(ctx->deferred_length_defaults); i++) {
+        DeferredDefault def = ctx->deferred_length_defaults[i];
+        AttributeDataKey key = {
+            .type = def.type,
+            .member_index = def.member_index,
+        };
+        AttributeDataMap * pcontent = hmgetp_null(ctx->attribute_data_map, key);
+        assert(pcontent != NULL);
+
+        IntroMember * length_member = NULL;
+        int32_t length_member_index = -1;
+        for (int a=0; a < arrlen(pcontent->value); a++) {
+            if (pcontent->value[a].id == INTRO_ATTR_LENGTH) {
+                length_member_index = pcontent->value[a].v.i;
+                length_member = &def.type->i_struct->members[length_member_index];
+                break;
+            }
+        }
+        if (!length_member) continue;
+
+        ptrdiff_t value_offset = store_value(ctx, &def.value, intro_size(length_member->type));
+        AttributeData data = {
+            .id = def.attr_id,
+            .v.i = value_offset,
+        };
+
+        add_attributes_to_member(ctx, def.type, length_member_index, &data, 1);
+    }
+    arrsetlen(ctx->deferred_length_defaults, 0);
+}
+
 static void
 handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
     int * flags = NULL;
@@ -680,12 +731,24 @@ handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
 
     for (int directive_i=0; directive_i < arrlen(ctx->attribute_directives); directive_i++) {
         AttributeDirective directive = ctx->attribute_directives[directive_i];
-        AttributeData * attr_data = NULL;
-        uint32_t count = 0;
-        int ret = parse_attributes(ctx, directive.location, directive.type, directive.member_index, &attr_data, &count);
+        // TODO: just pass &directive
+        int ret = parse_attributes(ctx, directive.location, directive.type, directive.member_index, &directive.attr_data, &directive.count);
         if (ret) exit(1);
 
+        add_attributes_to_member(ctx, directive.type, directive.member_index, directive.attr_data, directive.count);
+    }
+
+    handle_deferred_defaults(ctx);
+
+    for (int i=0; i < hmlen(ctx->attribute_data_map); i++) {
+        AttributeDataMap content = ctx->attribute_data_map[i];
+        IntroType * type = content.key.type;
+        int32_t member_index = content.key.member_index;
+        AttributeData * attr_data = content.value;
+
         uint32_t spec_index = arrlen(o_info->attr.spec_buffer);
+
+        int32_t count = arrlen(attr_data);
 
         qsort(attr_data, count, sizeof(attr_data[0]), &attribute_data_sort_callback);
 
@@ -710,45 +773,16 @@ handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
             }
         }
 
-        switch(directive.member_index) {
+        switch(member_index) {
         case MIDX_TYPE: {
-            directive.type->attr = spec_index;
+            type->attr = spec_index;
         }break;
 
         default: {
-            directive.type->i_struct->members[directive.member_index].attr = spec_index;
+            type->i_struct->members[member_index].attr = spec_index;
         }break;
         }
     }
 
     o_info->attr.count_available = arrlen(o_info->attr.available);
-}
-
-static void UNUSED
-handle_deferred_defaults(ParseContext * ctx, IntroStruct * i_struct) {
-#if 0 // TODO
-    for (int i=0; i < arrlen(ctx->deferred_length_defaults); i++) {
-        DifferedDefault def = ctx->deferred_length_defaults[i];
-        IntroMember * array_member = &i_struct->members[def.member_index];
-        int32_t length_member_index;
-        if (intro_attribute_int_x(array_member, INTRO_ATTR_LENGTH, &length_member_index)) {
-            IntroMember * member = &i_struct->members[length_member_index];
-            ptrdiff_t value_offset = store_value(ctx, &def.value, intro_size(member->type));
-            AttributeData data = {
-                .type = def.attribute_type,
-                .v = {value_offset},
-            };
-
-            AttributeData * new_attributes = NULL;
-            for (int a=0; a < member->count_attributes; a++) {
-                arrput(new_attributes, member->attributes[a]);
-            }
-            arrput(new_attributes, data);
-            arrfree(member->attributes);
-            member->attributes = new_attributes;
-            member->count_attributes = arrlen(new_attributes);
-        }
-    }
-    arrsetlen(ctx->deferred_length_defaults, 0);
-#endif
 }

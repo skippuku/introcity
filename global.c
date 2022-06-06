@@ -167,17 +167,6 @@ enum ReturnCode {
     RET_DECL_VA_LIST = 8,
 };
 
-typedef struct {
-    ptrdiff_t value_offset;
-    void * data;
-    size_t data_size;
-} PtrStore;
-
-typedef struct {
-    int32_t member_index, attribute_type;
-    uint32_t value;
-} DifferedDefault;
-
 typedef struct ExprContext ExprContext;
 
 typedef enum {
