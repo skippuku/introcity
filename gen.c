@@ -48,36 +48,6 @@ make_identifier_safe_name(const char * name) {
     return result;
 }
 
-static const char *
-category_str(int category) {
-    switch(category) {
-    default:
-    case INTRO_UNKNOWN: return "INTRO_UNKNOWN";
-
-    case INTRO_U8: return "INTRO_U8";
-    case INTRO_U16: return "INTRO_U16";
-    case INTRO_U32: return "INTRO_U32";
-    case INTRO_U64: return "INTRO_U64";
-
-    case INTRO_S8: return "INTRO_S8";
-    case INTRO_S16: return "INTRO_S16";
-    case INTRO_S32: return "INTRO_S32";
-    case INTRO_S64: return "INTRO_S64";
-
-    case INTRO_F32: return "INTRO_F32";
-    case INTRO_F64: return "INTRO_F64";
-    case INTRO_F128: return "INTRO_F128";
-
-    case INTRO_ARRAY: return "INTRO_ARRAY";
-    case INTRO_POINTER: return "INTRO_POINTER";
-
-    case INTRO_ENUM: return "INTRO_ENUM";
-    case INTRO_STRUCT: return "INTRO_STRUCT";
-    case INTRO_UNION: return "INTRO_UNION";
-    case INTRO_FUNCTION: return "INTRO_FUNCTION";
-    }
-}
-
 char *
 generate_c_header(IntroInfo * info, const char * output_filename) {
     // generate info needed to get offset and sizeof for anonymous types
@@ -215,39 +185,52 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         const IntroType * t = info->types[type_index];
         strputf(&s, "%s{", tab);
-        if (t->name) {
-            strputf(&s, "\"%s\", ", t->name);
+
+        strputf(&s, "0x%02x, %u, ", t->category, t->flags);
+
+        if (intro_is_complex(t) || t->category == INTRO_FUNCTION) {
+            char * saved_name = hmget(complex_type_map, t->i_struct);
+            if (saved_name) {
+                strputf(&s, "&__intro_%s, ", saved_name);
+            } else {
+                strputf(&s, "0, ");
+            }
+        } else {
+            if (t->category == INTRO_ARRAY) {
+                strputf(&s, "(void *)0x%x, ", t->array_size);
+            } else {
+                strputf(&s, "0, ");
+            }
+        }
+
+        if (t->of) {
+            int32_t of_index = hmget(info->index_by_ptr_map, t->of);
+            strputf(&s, "&__intro_types[%i], ", of_index);
         } else {
             strputf(&s, "0, ");
         }
+
         if (t->parent) {
             int32_t parent_index = hmget(info->index_by_ptr_map, t->parent);
             strputf(&s, "&__intro_types[%i], ", parent_index);
         } else {
             strputf(&s, "0, ");
         }
-        strputf(&s, "%s, %u, ", category_str(t->category), t->flags);
-        if (intro_is_complex(t) || t->category == INTRO_FUNCTION) {
-            char * saved_name = hmget(complex_type_map, t->i_struct);
-            if (saved_name) {
-                strputf(&s, "&__intro_%s", saved_name);
-            } else {
-                strputf(&s, "0");
-            }
+
+        if (t->name) {
+            strputf(&s, "\"%s\", ", t->name);
         } else {
-            if (t->category == INTRO_ARRAY) {
-                strputf(&s, "(void *)0x%x", t->array_size);
-            } else {
-                strputf(&s, "0");
-            }
-        }
-        if (t->location.path) {
-            strputf(&s, ", {\"%s\", %u, %u}, ", t->location.path, t->location.line, t->location.column);
-        } else {
-            strputf(&s, ", {}, ");
+            strputf(&s, "0, ");
         }
 
         strputf(&s, "%u", t->attr);
+
+        if (t->location.path) {
+            strputf(&s, ", {\"%s\", %u, %u}", t->location.path, t->location.line, t->location.column);
+        } else {
+            strputf(&s, ", {}");
+        }
+
         strputf(&s, "},\n");
     }
     strputf(&s, "};\n\n");

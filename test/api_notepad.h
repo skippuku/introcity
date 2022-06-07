@@ -88,3 +88,12 @@ struct {
     int t_height;
     Tile * tiles I(length .t_width * .t_height);
 };
+
+#pragma intro names (IntroType, Entity) // generate information for the listed types
+#pragma intro file                      // generate information for all types in this file
+#pragma intro start                     // generate information for all types until 'end'
+#pragma intro end
+#pragma intro all                       // generate information for all types including system headers
+
+#pragma intro exclude (system)
+

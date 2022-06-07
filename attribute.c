@@ -300,7 +300,7 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
     } else if (type->category == INTRO_POINTER) {
         Token tk = next_token(o_s);
         if (tk.type == TK_STRING) {
-            if (type->parent->category == INTRO_S8 && 0==strcmp(type->parent->name, "char")) {
+            if (type->of->category == INTRO_S8 && 0==strcmp(type->of->name, "char")) {
                 size_t length;
                 char * str = parse_escaped_string(&tk, &length);
                 if (!str) {
@@ -328,7 +328,7 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint3
     Token tk = next_token(o_s);
 
     ptrdiff_t result = arrlen(ctx->value_buffer);
-    size_t array_element_size = intro_size(type->parent);
+    size_t array_element_size = intro_size(type->of);
     uint32_t count = 0;
 
     if (tk.type == TK_L_BRACE) {
@@ -341,7 +341,7 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint3
                 break;
             }
             *o_s = tk.start;
-            parse_value(ctx, type->parent, o_s, NULL);
+            parse_value(ctx, type->of, o_s, NULL);
             count++;
 
             tk = next_token(o_s);
@@ -460,7 +460,7 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_in
     case INTRO_AT_FLAG: {
         if (data.id == ctx->builtin.i_type) {
             IntroType * type = i_struct->members[member_index].type;
-            if (!(type->category == INTRO_POINTER && strcmp(type->parent->name, "IntroType") == 0)) {
+            if (!(type->category == INTRO_POINTER && strcmp(type->of->name, "IntroType") == 0)) {
                 parse_error(ctx, &tk, "Member must be of type 'IntroType *' to have type attribute.");
                 char typename [1024];
                 intro_sprint_type_name(typename, type);
@@ -777,10 +777,8 @@ handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
             const IntroMember member = directive.type->i_struct->members[directive.member_index];
             key.type = member.type;
         } else {
-            if (directive.type->category != INTRO_ARRAY && directive.type->category != INTRO_POINTER) {
-                if (directive.type->parent) {
-                    key.type = directive.type->parent;
-                }
+            if (directive.type->parent) {
+                key.type = directive.type->parent;
             }
         }
         if (key.type != NULL) {
@@ -844,7 +842,7 @@ handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
 
     for (int type_i=0; type_i < arrlen(o_info->types); type_i++) {
         IntroType * type = o_info->types[type_i];
-        if (type->attr == 0 && (type->category != INTRO_POINTER && type->category != INTRO_ARRAY) && type->parent && type->parent->attr != 0) {
+        if (type->attr == 0 && type->parent && type->parent->attr != 0) {
             type->attr = type->parent->attr;
         }
         if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {

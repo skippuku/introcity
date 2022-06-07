@@ -14,9 +14,19 @@ extern "C" {
 #define I(...)
 #endif
 
-#define ITYPE(x) (&__intro_types[ITYPE_##x])
+#ifndef INTRO_CTX
+#define INTRO_CTX (&__intro_ctx)
+#endif
 
+#ifndef INTRO_API_INLINE
+#define INTRO_API_INLINE static inline
+#endif
+
+#ifndef INTRO_MAX_ATTRIBUTES
 #define INTRO_MAX_ATTRIBUTES 128
+#endif
+
+#define ITYPE(x) (&INTRO_CTX->types[ITYPE_##x])
 
 #ifndef INTRO_ANON_UNION_NAME
   #if __STDC_VERSION__ < 199901L && !defined(__cplusplus) && !defined(__GNUC__)
@@ -88,9 +98,7 @@ typedef struct IntroEnum IntroEnum;
 typedef struct IntroTypePtrList IntroTypePtrList;
 
 struct IntroType {
-    const char * name;
-    IntroType * parent;
-    IntroCategory category; // NOTE: we can probably just use attributes for this
+    uint32_t category;
     uint32_t flags; // not currently implemented
     union {
         void * __data;
@@ -99,8 +107,11 @@ struct IntroType {
         IntroEnum * i_enum;
         IntroTypePtrList * args;
     } INTRO_ANON_UNION_NAME;
-    IntroLocation location; // TODO: this should go somewhere else
+    IntroType * of;
+    IntroType * parent;
+    const char * name;
     uint32_t attr;
+    IntroLocation location; // TODO: this should go somewhere else
 };
 
 typedef struct IntroMember {
@@ -194,7 +205,7 @@ typedef struct IntroAttribute {
 } IntroAttribute;
 
 typedef struct IntroAttributeSpec {
-    INTRO_ALIGN(16) uint32_t bitset [(INTRO_MAX_ATTRIBUTES+31) / 32]; // 128 bits
+    INTRO_ALIGN(16) uint32_t bitset [(INTRO_MAX_ATTRIBUTES+31) / 32];
     uint32_t value_offsets [];
 } IntroAttributeSpec;
 
@@ -244,40 +255,32 @@ typedef struct IntroContext {
     uint32_t count_functions;
 } IntroContext;
 
-#ifndef INTRO_CTX
-#define INTRO_CTX &__intro_ctx
-#endif
-
-#ifndef INTRO_INLINE
-#define INTRO_INLINE static inline
-#endif
-
 typedef struct IntroVariant {
     void * data;
     const IntroType * type;
 } IntroVariant;
 
 #define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
-#define intro_var_ptr(var, T) ((type->parent == ITYPE(T))? (T *)var.data : (T *)0)
+#define intro_var_ptr(var, T) ((type->of == ITYPE(T))? (T *)var.data : (T *)0)
 
-INTRO_INLINE bool
+INTRO_API_INLINE bool
 intro_is_scalar(const IntroType * type) {
     return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
 }
 
-INTRO_INLINE bool
+INTRO_API_INLINE bool
 intro_is_int(const IntroType * type) {
     return (type->category >= INTRO_U8 && type->category <= INTRO_S64);
 }
 
-INTRO_INLINE bool
+INTRO_API_INLINE bool
 intro_is_complex(const IntroType * type) {
     return (type->category == INTRO_STRUCT
          || type->category == INTRO_UNION
          || type->category == INTRO_ENUM);
 }
 
-INTRO_INLINE int
+INTRO_API_INLINE int
 intro_size(const IntroType * type) {
     switch(type->category) {
     case INTRO_U8:
@@ -292,7 +295,7 @@ intro_size(const IntroType * type) {
     case INTRO_F64:     return 8;
     case INTRO_F128:    return 16;
     case INTRO_POINTER: return sizeof(void *);
-    case INTRO_ARRAY:   return type->array_size * intro_size(type->parent);
+    case INTRO_ARRAY:   return type->array_size * intro_size(type->of);
     case INTRO_UNION:
     case INTRO_STRUCT:  return type->i_struct->size;
     case INTRO_ENUM:    return type->i_enum->size;
@@ -300,16 +303,16 @@ intro_size(const IntroType * type) {
     }
 }
 
-INTRO_INLINE const IntroType *
+INTRO_API_INLINE const IntroType *
 intro_origin(const IntroType * type) {
-    while (type->parent && type->category != INTRO_ARRAY && type->category != INTRO_POINTER) {
+    while (type->parent) {
         type = type->parent;
     }
     return type;
 }
 
 #define intro_has_attribute(m, a) intro_has_attribute_x(INTRO_CTX, m->attr, IATTR_##a)
-INTRO_INLINE bool
+INTRO_API_INLINE bool
 intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
     assert(attr_id < INTRO_MAX_ATTRIBUTES);
     IntroAttributeSpec * spec = ctx->attr.spec_buffer + attr_spec_location;

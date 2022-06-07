@@ -43,6 +43,7 @@ pre:
     !! more options for what parts have information generated
         option to exclude by default, enable with #if __INTRO__
     !! include errors are fucked (again)
+        location system seems unnecessarily complicated
     don't evaluate location line until it is known the type will be in info
     save location of includes and defines
     parse #line directives
@@ -54,7 +55,7 @@ gen:
         might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
     include macros in introspection data
     option to create typedefs for structs and enums
-    place all data in one big buffer acessible only through the context, write protect the buffer
+    place all data in one big buffer accessible only through the context, write protect the buffer
     typeof with _Generic?
 
 lib:

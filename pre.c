@@ -304,7 +304,7 @@ preprocess_message_internal(LocationContext * lctx, const Token * tk, char * mes
 #define preprocess_warning(tk, message) preprocess_message_internal(&ctx->loc, tk, message, 1)
 
 void
-location_note(const LocationContext * lctx, IntroLocation location, const char * msg) {
+location_note(LocationContext * lctx, IntroLocation location, const char * msg) {
     FileInfo * file = NULL;
     for (int i=0; i < lctx->count; i++) {
         FileInfo * f = lctx->file_buffers[i];
@@ -320,15 +320,13 @@ location_note(const LocationContext * lctx, IntroLocation location, const char *
     char * s = file->buffer;
     int line = 1;
     while (s < file->buffer + file->buffer_size) {
-        bool done = false;
         if (*s == '\n') {
             line++;
             if (line == location.line) {
-                done = true;
+                break;
             }
         }
         s++;
-        if (done) break;
     }
     char * start_of_line = s;
     s += location.column;

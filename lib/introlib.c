@@ -217,7 +217,7 @@ intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
 static void
 intro_offset_pointers(void * dest, const IntroType * type, void * base) {
     if (type->category == INTRO_ARRAY) {
-        if (type->parent->category == INTRO_POINTER) {
+        if (type->of->category == INTRO_POINTER) {
             for (int i=0; i < type->array_size; i++) {
                 void ** o_ptr = (void **)(dest + i * sizeof(void *));
                 *o_ptr += (size_t)base;
@@ -248,11 +248,11 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
             intro_offset_pointers(dest + m->offset, m->type, ctx->values);
         }
     // TODO: this seems inelegant
-    } else if (m->type->category == INTRO_ARRAY && m->type->parent->category == INTRO_STRUCT) {
-        int elem_size = intro_size(m->type->parent);
+    } else if (m->type->category == INTRO_ARRAY && m->type->of->category == INTRO_STRUCT) {
+        int elem_size = intro_size(m->type->of);
         for (int i=0; i < m->type->array_size; i++) {
             void * elem_address = dest + m->offset + i * elem_size;
-            intro_set_values_x(ctx, elem_address, m->type->parent, value_attribute);
+            intro_set_values_x(ctx, elem_address, m->type->of, value_attribute);
         }
     } else {
         memset(dest + m->offset, 0, size);
@@ -336,10 +336,10 @@ intro_sprint_type_name(char * dest, const IntroType * type) {
     while (1) {
         if (type->category == INTRO_POINTER) {
             *dest++ = '*';
-            type = type->parent;
+            type = type->of;
         } else if (type->category == INTRO_ARRAY) {
             dest += 1 + stbsp_sprintf(dest, "[%u]", type->array_size) - 1;
-            type = type->parent;
+            type = type->of;
         } else if (type->name) {
             dest += 1 + stbsp_sprintf(dest, "%s", type->name) - 1;
             break;
@@ -376,10 +376,10 @@ intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * 
         } else {
             switch(m->type->category) {
             case INTRO_ARRAY: {
-                const IntroType * parent = m->type->parent;
+                const IntroType * of = m->type->of;
                 const int MAX_EXPOSED_LENGTH = 64;
-                if (intro_is_scalar(parent) && m->type->array_size <= MAX_EXPOSED_LENGTH) {
-                    intro_print_basic_array(m_data, parent, m->type->array_size);
+                if (intro_is_scalar(of) && m->type->array_size <= MAX_EXPOSED_LENGTH) {
+                    intro_print_basic_array(m_data, of, m->type->array_size);
                 } else {
                     printf("<concealed>");
                 }
@@ -388,7 +388,7 @@ intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * 
             case INTRO_POINTER: { // TODO
                 void * ptr = *(void **)m_data;
                 if (ptr) {
-                    const IntroType * base = m->type->parent;
+                    const IntroType * base = m->type->of;
                     if (intro_is_scalar(base)) {
                         int64_t length;
                         if (intro_attribute_length_x(ctx, data, type, m, &length)) {
@@ -451,7 +451,7 @@ intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, c
     } else if (type->category == INTRO_ENUM) {
         int value = *(int *)data;
         intro_print_enum(value, type);
-    } else if (type->category == INTRO_ARRAY && intro_is_scalar(type->parent)) {
+    } else if (type->category == INTRO_ARRAY && intro_is_scalar(type->of)) {
         intro_print_basic_array(data, type, type->array_size);
     } else if (type->category == INTRO_POINTER) {
         void * value = *(void **)data;
@@ -591,16 +591,16 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
     } else {
         switch(type->category) {
         case INTRO_ARRAY: {
-            uint32_t parent_type_id = city__get_serialized_id(ctx, type->parent);
+            uint32_t elem_type_id = city__get_serialized_id(ctx, type->of);
             put_uint(&ctx->info, type->category, 1);
-            put_uint(&ctx->info, parent_type_id, ctx->type_size);
+            put_uint(&ctx->info, elem_type_id, ctx->type_size);
             put_uint(&ctx->info, type->array_size, 4);
         }break;
 
         case INTRO_POINTER: {
-            uint32_t parent_type_id = city__get_serialized_id(ctx, type->parent);
+            uint32_t of_type_id = city__get_serialized_id(ctx, type->of);
             put_uint(&ctx->info, type->category, 1);
-            put_uint(&ctx->info, parent_type_id, ctx->type_size);
+            put_uint(&ctx->info, of_type_id, ctx->type_size);
         }break;
 
         case INTRO_ENUM: {
@@ -670,12 +670,12 @@ city__serialize_pointer_data(CityCreationContext * ctx, const IntroType * s_type
 
             int64_t length;
             if (intro_attribute_length_x(ctx->ictx, ctx->data, s_type, member, &length)) {
-            } else if (member->type->parent->name && strcmp(member->type->parent->name, "char") == 0) {
+            } else if (member->type->of->name && strcmp(member->type->of->name, "char") == 0) {
                 length = strlen((char *)ptr) + 1;
             } else {
                 length = 1;
             }
-            size_t alloc_size = intro_size(member->type->parent) * length;
+            size_t alloc_size = intro_size(member->type->of) * length;
             uint32_t * ser_length = (uint32_t *)arraddnptr(ctx->data, 4);
             *ser_length = length;
 
@@ -813,7 +813,7 @@ city__safe_copy_struct(
                     void * result_ptr = src + *(size_t *)(src + sm->offset);
                     memcpy(dest + dm->offset, &result_ptr, sizeof(void *));
                 } else if (dm->type->category == INTRO_ARRAY) {
-                    if (dm->type->parent->category != sm->type->parent->category) {
+                    if (dm->type->of->category != sm->type->of->category) {
                         city__error("array type mismatch");
                         return -1;
                     }
@@ -922,18 +922,18 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
         }break;
 
         case INTRO_POINTER: {
-            uint32_t parent_id = next_uint(&b, type_size);
+            uint32_t of_id = next_uint(&b, type_size);
 
-            IntroType * parent = hmget(info_by_id, parent_id);
-            type->parent = parent;
+            IntroType * of = hmget(info_by_id, of_id);
+            type->of = of;
         }break;
 
         case INTRO_ARRAY: {
-            uint32_t parent_id = next_uint(&b, type_size);
+            uint32_t elem_id = next_uint(&b, type_size);
             uint32_t array_size = next_uint(&b, 4);
 
-            IntroType * parent = hmget(info_by_id, parent_id);
-            type->parent = parent;
+            IntroType * elem_type = hmget(info_by_id, elem_id);
+            type->of = elem_type;
             type->array_size = array_size;
         }break;
 

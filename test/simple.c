@@ -1,14 +1,6 @@
 #include "test.h"
 #include "test.h.intro"
 
-#pragma intro names (IntroType, Entity) // generate information for the listed types
-#pragma intro file                      // generate information for all types in this file
-#pragma intro start                     // generate information for all types until 'end'
-#pragma intro end
-#pragma intro all                       // generate information for all types including system headers
-
-#pragma intro exclude (system)
-
 int
 main(int argc, char ** argv) {
     TestAttributes obj = {0};

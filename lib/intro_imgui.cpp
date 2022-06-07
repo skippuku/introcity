@@ -199,7 +199,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         const IntroType * scalar_type;
         if (type->category == INTRO_ARRAY) {
             count_components = type->array_size;
-            scalar_type = type->parent;
+            scalar_type = type->of;
         } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
             const IntroType * m_type = type->i_struct->members[0].type;
             scalar_type = m_type;
@@ -265,7 +265,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
     } else if (type->category == INTRO_ARRAY) {
         if (do_tree_place_holder) ImGui::TextDisabled("---");
         if (is_open) {
-            edit_array(ctx, member_data, type->parent, (length > 0)? length : type->array_size);
+            edit_array(ctx, member_data, type->of, (length > 0)? length : type->array_size);
             ImGui::TreePop();
         }
     } else if (type->category == INTRO_POINTER) {
@@ -275,7 +275,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             if (!has_length) length = 1;
             if (length > 0) {
                 if (is_open) {
-                    edit_array(ctx, ptr_data, type->parent, length);
+                    edit_array(ctx, ptr_data, type->of, length);
                 }
             }
         } else {

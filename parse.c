@@ -3,19 +3,19 @@
 #include "global.c"
 
 static const IntroType known_types [] = {
-    {"void",     NULL, INTRO_UNKNOWN},
-    {"uint8_t",  NULL, INTRO_U8 },
-    {"uint16_t", NULL, INTRO_U16},
-    {"uint32_t", NULL, INTRO_U32},
-    {"uint64_t", NULL, INTRO_U64},
-    {"int8_t",   NULL, INTRO_S8 },
-    {"int16_t",  NULL, INTRO_S16},
-    {"int32_t",  NULL, INTRO_S32},
-    {"int64_t",  NULL, INTRO_S64},
-    {"float",    NULL, INTRO_F32},
-    {"double",   NULL, INTRO_F64},
-    {"bool",     NULL, INTRO_U8 },
-    {"va_list",  NULL, INTRO_VA_LIST},
+    {INTRO_UNKNOWN, 0, {}, 0, 0, "void"},
+    {INTRO_U8, 0, {}, 0, 0, "uint8_t"},
+    {INTRO_U16, 0, {}, 0, 0, "uint16_t"},
+    {INTRO_U32, 0, {}, 0, 0, "uint32_t"},
+    {INTRO_U64, 0, {}, 0, 0, "uint64_t"},
+    {INTRO_S8, 0, {}, 0, 0, "int8_t"},
+    {INTRO_S16, 0, {}, 0, 0, "int16_t"},
+    {INTRO_S32, 0, {}, 0, 0, "int32_t"},
+    {INTRO_S64, 0, {}, 0, 0, "int64_t"},
+    {INTRO_F32, 0, {}, 0, 0, "float"},
+    {INTRO_F64, 0, {}, 0, 0, "double"},
+    {INTRO_U8, 0, {}, 0, 0, "bool"},
+    {INTRO_VA_LIST, 0, {}, 0, 0, "va_list"},
 };
 
 typedef struct {
@@ -137,23 +137,49 @@ register_enum_name(ParseContext * ctx, Token tk) {
     }
 }
 
+static bool
+funcs_are_equal(const IntroType * a, const IntroType * b) {
+    if (intro_origin(a->of) != intro_origin(b->of)) return false;
+    if (a->args->count != b->args->count) return false;
+    for (int i=0; i < a->args->count; i++) {
+        const IntroType * a_arg = intro_origin(a->args->types[i]);
+        const IntroType * b_arg = intro_origin(b->args->types[i]);
+        while (a_arg->of) {
+            if (a_arg->category == b_arg->category) {
+                a_arg = a_arg->of;
+                b_arg = b_arg->of;
+            } else {
+                return false;
+            }
+            a_arg = intro_origin(a_arg);
+            b_arg = intro_origin(b_arg);
+        }
+        if (a_arg != b_arg) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static IntroTypePtrList *
 store_arg_type_list(ParseContext * ctx, IntroType ** list) {
     static const size_t hash_seed = 0xF58D6349C6431963; // this is just some random number
 
-    size_t count_list_bytes = arrlen(list) * sizeof(list[0]);
-    size_t hash = (list)? stbds_hash_bytes(list, count_list_bytes, hash_seed) : 0;
+    size_t count_bytes = arrlen(list) * sizeof(list[0]);
+    size_t hash = (count_bytes > 0)? stbds_hash_bytes(list, count_bytes, hash_seed) : 0;
     IntroTypePtrList * stored = hmget(ctx->arg_list_by_hash, hash);
-    if (stored && list != NULL) {
+    if (stored) {
         // TODO: actually handle this somehow instead of aborting
-        assert(0 == memcmp(stored->types, list, count_list_bytes));
-    } else {
-        stored = arena_alloc(ctx->arena, sizeof(*stored) + count_list_bytes);
-        stored->count = arrlen(list);
-        if (count_list_bytes > 0) {
-            memcpy(stored->types, list, count_list_bytes);
+        if (count_bytes > 0) {
+            assert(0 == memcmp(stored->types, list, count_bytes));
         }
-        stored = hmput(ctx->arg_list_by_hash, hash, stored);
+    } else {
+        stored = arena_alloc(ctx->arena, sizeof(*stored) + count_bytes);
+        stored->count = arrlen(list);
+        if (count_bytes > 0) {
+            memcpy(stored->types, list, count_bytes);
+        }
+        hmput(ctx->arg_list_by_hash, hash, stored);
     }
 
     return stored;
@@ -396,7 +422,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             info.member_index_in_container = arrlen(members);
             IntroType * tt = decl.type;
             while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
-                tt = tt->parent;
+                tt = tt->of;
                 info.indirection_level++;
             }
             arrput(nests, info);
@@ -672,6 +698,11 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 type.category |= 0x08;
             }break;
 
+            case KEYW_MS_INT32: {
+                CHECK_INT((type.category & 0x0f));
+                type.category |= 0x04;
+            }break;
+
             case KEYW_SHORT: {
                 CHECK_INT((type.category & 0x0f));
                 type.category |= 0x02;
@@ -683,7 +714,6 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 break_loop = true;
             }break;
 
-            case KEYW_MS_INT32:
             case KEYW_INT: {
                 CHECK_INT((type.category & 0x0f) == 0x01);
                 if ((type.category & 0x0f) == 0) {
@@ -831,21 +861,22 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
     IntroType * last_type = decl->base;
     for (int i=0; i < arrlen(indirection); i++) {
         int32_t it = indirection[i];
-        IntroType new_type = {0};
+        IntroType new_type;
+        memset(&new_type, 0, sizeof(new_type));
         if (it == POINTER) {
             new_type.category = INTRO_POINTER;
-            new_type.parent = last_type;
+            new_type.of = last_type;
         } else if (it == FUNCTION) {
             IntroType ** arg_types = arrpop(func_args_stack);
             IntroTypePtrList * stored_args = store_arg_type_list(ctx, arg_types);
             arrfree(arg_types);
 
-            new_type.parent = last_type; // return type
+            new_type.of = (IntroType *)intro_origin(last_type); // return type
             new_type.category = INTRO_FUNCTION;
             new_type.args = stored_args;
         } else {
             new_type.category = INTRO_ARRAY;
-            new_type.parent = last_type;
+            new_type.of = last_type;
             new_type.array_size = it;
         }
         last_type = store_type(ctx, new_type, NULL);
@@ -906,7 +937,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
             const IntroType * og_prev = intro_origin(prev);
             const IntroType * og_this = intro_origin(decl->type);
             bool effectively_equal = og_prev->category == og_this->category
-                                  && og_prev->parent == og_this->parent
+                                  && og_prev->of == og_this->of
                                   && og_prev->__data == og_this->__data;
             if (!effectively_equal) {
                 parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
@@ -918,12 +949,9 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         } else {
             IntroType new_type = *decl->type;
             new_type.name = name;
-            bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
-            if (!new_type_is_indirect) {
-                new_type.parent = decl->type;
-            }
+            new_type.parent = decl->type;
             IntroType * stored = store_type(ctx, new_type, decl->name_tk.start);
-            if (!new_type_is_indirect && decl->type->category == INTRO_UNKNOWN) {
+            if (decl->type->category == INTRO_UNKNOWN) {
                 IntroType ** list = hmget(ctx->incomplete_typedefs, decl->type);
                 arrput(list, stored);
                 hmput(ctx->incomplete_typedefs, decl->type, list);
@@ -938,8 +966,11 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         int32_t count_args = decl->type->args->count;
         if (decl->func_specifies_args) {
             if (prev) {
-                if (intro_origin(prev->type) != intro_origin(decl->type)) {
+                if (!funcs_are_equal(decl->type, prev->type)) {
                     parse_error(ctx, &decl->name_tk, "Function declaration does not match previous.");
+                    if (prev->location.path) {
+                        location_note(&ctx->loc, prev->location, "Previous definition here.");
+                    }
                     return -1;
                 } else {
                     //if (prev->has_body) {
@@ -961,6 +992,8 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
                     }
                     loc.path = file->filename;
                     loc.column = pos - start_of_line;
+                    assert(loc.line >= 0);
+                    assert(loc.column >= 0);
                     func->location = loc;
                 }
                 shput(ctx->function_map, func->name, func);
@@ -1089,6 +1122,9 @@ add_to_gen_info(ParseContext * ctx, IntroInfo * info, IntroType * type) {
 
         if (type->parent) {
             add_to_gen_info(ctx, info, type->parent);
+        }
+        if (type->of) {
+            add_to_gen_info(ctx, info, type->of);
         }
         if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
             for (int mi=0; mi < type->i_struct->count_members; mi++) {

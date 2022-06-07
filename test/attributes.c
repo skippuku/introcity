@@ -59,7 +59,7 @@ special_alloc(void * dest_struct, const IntroType * type) {
                     || (intro_attribute_member(m, my_joint, &friend_index)
                         && friend_index == owner_index))
                 {
-                    int element_size = intro_size(m->type->parent);
+                    int element_size = intro_size(m->type->of);
                     int64_t length;
                     assert( intro_attribute_length(dest_struct, type, m, &length) );
 
