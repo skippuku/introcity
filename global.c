@@ -86,6 +86,7 @@ static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(gui_show),
     DEF_BUILTIN(gui_edit),
     DEF_BUILTIN(gui_edit_color),
+    DEF_BUILTIN(gui_edit_text),
 };
 #undef DEF_BUILTIN
 

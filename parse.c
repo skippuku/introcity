@@ -402,8 +402,16 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         if (!decl.name_tk.start) {
             if (decl.type->category == INTRO_STRUCT || decl.type->category == INTRO_UNION) {
                 IntroStruct * s = decl.base->i_struct;
+                int member_index_offset = arrlen(members);
                 for (int i=0; i < s->count_members; i++) {
                     arrput(members, s->members[i]);
+                }
+                for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
+                    AttributeDirective * p_directive = &ctx->attribute_directives[i];
+                    if (p_directive->type == decl.base) {
+                        p_directive->type = NULL;
+                        p_directive->member_index += member_index_offset; 
+                    }
                 }
                 continue;
             } else {

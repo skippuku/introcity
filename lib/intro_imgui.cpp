@@ -154,11 +154,6 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         ImGui::TextColored(type_color, "%s", type_buf);
     }
 
-    bool do_disable_pop = false;
-    if (!intro_has_attribute_x(ctx, attr, GUIATTR(edit))) {
-        ImGui::BeginDisabled();
-        do_disable_pop = true;
-    }
     ImGui::TableNextColumn();
     ImGui::PushItemWidth(-1);
 
@@ -263,14 +258,22 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             }
         }
     } else if (type->category == INTRO_ARRAY) {
-        if (do_tree_place_holder) ImGui::TextDisabled("---");
+        if (do_tree_place_holder) {
+            if (intro_has_attribute_x(ctx, attr, GUIATTR(edit_text))) {
+                ImGui::InputText("##", (char *)member_data, type->array_size);
+            } else {
+                ImGui::TextDisabled("---");
+            }
+        }
         if (is_open) {
             edit_array(ctx, member_data, type->of, (length > 0)? length : type->array_size);
             ImGui::TreePop();
         }
     } else if (type->category == INTRO_POINTER) {
         void * ptr_data = *(void **)member_data;
-        if (ptr_data) {
+        if (intro_has_attribute_x(ctx, attr, ctx->attr.builtin.i_cstring)) {
+            ImGui::Text("\"%s\"", (const char *)ptr_data);
+        } else if (ptr_data) {
             ImGui::TextColored(ptr_color, "0x%llx", (uintptr_t)ptr_data);
             if (!has_length) length = 1;
             if (length > 0) {
@@ -287,7 +290,6 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
     } else {
         ImGui::TextDisabled("<unimplemented>");
     }
-    if (do_disable_pop) ImGui::EndDisabled();
     ImGui::PopItemWidth();
     ImGui::PopID();
 }

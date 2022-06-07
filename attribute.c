@@ -6,6 +6,13 @@ enum AttributeToken {
     ATTR_TK_INVALID
 };
 
+#define EXPECT(x) \
+    tk = next_token(o_s); \
+    if (tk.start[0] != x) { \
+        parse_error(ctx, &tk, "Expected " #x "."); \
+        return -1; \
+    }
+
 void
 attribute_parse_init(ParseContext * ctx) {
     static const struct { const char * key; int value; } attribute_keywords [] = {
@@ -42,12 +49,10 @@ attribute_parse_init(ParseContext * ctx) {
 int
 parse_global_directive(ParseContext * ctx, char ** o_s) {
     Token tk = next_token(o_s);
-    char * opening_paren;
     if (tk.type != TK_L_PARENTHESIS) {
         parse_error(ctx, &tk, "Expected '('.");
         return -1;
     }
-    opening_paren = tk.start;
 
     tk = next_token(o_s);
     char temp [1024];
@@ -173,8 +178,19 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
             }
         }
     } else if (a_tk == ATTR_TK_APPLY_TO) {
-        parse_warning(ctx, &tk, "'apply_to' is not yet implemented. Ignoring.");
-        *o_s = find_closing(opening_paren);
+        EXPECT('(');
+        DeclState decl = {.state = DECL_CAST};
+        int ret = parse_declaration(ctx, o_s, &decl);
+        if (ret < 0) return -1;
+        EXPECT(')');
+        EXPECT('(');
+        *o_s = find_closing(tk.start) + 1;
+        AttributeDirective directive = {
+            .type = decl.type,
+            .location = tk.start,
+            .member_index = MIDX_TYPE,
+        };
+        arrput(ctx->attribute_directives, directive);
     } else {
         parse_error(ctx, &tk, "Invalid. Expected 'attribute' or 'apply_to'.");
         return -1;
@@ -190,7 +206,7 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
 
 static bool
 check_id_valid(const IntroStruct * i_struct, int id) {
-#if 0
+#if 0 // TODO
     if (id < 0 || ((id & 0xFFFF) != id)) {
         return false;
     }
@@ -317,6 +333,25 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
             return pointer_offset;
         }
     } else if (type->category == INTRO_ARRAY) {
+        if (type->of->category == INTRO_S8 && 0==strcmp(type->of->name, "char")) {
+            Token tk = next_token(o_s);
+            if (tk.type == TK_STRING) {
+                size_t str_length;
+                char * str = parse_escaped_string(&tk, &str_length);
+                if (!str) {
+                    parse_error(ctx, &tk, "Invalid string.");
+                    return -1;
+                }
+                ptrdiff_t result = arrlen(ctx->value_buffer);
+                char * dest = (char *)arraddnptr(ctx->value_buffer, intro_size(type));
+                memset(dest, 0, intro_size(type));
+                strcpy(dest, str);
+                free(str);
+
+                return result;
+            }
+            *o_s = tk.start;
+        }
         ptrdiff_t result = parse_array_value(ctx, type, o_s, NULL);
         return result;
     }

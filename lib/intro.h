@@ -44,6 +44,8 @@ extern "C" {
   #define INTRO_ALIGN(x)
 #endif
 
+typedef uint8_t IntroGuiColor [4] I(gui_edit_color);
+
 typedef enum IntroCategory {
     INTRO_UNKNOWN = 0x0,
 
@@ -92,16 +94,16 @@ typedef enum IntroFlags {
     INTRO_EXPLICITLY_GENERATED = 0x08,
 } IntroFlags;
 
-typedef struct IntroType IntroType;
+typedef struct IntroType IntroType I(~gui_edit);
 typedef struct IntroStruct IntroStruct;
 typedef struct IntroEnum IntroEnum;
 typedef struct IntroTypePtrList IntroTypePtrList;
 
 struct IntroType {
     uint32_t category;
-    uint32_t flags; // not currently implemented
+    uint32_t flags I(gui_format "0x%02x");
     union {
-        void * __data;
+        void * __data I(~gui_show);
         uint32_t array_size;
         IntroStruct * i_struct;
         IntroEnum * i_enum;
@@ -168,36 +170,6 @@ typedef enum IntroAttributeType {
     INTRO_AT_COUNT
 } IntroAttributeType;
 
-I(attribute i_ (
-    id:       int,
-    btfld:    int,
-    default:  value(@inherit),
-    length:   member,
-    alias:    string,
-    city:     flag @global,
-    cstring:  flag,
-    type:     flag,
-    remove:   __remove,
-))
-
-//I(apply_to char * (cstring)) // TODO
-
-typedef uint8_t IntroGuiColor [4] I(gui_edit_color);
-
-I(attribute gui_ (
-    note:   string,
-    name:   string,
-    min:    value(@inherit),
-    max:    value(@inherit),
-    format: string,
-    scale:  float,
-    vector: flag,
-    color:  value(IntroGuiColor),
-    show:   flag @global,
-    edit:   flag @global,
-    edit_color: flag,
-))
-
 typedef struct IntroAttribute {
     const char * name;
     int attr_type;
@@ -231,6 +203,7 @@ typedef struct IntroBuiltinAttributeIds {
     uint8_t gui_show;
     uint8_t gui_edit;
     uint8_t gui_edit_color;
+    uint8_t gui_edit_text;
 } IntroBuiltinAttributeIds;
 
 typedef struct IntroAttributeContext {
@@ -243,14 +216,14 @@ typedef struct IntroAttributeContext {
 } IntroAttributeContext;
 
 typedef struct IntroContext {
-    IntroType * types   I(length count_types);
-    const char ** notes I(length count_notes);
-    uint8_t * values    I(length size_values);
+    IntroType * types     I(length count_types);
+    const char ** strings I(length count_strings);
+    uint8_t * values      I(length size_values);
     IntroFunction ** functions I(length count_functions);
     IntroAttributeContext attr; 
 
     uint32_t count_types;
-    uint32_t count_notes;
+    uint32_t count_strings;
     uint32_t size_values;
     uint32_t count_functions;
 } IntroContext;
@@ -259,6 +232,35 @@ typedef struct IntroVariant {
     void * data;
     const IntroType * type;
 } IntroVariant;
+
+I(attribute i_ (
+    id:       int,
+    btfld:    int,
+    default:  value(@inherit),
+    length:   member,
+    alias:    string,
+    city:     flag @global,
+    cstring:  flag,
+    type:     flag,
+    remove:   __remove,
+))
+
+I(attribute gui_ (
+    note:   string,
+    name:   string,
+    min:    value(@inherit),
+    max:    value(@inherit),
+    format: string,
+    scale:  float,
+    vector: flag,
+    color:  value(IntroGuiColor),
+    show:   flag @global,
+    edit:   flag @global,
+    edit_color: flag,
+    edit_text:  flag,
+))
+
+I(apply_to (char *) (cstring))
 
 #define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
 #define intro_var_ptr(var, T) ((type->of == ITYPE(T))? (T *)var.data : (T *)0)

@@ -243,7 +243,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     }
     strputf(&s, "};\n\n");
 
-    strputf(&s, "const char * __intro_notes [%i] = {\n", (int)arrlen(info->string_set));
+    strputf(&s, "const char * __intro_strings [%i] = {\n", (int)arrlen(info->string_set));
     for (int i=0; i < arrlen(info->string_set); i++) {
         strputf(&s, "%s\"%s\",\n", tab, info->string_set[i]);
     }
@@ -297,7 +297,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     
     strputf(&s, "IntroContext __intro_ctx = {\n");
     strputf(&s, "%s__intro_types,\n", tab);
-    strputf(&s, "%s__intro_notes,\n", tab);
+    strputf(&s, "%s__intro_strings,\n", tab);
     strputf(&s, "%s__intro_values,\n", tab);
     strputf(&s, "%s__intro_fns,\n", tab);
     strputf(&s, "%s{(IntroAttribute *)__intro_attr_t, ", tab);

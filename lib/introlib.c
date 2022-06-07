@@ -165,7 +165,7 @@ intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec_location, uint32
     uint32_t value_offset;
     bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
     if (has) {
-        return ctx->notes[value_offset];
+        return ctx->strings[value_offset];
     } else {
         return NULL;
     }
