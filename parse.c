@@ -45,8 +45,8 @@ typedef struct {
 } AttributeData;
 
 typedef struct {
-    char * location;
     IntroType * type;
+    char * location;
     int32_t member_index;
     uint32_t count;
     AttributeData * attr_data;
@@ -998,7 +998,6 @@ find_end: ;
             in_expr = true;
         } else if (tk.type == TK_COLON && decl->state == DECL_MEMBERS) {
             UNUSED intmax_t bitfield = parse_constant_expression(ctx, o_s);
-            //decl->bitfield = (uint8_t)bitfield; // TODO
             continue;
         } else {
             bool do_find_closing = false;

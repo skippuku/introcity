@@ -66,7 +66,7 @@
 #define DEF_BUILTIN(name) {#name, offsetof(IntroBuiltinAttributeIds, name)}
 static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(i_id),
-    DEF_BUILTIN(i_bitfield),
+    DEF_BUILTIN(i_btfld),
     DEF_BUILTIN(i_default),
     DEF_BUILTIN(i_length),
     DEF_BUILTIN(i_alias),
@@ -228,7 +228,6 @@ typedef struct ParseContext ParseContext;
 typedef struct {
     IntroType * base;
     IntroType * type;
-    bool reuse_base;
     enum {
         DECL_GLOBAL = 1,
         DECL_TYPEDEF,
@@ -243,6 +242,7 @@ typedef struct {
 
     int32_t member_index;
     bool func_specifies_args;
+    bool reuse_base;
 } DeclState;
 
 typedef struct {

@@ -159,7 +159,7 @@ typedef enum IntroAttributeType {
 
 I(attribute i_ (
     id:       int,
-    bitfield: int,
+    btfld:    int,
     default:  value(@inherit),
     length:   member,
     alias:    string,
@@ -200,7 +200,7 @@ typedef struct IntroAttributeSpec {
 
 typedef struct IntroBuiltinAttributeIds {
     uint8_t i_id;
-    uint8_t i_bitfield;
+    uint8_t i_btfld;
     uint8_t i_default;
     uint8_t i_length;
     uint8_t i_alias;

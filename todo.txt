@@ -1,21 +1,17 @@
 attribute:
     !! struct/union values
         see: the struct layout precipice
+    allow attribute declarations with no namespace
     allow multiple aliases somehow
     attribute type: type
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
     somehow handle data at an offset to a pointer ex. stb_ds
     members of complex type can specify an attribute as a value: I(default default)
-    noserialize (for pointers)
-    nodisplay
-    ability to apply attributes to types
-        ability to remove an attribute
     expression attribute type
         select: attribute describes when a member is valid, ex. unions
         length: change to expression ex. I(length map_width * map_height)
-    attributes on enum values
-    friendly_name attribute I("friendly name")
+    attributes on enum values?
     parse c++ struct defaults as intro defaults?
 
 city:
@@ -28,7 +24,7 @@ config:
 
 parse:
     !! handle sizeof struct/union in expression
-    parent should really work for any type, make the functions, pointers, and arrays use something else
+    !! parent should really work for any type, make the functions, pointers, and arrays use something else
     stop parsing after a .intro include as to not depend on types defined later
     handle bit field accessing
     handle strings next to each other
@@ -64,7 +60,6 @@ gen:
 lib:
     accurate type display
     a little dubious and evil: ability to create types at runtime
-    IntroVariant?
     sprint/mprint version of everything that uses stdout
     single header?
 
