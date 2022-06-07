@@ -663,6 +663,11 @@ city__serialize_pointer_data(CityCreationContext * ctx, const IntroType * s_type
             void * ptr = *o_ptr;
             if (!ptr) continue;
 
+            if (!intro_has_attribute_x(ctx->ictx, member->attr, ctx->ictx->attr.builtin.i_city)) {
+                *o_ptr = 0;
+                continue;
+            }
+
             if (hmgeti(ctx->data_offset_by_ptr, ptr) >= 0) {
                 *o_ptr = (void *)(size_t)hmget(ctx->data_offset_by_ptr, ptr);
                 continue;
@@ -670,7 +675,7 @@ city__serialize_pointer_data(CityCreationContext * ctx, const IntroType * s_type
 
             int64_t length;
             if (intro_attribute_length_x(ctx->ictx, ctx->data, s_type, member, &length)) {
-            } else if (member->type->of->name && strcmp(member->type->of->name, "char") == 0) {
+            } else if (intro_has_attribute_x(ctx->ictx, member->attr, ctx->ictx->attr.builtin.i_cstring)) {
                 length = strlen((char *)ptr) + 1;
             } else {
                 length = 1;
@@ -810,8 +815,13 @@ city__safe_copy_struct(
                     // TODO: should we test against enum names if things get moved around?
                     memcpy(dest + dm->offset, src + sm->offset, intro_size(dm->type));
                 } else if (dm->type->category == INTRO_POINTER) {
-                    void * result_ptr = src + *(size_t *)(src + sm->offset);
-                    memcpy(dest + dm->offset, &result_ptr, sizeof(void *));
+                    size_t offset = *(size_t *)(src + sm->offset);
+                    if (offset != 0) {
+                        void * result_ptr = src + offset;
+                        memcpy(dest + dm->offset, &result_ptr, sizeof(void *));
+                    } else {
+                        memset(dest + dm->offset, 0, sizeof(void *));
+                    }
                 } else if (dm->type->category == INTRO_ARRAY) {
                     if (dm->type->of->category != sm->type->of->category) {
                         city__error("array type mismatch");

@@ -29,6 +29,8 @@ typedef struct {
     int cool_number I(5);
     char * character;
     char * long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file I(id 9, = "jerry");
+
+    int * _internal I(10, ~city);
 } Basic;
 
 typedef struct {
@@ -60,6 +62,8 @@ typedef struct {
     int cool_number I(5);
     char * character I(6);
     char * long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file I(9);
+
+    int * _internal I(10, ~city);
 } BasicPlus;
 
 #include "city.c.intro"
@@ -84,6 +88,7 @@ main() {
     obj_save.stuff.b = -95;
     obj_save.cool_number = 102928348;
     obj_save.character = "bingus";
+    obj_save._internal = &obj_save.b;
 
     printf("obj_save: Basic = ");
     intro_print(&obj_save, ITYPE(Basic), NULL);
@@ -124,6 +129,7 @@ main() {
     CHECK_EQUAL(cool_number);
     CHECK_STR_EQUAL(character);
     CHECK_STR_EQUAL(long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file);
+    assert(obj_load._internal == NULL);
 
     free(city_data_handle);
 
