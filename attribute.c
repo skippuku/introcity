@@ -697,7 +697,7 @@ attribute_data_sort_callback(const void * p_a, const void * p_b) {
 }
 
 void
-add_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_index, AttributeData * data, int32_t count) {
+apply_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_index, AttributeData * data, int32_t count) {
     AttributeDataKey key = {
         .type = type,
         .member_index = member_index,
@@ -709,16 +709,15 @@ add_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_in
         assert(pcontent != NULL);
     }
     for (int i=0; i < count; i++) {
-        if (data[i].id == ctx->builtin.i_remove) {
-            for (int j=0; j < arrlen(pcontent->value); j++) {
-                if (pcontent->value[j].id == data[i].v.i) {
-                    arrdelswap(pcontent->value, j);
-                    break;
-                }
+        bool do_remove = data[i].id == ctx->builtin.i_remove;
+        uint32_t check_id = (do_remove)? data[i].v.i : data[i].id;
+        for (int j=0; j < arrlen(pcontent->value); j++) {
+            if (pcontent->value[j].id == check_id) {
+                arrdelswap(pcontent->value, j);
+                break;
             }
-        } else {
-            arrput(pcontent->value, data[i]);
         }
+        if (!do_remove) arrput(pcontent->value, data[i]);
     }
 }
 
@@ -750,7 +749,7 @@ handle_deferred_defaults(ParseContext * ctx) {
             .v.i = value_offset,
         };
 
-        add_attributes_to_member(ctx, def.type, length_member_index, &data, 1);
+        apply_attributes_to_member(ctx, def.type, length_member_index, &data, 1);
     }
     arrsetlen(ctx->deferred_length_defaults, 0);
 }
@@ -803,7 +802,7 @@ handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
         if (ret) exit(1);
 
         // add global flags
-        add_attributes_to_member(ctx, directive.type, directive.member_index, ctx->attribute_globals, arrlen(ctx->attribute_globals));
+        apply_attributes_to_member(ctx, directive.type, directive.member_index, ctx->attribute_globals, arrlen(ctx->attribute_globals));
 
         // add type attributes
         AttributeDataKey key = {0};
@@ -819,12 +818,12 @@ handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
         if (key.type != NULL) {
             AttributeData * type_attr_data = hmget(ctx->attribute_data_map, key);
             if (arrlen(type_attr_data) > 0) {
-                add_attributes_to_member(ctx, directive.type, directive.member_index, type_attr_data, arrlen(type_attr_data));
+                apply_attributes_to_member(ctx, directive.type, directive.member_index, type_attr_data, arrlen(type_attr_data));
             }
         }
 
         // add attributes from directive
-        add_attributes_to_member(ctx, directive.type, directive.member_index, directive.attr_data, directive.count);
+        apply_attributes_to_member(ctx, directive.type, directive.member_index, directive.attr_data, directive.count);
     }
 
     handle_deferred_defaults(ctx);
