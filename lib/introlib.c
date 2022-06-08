@@ -25,13 +25,17 @@
   #define INTRO_POPCOUNT __popcnt
 #else
   #define INTRO_POPCOUNT intro_popcount_x
+  // taken from https://github.com/BartMassey/popcount/blob/master/popcount.c
   INTRO_API_INLINE int
   intro_popcount_x(uint32_t x) {
-      int pop = 0;
-      for (int i=0; i < 32; i++) {
-          pop += !!(x & (1 << i));
-      }
-      return pop;
+      static const uint32_t m1 = 0x55555555;
+      static const uint32_t m2 = 0x33333333;
+      static const uint32_t m4 = 0x0f0f0f0f;
+      x -= (x >> 1) & m1;
+      x = (x & m2) + ((x >> 2) & m2);
+      x = (x + (x >> 4)) & m4;
+      x += x >>  8;
+      return (x + (x >> 16)) & 0x3f;
   }
 #endif
 
@@ -121,16 +125,15 @@ get_attribute_value_offset(IntroContext * ctx, uint32_t attr_spec_location, uint
 #define ASSERT_ATTR_TYPE(a_type) assert(ctx->attr.available[attr_id].attr_type == a_type)
 
 bool
-intro_attribute_value_x(IntroContext * ctx, const IntroMember * member, uint32_t attr_id, IntroVariant * o_var) {
+intro_attribute_value_x(IntroContext * ctx, const IntroType * type, uint32_t attr_spec_location, uint32_t attr_id, IntroVariant * o_var) {
     ASSERT_ATTR_TYPE(INTRO_AT_VALUE);
-    uint32_t attr_spec_location = member->attr;
     uint32_t value_offset;
     bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
     if (!has) return false;
 
     o_var->data = ctx->values + value_offset;
     uint32_t type_id = ctx->attr.available[attr_id].type_id;
-    o_var->type = (type_id != 0)? &ctx->types[type_id] : member->type;
+    o_var->type = (type_id != 0)? &ctx->types[type_id] : type;
 
     return true;
 }
@@ -250,7 +253,7 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
         intro_set_values_x(ctx, (u8 *)dest + m->offset, m->type, value_attribute);
     } else if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_type)) {
         memcpy((u8 *)dest + m->offset, &struct_type, sizeof(void *));
-    } else if (intro_attribute_value_x(ctx, m, value_attribute, &var)) {
+    } else if (intro_attribute_value_x(ctx, m->type, m->attr, value_attribute, &var)) {
         assert(var.type == m->type);
         void * value_ptr = var.data;
         if (m->type->category == INTRO_POINTER) {

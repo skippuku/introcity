@@ -97,3 +97,7 @@ struct {
 
 #pragma intro exclude (system)
 
+/*  >  ___|_ ___   /
+ *  | | \ | / / \ // *_|_\/
+ *  \_| | \_| \_// \ | | /
+ */    

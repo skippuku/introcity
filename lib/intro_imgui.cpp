@@ -70,22 +70,38 @@ struct IntroImGuiScalarParams {
 };
 
 static IntroImGuiScalarParams
-get_scalar_params(IntroContext * ctx, const IntroType * type, const IntroMember * m) {
-    uint32_t attr = (m)? m->attr : type->attr;
+get_scalar_params(IntroContext * ctx, const IntroType * type, uint32_t attr) {
     IntroImGuiScalarParams result = {};
     result.scale = 1.0f;
     intro_attribute_float_x(ctx, attr, GUIATTR(scale), &result.scale);
             
     IntroVariant max_var = {0}, min_var = {0};
-    if (m) {
-        intro_attribute_value_x(ctx, m, GUIATTR(min), &min_var);
-        intro_attribute_value_x(ctx, m, GUIATTR(max), &max_var);
-        result.min = min_var.data;
-        result.max = max_var.data;
-    }
+    intro_attribute_value_x(ctx, type, attr, GUIATTR(min), &min_var);
+    intro_attribute_value_x(ctx, type, attr, GUIATTR(max), &max_var);
+    result.min = min_var.data;
+    result.max = max_var.data;
     result.format = intro_attribute_string_x(ctx, attr, GUIATTR(format));
 
     return result;
+}
+
+static void
+do_note(const char * note) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+        ImGui::TextUnformatted(note);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
+ImU32
+color_from_var(const void * in) {
+    auto buf = reinterpret_cast<const uint8_t *>(in);
+    return IM_COL32(buf[0], buf[1], buf[2], buf[3]);
 }
 
 static void
@@ -108,36 +124,22 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
     if (!has_children) {
         tree_flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     }
+
+    IntroVariant colorv;
+    ImU32 member_color = 0xffffffff;
+    if (m && intro_attribute_value_x(ctx, type, m->attr, GUIATTR(color), &colorv)) {
+        member_color = color_from_var(colorv.data);
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, member_color);
     bool is_open = ImGui::TreeNodeEx(name, tree_flags);
+    ImGui::PopStyleColor();
 
-    const char * note = NULL;
-    if (m && (note = intro_attribute_string_x(ctx, m->attr, (uint32_t)GUIATTR(note))) != NULL) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(?)");
-        if (ImGui::IsItemHovered()) {
-            ImGui::BeginTooltip();
-            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-            ImGui::TextUnformatted(note);
-            ImGui::PopTextWrapPos();
-            ImGui::EndTooltip();
-        }
-    }
-
-    int64_t length = -1;
-    bool has_length = false;
-    if (m && intro_attribute_length_x(ctx, container, container_type, m, &length)) {
-        has_length = true;
-    }
-
-    ImGui::TableNextColumn();
     char type_buf [1024];
     intro_sprint_type_name(type_buf, type);
+
     ImVec4 type_color;
-    IntroVariant colorv;
-    if (m && intro_attribute_value_x(ctx, m, GUIATTR(color), &colorv)) {
-        uint8_t ch [4];
-        memcpy(&ch, colorv.data, 4);
-        type_color = ImVec4(ch[0] / 256.0f, ch[1] / 256.0f, ch[2] / 256.0f, ch[3] / 256.0f);
+    if (intro_attribute_value_x(ctx, type, type->attr, GUIATTR(color), &colorv)) {
+        type_color = ImColor(color_from_var(colorv.data)).Value;
     } else {
         switch(type->category) {
         case INTRO_STRUCT:
@@ -148,10 +150,54 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         default: type_color = default_color; break;
         }
     }
+
+    // drag drop
+
+    if (ImGui::BeginDragDropSource()) {
+        IntroVariant var;
+        var.data = member_data;
+        var.type = type;
+        ImGui::SetDragDropPayload("IntroVariant", &var, sizeof(IntroVariant));
+
+        ImGui::TextColored(type_color, type_buf);
+
+        ImGui::EndDragDropSource();
+    }
+
+    const ImGuiPayload * payload = ImGui::GetDragDropPayload();
+    if (payload && payload->IsDataType("IntroVariant")) {
+        auto var = (const IntroVariant *)payload->Data;
+        if (var->type == type) {
+            ImGui::SameLine(); ImGui::TextColored(ptr_color, "[ ]");
+            if (ImGui::BeginDragDropTarget()) {
+                if (ImGui::AcceptDragDropPayload("IntroVariant")) {
+                    memcpy(member_data, var->data, intro_size(type));
+                }
+                
+                ImGui::EndDragDropTarget();
+            }
+        }
+    }
+
+    const char * note = NULL;
+    if (m && (note = intro_attribute_string_x(ctx, m->attr, GUIATTR(note))) != NULL) {
+        do_note(note);
+    }
+
+    int64_t length = -1;
+    bool has_length = false;
+    if (m && intro_attribute_length_x(ctx, container, container_type, m, &length)) {
+        has_length = true;
+    }
+
+    ImGui::TableNextColumn();
     if (has_length) {
         ImGui::TextColored(type_color, "%s (%li)", type_buf, length);
     } else {
         ImGui::TextColored(type_color, "%s", type_buf);
+    }
+    if ((note = intro_attribute_string_x(ctx, type->attr, GUIATTR(note))) != NULL) {
+        do_note(note);
     }
 
     ImGui::TableNextColumn();
@@ -200,7 +246,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             scalar_type = m_type;
             count_components = intro_size(type) / intro_size(m_type);
         }
-        auto param = get_scalar_params(ctx, type, m);
+        auto param = get_scalar_params(ctx, type, attr);
         ImGui::DragScalarN("##", intro_imgui_scalar_type(scalar_type), member_data, count_components, param.scale, param.min, param.max, param.format);
         do_tree_place_holder = false;
     }
@@ -215,7 +261,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         if (type->name && strcmp(type->name, "bool") == 0) {
             ImGui::Checkbox("##", (bool *)member_data);
         } else {
-            auto param = get_scalar_params(ctx, type, m);
+            auto param = get_scalar_params(ctx, type, attr);
 
             ImGui::DragScalar("##", intro_imgui_scalar_type(type), member_data, param.scale, param.min, param.max, param.format);
         }
