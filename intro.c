@@ -1,18 +1,3 @@
-#ifdef _WIN32
-  #define WIN32_LEAN_AND_MEAN
-  #include <windef.h>
-  #include <wingdi.h>
-  #include <winbase.h>
-  #include <wincon.h>
-  #include <shlobj.h>
-  #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
-    #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
-  #endif
-#endif
-
-#include <sys/unistd.h>
-#include <sys/stat.h>
-
 #include "lib/intro.h"
 #include "lexer.c"
 #include "global.c"
