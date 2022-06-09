@@ -505,7 +505,7 @@ intro_member_by_name_x(const IntroType * type, const char * name) {
 // CITY IMPLEMENTATION
 
 static const int implementation_version_major = 0;
-static const int implementation_version_minor = 2;
+static const int implementation_version_minor = 3;
 
 typedef struct {
     char magic_number [4];
@@ -591,6 +591,7 @@ put_uint(uint8_t ** array, uint32_t number, uint8_t bytes) {
 
 typedef struct {
     const IntroType * key;
+    uint32_t value;
 } CityTypeSet;
 
 typedef struct {
@@ -599,6 +600,7 @@ typedef struct {
 } U32ByPtr;
 
 typedef struct {
+    uint32_t type_id_counter;
     uint8_t type_size;
     uint8_t offset_size;
     CityTypeSet * type_set;
@@ -611,9 +613,9 @@ typedef struct {
 
 static uint32_t
 city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
-    int type_id = hmgeti(ctx->type_set, type);
-    if (type_id >= 0) {
-        return type_id;
+    ptrdiff_t type_id_index = hmgeti(ctx->type_set, type);
+    if (type_id_index >= 0) {
+        return ctx->type_set[type_id_index].value;
     }
 
     if (intro_is_scalar(type)) {
@@ -628,9 +630,17 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
         }break;
 
         case INTRO_POINTER: {
-            uint32_t of_type_id = city__get_serialized_id(ctx, type->of);
+            uint32_t ptr_type_id = ctx->type_id_counter++;
+            hmput(ctx->type_set, type, ptr_type_id);
+
             put_uint(&ctx->info, type->category, 1);
-            put_uint(&ctx->info, of_type_id, ctx->type_size);
+
+            size_t of_type_id_index = arraddnindex(ctx->info, ctx->type_size);
+
+            uint32_t of_type_id = city__get_serialized_id(ctx, type->of);
+            memcpy(&ctx->info[of_type_id_index], &of_type_id, ctx->type_size);
+
+            return ptr_type_id;
         }break;
 
         case INTRO_ENUM: {
@@ -675,10 +685,8 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
         }
     }
 
-    CityTypeSet set;
-    set.key = type;
-    hmputs(ctx->type_set, set);
-    type_id = hmtemp(ctx->type_set);
+    uint32_t type_id = ctx->type_id_counter++;
+    hmput(ctx->type_set, type, type_id);
     return type_id;
 }
 
@@ -919,6 +927,12 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
 
     size_t id_test_bit = 1 << (offset_size * 8 - 1);
 
+    typedef struct {
+        IntroType * type;
+        uint32_t of_id;
+    } TypePtrOf;
+    TypePtrOf * deferred_pointer_ofs = NULL;
+
     for (int i=0; i < header->count_types; i++) {
         IntroType * type = (IntroType *)malloc(sizeof(*type));
         memset(type, 0, sizeof(*type));
@@ -967,8 +981,11 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
         case INTRO_POINTER: {
             uint32_t of_id = next_uint(&b, type_size);
 
-            IntroType * of = hmget(info_by_id, of_id);
-            type->of = of;
+            TypePtrOf ptrof;
+            ptrof.type = type;
+            ptrof.of_id = of_id;
+
+            arrput(deferred_pointer_ofs, ptrof);
         }break;
 
         case INTRO_ARRAY: {
@@ -994,6 +1011,12 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
         }
         hmput(info_by_id, i, type);
     }
+
+    for (int i=0; i < arrlen(deferred_pointer_ofs); i++) {
+        TypePtrOf ptrof = deferred_pointer_ofs[i];
+        ptrof.type->of = hmget(info_by_id, ptrof.of_id);
+    }
+    arrfree(deferred_pointer_ofs);
 
     const IntroType * s_type = info_by_id[hmlen(info_by_id) - 1].value;
 

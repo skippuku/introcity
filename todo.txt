@@ -5,6 +5,9 @@ attribute:
         maybe use dot
     impl: cache matching data
     @repress trait, disable propagation
+    general 'terminated' attribute?
+        could even be a value, then you could choose what counts as a terminator
+    value(*@inherit): inherit base of type?
     allow attribute declarations with no namespace
     allow multiple aliases somehow
     attribute type: type
