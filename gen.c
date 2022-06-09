@@ -1,6 +1,10 @@
 #include "lib/intro.h"
 #include "global.c"
 
+#ifndef VERSION
+#define VERSION "unknown-version"
+#endif
+
 static const char *
 get_ref_name(IntroInfo * info, const IntroType * t) {
     if (!t->name) {

@@ -23,6 +23,7 @@ config:
 
 parse:
     !! handle sizeof struct/union in expression (see: the struct layout precipce)
+    handle character literals including L'x'
     fix bitfield regression
     handle bit field accessing
     handle strings next to each other

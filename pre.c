@@ -159,7 +159,8 @@ count_newlines_in_range(char * start, char * end, char ** o_last_line) {
     return result;
 #else
     int result = 1;
-    *o_last_line = s;
+    char * s = start;
+    *o_last_line = start;
     while (s < end) {
         if (*s++ == '\n') {
             *o_last_line = s;
