@@ -376,6 +376,8 @@ void intro_imgui_edit_ctx(IntroContext * ctx, void * data, const IntroType * dat
 // MISC
 const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
+#define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
+const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 
 #ifdef __cplusplus
 }

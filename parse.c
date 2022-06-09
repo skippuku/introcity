@@ -25,6 +25,7 @@ typedef struct {
     IntroAttributeType type;
     bool builtin;
     bool global;
+    bool repress;
     bool without_namespace;
     bool invalid_without_namespace;
     bool next_is_same;
@@ -249,28 +250,38 @@ store_type(ParseContext * ctx, IntroType type, char * pos) {
 
 bool
 maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t member_index, Token * o_tk) {
-    if (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
+    bool had_application = false;
+    while (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
         Token paren = next_token(o_s);
         if (paren.type != TK_L_PARENTHESIS) {
             parse_error(ctx, &paren, "Expected '('.");
             exit(1);
         }
-        AttributeDirective directive = {
-            .type = NULL,
-            .location = paren.start,
-            .member_index = member_index,
-        };
-        arrput(ctx->attribute_directives, directive);
-        char * closing = find_closing(paren.start);
-        if (!closing) {
-            parse_error(ctx, &paren, "Missing closing ')'.");
-            exit(1);
-        }
-        *o_s = closing + 1;
+
         *o_tk = next_token(o_s);
-        return true;
+        if (tk_equal(o_tk, "attribute") || tk_equal(o_tk, "apply_to")) {
+            *o_s = paren.start;
+            parse_global_directive(ctx, o_s);
+            *o_tk = next_token(o_s);
+        } else {
+            AttributeDirective directive = {
+                .type = NULL,
+                .location = paren.start,
+                .member_index = member_index,
+            };
+            arrput(ctx->attribute_directives, directive);
+            char * closing = find_closing(paren.start);
+            if (!closing) {
+                parse_error(ctx, &paren, "Missing closing ')'.");
+                exit(1);
+            }
+            *o_s = closing + 1;
+            *o_tk = next_token(o_s);
+
+            had_application = true;
+        }
     }
-    return false;
+    return had_application;
 }
 
 static int
@@ -592,11 +603,6 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     Token first;
     while (1) {
         first = next_token(o_s);
-        if (decl->state == DECL_GLOBAL && tk_equal(&first, "I")) {
-            int ret = parse_global_directive(ctx, o_s);
-            if (ret < 0) return -1;
-            continue;
-        }
         if (first.type == TK_IDENTIFIER) {
             first_keyword = get_keyword(ctx, first);
             if (!is_ignored(first_keyword)) {
@@ -901,6 +907,15 @@ static int
 parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     IntroFunction * func = NULL;
     int ret = 0;
+    bool attribute_at_start = false;
+
+    if (decl->state != DECL_MEMBERS) {
+        decl->member_index = MIDX_TYPE;
+    }
+    Token tk = next_token(o_s);
+    attribute_at_start = maybe_expect_attribute(ctx, o_s, decl->member_index, &tk);
+    *o_s = tk.start;
+
     if (!decl->reuse_base) ret = parse_type_base(ctx, o_s, decl);
     if (ret < 0 || ret == RET_FOUND_END) return ret;
     if (ret == RET_NOT_TYPE) {
@@ -1022,7 +1037,7 @@ find_end: ;
         if (decl->state == DECL_MEMBERS) {
             maybe_expect_attribute(ctx, o_s, decl->member_index, &tk);
         } else if (typedef_type) {
-            if (maybe_expect_attribute(ctx, o_s, MIDX_TYPE, &tk)) {
+            if (maybe_expect_attribute(ctx, o_s, MIDX_TYPE, &tk) || attribute_at_start) {
                 arrlast(ctx->attribute_directives).type = typedef_type;
             }
         }

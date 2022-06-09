@@ -1,7 +1,10 @@
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
     !! struct/union values (see: the struct layout precipice)
-    maybe allow attributes before the type so they can be on a seperate line
+    more strict namespacing
+        maybe use dot
+    impl: cache matching data
+    @repress trait, disable propagation
     allow attribute declarations with no namespace
     allow multiple aliases somehow
     attribute type: type
@@ -42,8 +45,8 @@ pre:
     !! more options for what parts have information generated
         option to exclude by default, enable with #if __INTRO__
         option to ignore functions
-    !! include errors are fucked (again)
-        location system seems unnecessarily complicated
+    errors are fucked (again)
+        location system is just bad, replace it
     stop after a .intro include as to not depend on types defined later
     don't evaluate location line until it is known the type will be in info
     save location of includes and defines
@@ -75,7 +78,6 @@ examples:
     !! more of these
 
 doc:
-    man page?
 
 misc:
     memory cleanup

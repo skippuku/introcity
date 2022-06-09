@@ -26,17 +26,24 @@ typedef struct {
     int count_sweet_nothings;
 } JointAllocTest;
 
+I(gui_vector)
 typedef struct {
     float x, y;
-} Vector2 I(gui_vector);
+} Vector2;
 
 typedef struct {
-    char * name I(note "this is the name", num 47, default "spock", 9);
+    I(note "this is the name")
+    I(num 47)
+    char * name I(9) I(default "spock");
+
     int v1 I(10, = 67, death_value -9, friend v2, my_scale 8.5, exp);
-    float v2 I(id 11, exp, friend v1, death_value 2.5, note "i don't know what to put in here guys");
+
+    I(id 11, exp, friend v1, death_value 2.5, note "i don't know what to put in here guys")
+    float v2;
+
     Vector2 speed;
     Vector2 accel I(gui_scale 0.1);
-    Vector2 internal_vec I(~gui_show);
+    Vector2 internal_vec I(~gui_show, ~gui_vector);
 } AttributeTest;
 
 #include "attributes.c.intro"
@@ -163,6 +170,18 @@ main() {
         note = intro_attribute_string(m_v2, gui_note);
         assert(note);
         assert(0==strcmp(note, "i don't know what to put in here guys"));
+
+        const IntroMember *m_speed = intro_member_by_name(ITYPE(AttributeTest), speed),
+                          *m_accel = intro_member_by_name(ITYPE(AttributeTest), accel),
+                          *m_internal_vec = intro_member_by_name(ITYPE(AttributeTest), internal_vec);
+
+        assert(intro_has_attribute(ITYPE(Vector2), gui_vector));
+
+        assert(intro_has_attribute(m_speed, gui_vector));
+        assert(intro_has_attribute(m_accel, gui_scale));
+        assert(intro_has_attribute(m_accel, gui_vector));
+        assert(!intro_has_attribute(m_internal_vec, gui_show));
+        assert(!intro_has_attribute(m_internal_vec, gui_vector));
 
         intro_set_values(&test, ITYPE(AttributeTest), my_death_value);
         assert(test.name == NULL);

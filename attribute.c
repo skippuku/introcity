@@ -3,6 +3,7 @@ enum AttributeToken {
     ATTR_TK_INHERIT,
     ATTR_TK_ATTRIBUTE,
     ATTR_TK_APPLY_TO,
+    ATTR_TK_REPRESS,
     ATTR_TK_INVALID
 };
 
@@ -29,6 +30,7 @@ attribute_parse_init(ParseContext * ctx) {
         {"inherit", ATTR_TK_INHERIT},
         {"attribute", ATTR_TK_ATTRIBUTE},
         {"apply_to", ATTR_TK_APPLY_TO},
+        {"repress", ATTR_TK_APPLY_TO},
     };
     shdefault(ctx->attribute_token_map, ATTR_TK_INVALID);
     for (int i=0; i < LENGTH(attribute_keywords); i++) {
@@ -152,6 +154,8 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
                         return -1;
                     }
                     info.global = true;
+                } else if (tk_equal(&tk, "repress")) {
+                    info.repress = true;
                 } else {
                     parse_error(ctx, &tk, "Invalid trait.");
                     return -1;

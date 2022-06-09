@@ -23,14 +23,22 @@ See the [types](#types) section for information on available attribute types.
 ## Applying attributes
 Attributes can be applied to struct member declarations and typedef declarations using the `I` macro.  
   
-The `I` macro must directly preceed `;` or `,`. Multiple attributes can be defined using commas inside the macro.   
+The `I` macro can be placed directly before a declaration or directly after, preceeding the `;` or `,`. Multiple attributes can be applied using multiple macros or with commas.
   
 ```C
 struct {
-    int a I(id 1, =2);        // OK
-    int b I(note "hello"), c; // OK
-    char * name; I(id 3)      // ERROR
-    I(4) bool is_open;        // ERROR
+    int a I(id 1, =2);          // OK
+
+    int b I(note "hello"),
+        c I(~city) I(alias c0); // OK
+
+    char * name; I(id 3)        // POTENTIAL BUG: attribute 'id 3' will be aplied to is_open, not name
+
+    I(4) bool is_open;          // OK
+
+    I(note "many many attributes")
+    I(gui_min -1.0, gui_max 12.0, gui_scale 0.05)
+    float stuff I(id 7);        // OK
 };
 
 typedef float Vector2 [2] I(vector, color {0,255,255,255});

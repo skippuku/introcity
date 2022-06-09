@@ -490,6 +490,18 @@ intro_type_with_name_ctx(IntroContext * ctx, const char * name) {
     return NULL;
 }
 
+const IntroMember *
+intro_member_by_name_x(const IntroType * type, const char * name) {
+    assert((type->category & 0xf0) == INTRO_STRUCT);
+    for (int i=0; i < type->i_struct->count_members; i++) {
+        const IntroMember * member = &type->i_struct->members[i];
+        if (0==strcmp(name, member->name)) {
+            return member;
+        }
+    }
+    return NULL;
+}
+
 // CITY IMPLEMENTATION
 
 static const int implementation_version_major = 0;
