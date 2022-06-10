@@ -1,11 +1,26 @@
 #ifndef GLOBAL_C
 #define GLOBAL_C
 
+#ifdef _WIN32
+  #define WIN32_LEAN_AND_MEAN
+  #include <windef.h>
+  #include <wingdi.h>
+  #include <winbase.h>
+  #include <wincon.h>
+  #include <shlobj.h>
+  #ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+  #endif
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include <time.h>
+
+#include <sys/unistd.h>
+#include <sys/stat.h>
 
 #include "lib/intro.h"
 #include "lib/ext/stb_ds.h"
@@ -63,6 +78,33 @@
   #define COMPILER_STR "compiler"
 #endif
 
+#define DEF_BUILTIN(name) {#name, offsetof(IntroBuiltinAttributeIds, name)}
+static const struct { const char * key; int value; } g_builtin_attributes [] = {
+    DEF_BUILTIN(i_id),
+    DEF_BUILTIN(i_btfld),
+    DEF_BUILTIN(i_default),
+    DEF_BUILTIN(i_length),
+    DEF_BUILTIN(i_alias),
+    DEF_BUILTIN(i_city),
+    DEF_BUILTIN(i_cstring),
+    DEF_BUILTIN(i_type),
+    DEF_BUILTIN(i_remove),
+
+    DEF_BUILTIN(gui_note),
+    DEF_BUILTIN(gui_name),
+    DEF_BUILTIN(gui_min),
+    DEF_BUILTIN(gui_max),
+    DEF_BUILTIN(gui_format),
+    DEF_BUILTIN(gui_scale),
+    DEF_BUILTIN(gui_vector),
+    DEF_BUILTIN(gui_color),
+    DEF_BUILTIN(gui_show),
+    DEF_BUILTIN(gui_edit),
+    DEF_BUILTIN(gui_edit_color),
+    DEF_BUILTIN(gui_edit_text),
+};
+#undef DEF_BUILTIN
+
 typedef struct {
     int current;
     int current_used;
@@ -107,6 +149,14 @@ typedef struct {
     char * pos;
 } LocationContext;
 
+void
+reset_location_context(LocationContext * lctx) {
+    lctx->index = 0;
+    arrsetlen(lctx->stack, 0);
+    lctx->line_num = 0;
+    lctx->pos = NULL;
+}
+
 typedef struct {
     char * result_buffer;
     char * output_filename;
@@ -140,6 +190,7 @@ typedef struct IntroInfo {
     IntroTypePtrList ** arg_lists;
     IntroFunction ** functions;
     char ** string_set;
+    struct IntroAttributeContext attr;
     uint32_t count_types;
     uint32_t count_arg_lists;
     uint32_t count_functions;
@@ -157,17 +208,6 @@ enum ReturnCode {
     RET_NOT_TYPE = 7,
     RET_DECL_VA_LIST = 8,
 };
-
-typedef struct {
-    ptrdiff_t value_offset;
-    void * data;
-    size_t data_size;
-} PtrStore;
-
-typedef struct {
-    int32_t member_index, attribute_type;
-    uint32_t value;
-} DifferedDefault;
 
 typedef struct ExprContext ExprContext;
 
@@ -202,15 +242,8 @@ typedef enum {
 typedef struct ParseContext ParseContext;
 
 typedef struct {
-    char * location;
-    int32_t i;
-    Token tk;
-} AttributeSpecifier;
-
-typedef struct {
     IntroType * base;
     IntroType * type;
-    bool reuse_base;
     enum {
         DECL_GLOBAL = 1,
         DECL_TYPEDEF,
@@ -221,12 +254,11 @@ typedef struct {
     Token base_tk;
     Token name_tk;
 
-    AttributeSpecifier * attribute_specifiers;
     char ** arg_names;
 
     int32_t member_index;
-    uint8_t bitfield;
     bool func_specifies_args;
+    bool reuse_base;
 } DeclState;
 
 typedef struct {

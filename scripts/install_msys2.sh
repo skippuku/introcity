@@ -5,13 +5,8 @@ if [ $(dirname $0) = . ]; then
     cd ..
 fi
 
-if [ ! -f intro.cfg ]; then
-    make config || exit 1
-fi
-
-if [ ! -f build/release/intro ]; then
-    make release || exit 1
-fi
+make config || exit 1
+make release || exit 1
 
 PREFIX=/usr/local
 set -x

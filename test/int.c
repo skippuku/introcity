@@ -68,27 +68,27 @@ main() {
 
         CHECK0(11,, U64);
 
-        CHECK0(12,,          POINTER);
-        CHECK0(12, ->parent, U64);
+        CHECK0(12,,      POINTER);
+        CHECK0(12, ->of, U64);
 
-        CHECK0(13,,          ARRAY);
-        CHECK0(13, ->parent, U64);
+        CHECK0(13,,      ARRAY);
+        CHECK0(13, ->of, U64);
         assert(m[13].type->array_size == LENGTH(t.v3));
 
-        CHECK0(14,,                  ARRAY);
-        CHECK0(14, ->parent,         POINTER);
-        CHECK0(14, ->parent->parent, U64);
+        CHECK0(14,,          ARRAY);
+        CHECK0(14, ->of,     POINTER);
+        CHECK0(14, ->of->of, U64);
         assert(m[14].type->array_size == LENGTH(t.v4));
 
-        CHECK0(15,,                  ARRAY);
-        CHECK0(15, ->parent,         POINTER);
-        CHECK0(15, ->parent->parent, U64);
+        CHECK0(15,,          ARRAY);
+        CHECK0(15, ->of,     POINTER);
+        CHECK0(15, ->of->of, U64);
         assert(m[15].type->array_size == LENGTH(t.v5));
 
-        CHECK0(16,,                  POINTER);
-        CHECK0(16, ->parent,         ARRAY);
-        CHECK0(16, ->parent->parent, U64);
-        assert(m[16].type->parent->array_size == LENGTH(*t.v6));
+        CHECK0(16,,          POINTER);
+        CHECK0(16, ->of,     ARRAY);
+        CHECK0(16, ->of->of, U64);
+        assert(m[16].type->of->array_size == LENGTH(*t.v6));
 
     CHECK0(17,, U64);
     CHECK0(18,, S64);

@@ -98,7 +98,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
     strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
     strputf(p_s, "%s%.*s" WHITE, highlight_color, (int)(highlight_end - highlight_start), highlight_start);
     strputf(p_s, "%.*s\n", (int)(segment_end - highlight_end), highlight_end);
-    for (int i=0; i < highlight_start - segment_start; i++) {
+    for (int i=0; i < highlight_start - segment_start - 1; i++) {
         if (segment_start[i] == '\t') {
             arrput(*p_s, '\t');
         } else {
@@ -111,6 +111,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
 
 static inline int
 count_newlines_unaligned(char * start, int count) {
+#if 1
     __m128i mask;
     memset(&mask, 1, count);
     __m128i line = _mm_loadu_si128((void *)start);
@@ -118,13 +119,24 @@ count_newlines_unaligned(char * start, int count) {
     __m128i vsum = _mm_sad_epu8(line, _mm_setzero_si128());
     int isum = _mm_cvtsi128_si32(vsum) + _mm_extract_epi16(vsum, 4);
     return isum;
+#else
+    int result = 0;
+    char * s = start;
+    while (s < start + count) {
+        if (*s == '\n') result += 1;
+        s++;
+    }
+    return result;
+#endif
 }
 
 static int
-count_newlines_in_range(char * s, char * end, char ** o_last_line) {
+count_newlines_in_range(char * start, char * end, char ** o_last_line) {
 #ifdef __SSE2__
+    char * s = start;
     int result = 1;
     int count_to_aligned = (16 - ((uintptr_t)s & 15)) & 15;
+    assert(end > s);
     result += count_newlines_unaligned(s, MIN(count_to_aligned, end - s));
     s += count_to_aligned;
     if (s < end) {
@@ -142,12 +154,13 @@ count_newlines_in_range(char * s, char * end, char ** o_last_line) {
         db_assert(end - s >= 0);
         result += count_newlines_unaligned(s, end - s);
     }
-    while (*--end != '\n');
+    while (end > start && *--end != '\n');
     *o_last_line = end;
     return result;
 #else
     int result = 1;
-    *o_last_line = s;
+    char * s = start;
+    *o_last_line = start;
     while (s < end) {
         if (*s++ == '\n') {
             *o_last_line = s;
@@ -244,7 +257,7 @@ message_internal(char * start_of_line, const char * filename, int line, char * h
     char * s = NULL;
     const char * message_type_string = (message_type == 1)? "Warning" : "Error";
     const char * color = (message_type == 1)? BOLD_YELLOW : BOLD_RED;
-    strputf(&s, "%s%s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n\n", color, message_type_string, filename, line, message);
+    strputf(&s, "%s%s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n", color, message_type_string, filename, line, message);
     strput_code_segment(&s, start_of_line, end_of_line, hl_start, hl_end, color);
     fputs(s, stderr);
     arrfree(s);
@@ -292,7 +305,7 @@ preprocess_message_internal(LocationContext * lctx, const Token * tk, char * mes
 #define preprocess_warning(tk, message) preprocess_message_internal(&ctx->loc, tk, message, 1)
 
 void
-location_note(const LocationContext * lctx, IntroLocation location, const char * msg) {
+location_note(LocationContext * lctx, IntroLocation location, const char * msg) {
     FileInfo * file = NULL;
     for (int i=0; i < lctx->count; i++) {
         FileInfo * f = lctx->file_buffers[i];
@@ -308,15 +321,13 @@ location_note(const LocationContext * lctx, IntroLocation location, const char *
     char * s = file->buffer;
     int line = 1;
     while (s < file->buffer + file->buffer_size) {
-        bool done = false;
         if (*s == '\n') {
             line++;
             if (line == location.line) {
-                done = true;
+                break;
             }
         }
         s++;
-        if (done) break;
     }
     char * start_of_line = s;
     s += location.column;
@@ -1326,6 +1337,7 @@ static char intro_defs [] =
 "#endif\n"
 "#define __inline inline\n"
 "#define __restrict restrict\n"
+"#define _Complex \n" // TODO: ... uhg
 
 // MINGW
 "#define _VA_LIST_DEFINED 1\n"

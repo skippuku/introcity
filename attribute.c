@@ -1,110 +1,229 @@
-void
-create_initial_attributes(ParseContext * ctx) {
-    const AttributeMap initial [] = {
-        {"id",      INTRO_ATTR_ID,      INTRO_V_INT}, // NOTE: maybe this should be part of IntroMember since it is common?
-        {"default", INTRO_ATTR_DEFAULT, INTRO_V_VALUE},
-        {"length",  INTRO_ATTR_LENGTH,  INTRO_V_MEMBER},
-        {"type",    INTRO_ATTR_TYPE,    INTRO_V_FLAG},
-        {"note",    INTRO_ATTR_NOTE,    INTRO_V_STRING},
-        {"alias",   INTRO_ATTR_ALIAS,   INTRO_V_STRING},
-    };
-    // NOTE: might need to do this later:
-    //sh_new_arena(ctx->attribute_map);
-    for (int i=0; i < LENGTH(initial); i++) {
-        shputs(ctx->attribute_map, initial[i]);
+enum AttributeToken {
+    ATTR_TK_GLOBAL = INTRO_AT_COUNT + 1,
+    ATTR_TK_INHERIT,
+    ATTR_TK_ATTRIBUTE,
+    ATTR_TK_APPLY_TO,
+    ATTR_TK_REPRESS,
+    ATTR_TK_INVALID
+};
+
+#define EXPECT(x) \
+    tk = next_token(o_s); \
+    if (tk.start[0] != x) { \
+        parse_error(ctx, &tk, "Expected " #x "."); \
+        return -1; \
     }
+
+void
+attribute_parse_init(ParseContext * ctx) {
+    static const struct { const char * key; int value; } attribute_keywords [] = {
+        {"flag",    INTRO_AT_FLAG},
+        {"int",     INTRO_AT_INT},
+        {"float",   INTRO_AT_FLOAT},
+        {"value",   INTRO_AT_VALUE},
+        {"member",  INTRO_AT_MEMBER},
+        {"string",  INTRO_AT_STRING},
+        {"type",    INTRO_AT_TYPE},
+        {"expr",    INTRO_AT_EXPR},
+        {"__remove",INTRO_AT_REMOVE},
+        {"global",  ATTR_TK_GLOBAL},
+        {"inherit", ATTR_TK_INHERIT},
+        {"attribute", ATTR_TK_ATTRIBUTE},
+        {"apply_to", ATTR_TK_APPLY_TO},
+        {"repress", ATTR_TK_APPLY_TO},
+    };
+    shdefault(ctx->attribute_token_map, ATTR_TK_INVALID);
+    for (int i=0; i < LENGTH(attribute_keywords); i++) {
+        shput(ctx->attribute_token_map, attribute_keywords[i].key, attribute_keywords[i].value);
+    }
+
+    shdefault(ctx->builtin_map, -1);
+    for (int i=0; i < LENGTH(g_builtin_attributes); i++) {
+        shput(ctx->builtin_map, g_builtin_attributes[i].key, g_builtin_attributes[i].value);
+    }
+
+    sh_new_arena(ctx->attribute_map);
+    ctx->attribute_id_counter = 0;
+    // TODO: do we still need this?
+    ctx->attribute_flag_id_counter = UINT32_MAX / 2;
 }
 
 int
-parse_attribute_register(ParseContext * ctx, char * s, int type, Token * type_tk) {
-    const struct { char * key; int value_type; } value_type_lookup [] = {
-        {"flag",      INTRO_V_FLAG},
-        {"int",       INTRO_V_INT},
-        {"float",     INTRO_V_FLOAT},
-        {"value",     INTRO_V_VALUE},
-        {"member",    INTRO_V_MEMBER},
-        {"string",    INTRO_V_STRING},
-    };
-
-    Token tk0 = next_token(&s), tk1;
-    if (tk0.type != TK_L_PARENTHESIS) {
-        parse_error(ctx, &tk0, "Expected '('.");
+parse_global_directive(ParseContext * ctx, char ** o_s) {
+    Token tk = next_token(o_s);
+    if (tk.type != TK_L_PARENTHESIS) {
+        parse_error(ctx, &tk, "Expected '('.");
         return -1;
     }
 
-    tk0 = next_token(&s);
-    if (tk0.type != TK_IDENTIFIER) {
-        parse_error(ctx, &tk0, "Expected identifier.");
-        return -1;
-    }
-
-    int value_type = INTRO_V_FLAG;
-    char * name = NULL;
-    Token * name_ref = NULL;
-
-    tk1 = next_token(&s);
-    if (tk1.type == TK_IDENTIFIER) {
-        bool matched = false;
-        for (int i=0; i < LENGTH(value_type_lookup); i++) {
-            if (tk_equal(&tk0, value_type_lookup[i].key)) {
-                value_type = value_type_lookup[i].value_type;
-                matched = true;
-                break;
-            }
+    tk = next_token(o_s);
+    char temp [1024];
+    memcpy(temp, tk.start, tk.length);
+    temp[tk.length] = 0;
+    int a_tk = shget(ctx->attribute_token_map, temp);
+    if (a_tk == ATTR_TK_ATTRIBUTE) {
+        tk = next_token(o_s);
+        char * namespace = NULL;
+        if (tk.type == TK_IDENTIFIER) {
+            namespace = copy_and_terminate(ctx->arena, tk.start, tk.length);
+            tk = next_token(o_s);
         }
-        if (!matched) {
-            parse_error(ctx, &tk0, "Unknown attribute value type.");
+        if (tk.type != TK_L_PARENTHESIS) {
+            parse_error(ctx, &tk, "Expected. '('.");
             return -1;
         }
-        name = copy_and_terminate(ctx->arena, tk1.start, tk1.length);
-        name_ref = &tk1;
-    } else if (tk1.type == TK_R_PARENTHESIS) {
-        name = copy_and_terminate(ctx->arena, tk0.start, tk0.length);
-        name_ref = &tk0;
-    } else {
-        parse_error(ctx, &tk1, "Expected identifier or ')'.");
-        return -1;
-    }
 
-    int map_index = shgeti(ctx->attribute_map, name);
-    if (map_index >= 0) {
-        parse_error(ctx, name_ref, "Attribute name is reserved.");
-        return -1;
-    }
+        while (1) {
+            AttributeParseInfo info = {0};
 
-    for (int i=0; i < shlen(ctx->attribute_map); i++) {
-        if (ctx->attribute_map[i].type == type) {
-            char * msg = NULL;
-            strputf(&msg, "Attribute type (%i) is reserved by attribute '%s'.", type, ctx->attribute_map[i].key);
-            parse_error(ctx, type_tk, msg);
-            arrfree(msg);
-            return 2;
+            tk = next_token(o_s);
+            if (tk.type == TK_R_PARENTHESIS) {
+                break;
+            } else if (tk.type != TK_IDENTIFIER) {
+                parse_error(ctx, &tk, "Expected identifier for attribute name.");
+            }
+            char namespaced [1024];
+            char unspaced [1024];
+            memcpy(unspaced, tk.start, tk.length);
+            unspaced[tk.length] = 0;
+            strcpy(namespaced, namespace);
+            strcat(namespaced, unspaced);
+            if (shgeti(ctx->attribute_map, namespaced) >= 0) {
+                parse_error(ctx, &tk, "Attribute name is reserved.");
+                return -1;
+            }
+            tk = next_token(o_s);
+            if (tk.type != TK_COLON) {
+                parse_error(ctx, &tk, "Expected ':'.");
+                return -1;
+            }
+
+            tk = next_token(o_s);
+            memcpy(temp, tk.start, tk.length);
+            temp[tk.length] = 0;
+            int a_tk = shget(ctx->attribute_token_map, temp);
+            if (a_tk >= INTRO_AT_COUNT) {
+                parse_error(ctx, &tk, "Invalid attribute type.");
+                return -1;
+            }
+            info.type = a_tk;
+
+            if (info.type == INTRO_AT_FLAG) {
+                info.id = ctx->attribute_flag_id_counter++;
+            } else {
+                info.id = ctx->attribute_id_counter++;
+            }
+
+            tk = next_token(o_s);
+            if (tk.type == TK_L_PARENTHESIS && a_tk == INTRO_AT_VALUE) {
+                tk = next_token(o_s);
+                if (tk.type == TK_AT) {
+                    tk = next_token(o_s);
+                    if (!tk_equal(&tk, "inherit")) {
+                        parse_error(ctx, &tk, "Invalid trait.");
+                        return -1;
+                    }
+                    tk = next_token(o_s);
+                    info.type_ptr = NULL;
+                } else {
+                    *o_s = tk.start;
+                    DeclState decl = {.state = DECL_CAST};
+                    int ret = parse_declaration(ctx, o_s, &decl);
+                    if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
+                        info.type_ptr = decl.type;
+                    } else if (ret == RET_NOT_TYPE) {
+                        parse_error(ctx, &decl.base_tk, "Not a type.");
+                        return -1;
+                    } else {
+                        return -1;
+                    }
+                    tk = next_token(o_s);
+                }
+                if (tk.type != TK_R_PARENTHESIS) {
+                    parse_error(ctx, &tk, "Expected ')'.");
+                    return -1;
+                }
+                tk = next_token(o_s);
+            }
+
+            if (tk.type == TK_AT) {
+                tk = next_token(o_s);
+                if (tk_equal(&tk, "global")) {
+                    if (info.type != INTRO_AT_FLAG) {
+                        parse_error(ctx, &tk, "Only flag attributes can have the trait global.");
+                        return -1;
+                    }
+                    info.global = true;
+                } else if (tk_equal(&tk, "repress")) {
+                    info.repress = true;
+                } else {
+                    parse_error(ctx, &tk, "Invalid trait.");
+                    return -1;
+                }
+                tk = next_token(o_s);
+            }
+
+            shput(ctx->attribute_map, namespaced, info);
+            ptrdiff_t unspaced_index = shgeti(ctx->attribute_map, unspaced);
+            if (unspaced_index < 0) {
+                info.without_namespace = true;
+                shput(ctx->attribute_map, unspaced, info);
+            } else {
+                ctx->attribute_map[unspaced_index].value.invalid_without_namespace = true;
+            }
+
+            if (tk.type == TK_COMMA) {
+                continue;
+            } else if (tk.type == TK_R_PARENTHESIS) {
+                break;
+            } else {
+                parse_error(ctx, &tk, "Expected ',' or ')'.");
+                return -1;
+            }
         }
+    } else if (a_tk == ATTR_TK_APPLY_TO) {
+        EXPECT('(');
+        DeclState decl = {.state = DECL_CAST};
+        int ret = parse_declaration(ctx, o_s, &decl);
+        if (ret < 0) return -1;
+        EXPECT(')');
+        EXPECT('(');
+        *o_s = find_closing(tk.start) + 1;
+        AttributeDirective directive = {
+            .type = decl.type,
+            .location = tk.start,
+            .member_index = MIDX_TYPE,
+        };
+        arrput(ctx->attribute_directives, directive);
+    } else {
+        parse_error(ctx, &tk, "Invalid. Expected 'attribute' or 'apply_to'.");
+        return -1;
     }
 
-    AttributeMap entry;
-    entry.key = name;
-    entry.type = type;
-    entry.value_type = value_type;
-    shputs(ctx->attribute_map, entry);
-
+    tk = next_token(o_s);
+    if (tk.type != TK_R_PARENTHESIS) {
+        parse_error(ctx, &tk, "Missing ')'.");
+        return -1;
+    }
     return 0;
 }
 
-bool
+static bool
 check_id_valid(const IntroStruct * i_struct, int id) {
+#if 0 // TODO
     if (id < 0 || ((id & 0xFFFF) != id)) {
         return false;
     }
     for (int member_index = 0; member_index < i_struct->count_members; member_index++) {
         const IntroMember * member = &i_struct->members[member_index];
         for (int attr_index = 0; attr_index < member->count_attributes; attr_index++) {
-            const IntroAttributeData * attr = &member->attributes[attr_index];
-            if (attr->type == INTRO_ATTR_ID && attr->v.i == id) {
+            const AttributeData * attr = &member->attributes[attr_index];
+            if (attr->type == ctx->builtin.i_id && attr->v.i == id) {
                 return false;
             }
         }
     }
+#endif
     return true;
 }
 
@@ -185,11 +304,12 @@ store_ptr(ParseContext * ctx, void * data, size_t size) {
 
 ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint32_t * o_count);
 
+// TODO: change to parse_expression
 ptrdiff_t
 parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_count) {
     if ((type->category >= INTRO_U8 && type->category <= INTRO_S64) || type->category == INTRO_ENUM) {
         intmax_t result = parse_constant_expression(ctx, o_s);
-        int size = (type->category != INTRO_ENUM)? type->category & 0x0f : sizeof(int);
+        int size = (type->category == INTRO_ENUM)? sizeof(int) : intro_size(type);
         return store_value(ctx, &result, size);
     } else if (type->category == INTRO_F32) {
         float result = strtof(*o_s, o_s);
@@ -200,7 +320,7 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
     } else if (type->category == INTRO_POINTER) {
         Token tk = next_token(o_s);
         if (tk.type == TK_STRING) {
-            if (type->parent->category == INTRO_S8 && 0==strcmp(type->parent->name, "char")) {
+            if (type->of->category == INTRO_S8 && 0==strcmp(type->of->name, "char")) {
                 size_t length;
                 char * str = parse_escaped_string(&tk, &length);
                 if (!str) {
@@ -217,6 +337,25 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
             return pointer_offset;
         }
     } else if (type->category == INTRO_ARRAY) {
+        if (type->of->category == INTRO_S8 && 0==strcmp(type->of->name, "char")) {
+            Token tk = next_token(o_s);
+            if (tk.type == TK_STRING) {
+                size_t str_length;
+                char * str = parse_escaped_string(&tk, &str_length);
+                if (!str) {
+                    parse_error(ctx, &tk, "Invalid string.");
+                    return -1;
+                }
+                ptrdiff_t result = arrlen(ctx->value_buffer);
+                char * dest = (char *)arraddnptr(ctx->value_buffer, intro_size(type));
+                memset(dest, 0, intro_size(type));
+                strcpy(dest, str);
+                free(str);
+
+                return result;
+            }
+            *o_s = tk.start;
+        }
         ptrdiff_t result = parse_array_value(ctx, type, o_s, NULL);
         return result;
     }
@@ -228,7 +367,7 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint3
     Token tk = next_token(o_s);
 
     ptrdiff_t result = arrlen(ctx->value_buffer);
-    size_t array_element_size = intro_size(type->parent);
+    size_t array_element_size = intro_size(type->of);
     uint32_t count = 0;
 
     if (tk.type == TK_L_BRACE) {
@@ -241,7 +380,7 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint3
                 break;
             }
             *o_s = tk.start;
-            parse_value(ctx, type->parent, o_s, NULL);
+            parse_value(ctx, type->of, o_s, NULL);
             count++;
 
             tk = next_token(o_s);
@@ -268,7 +407,7 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint3
 }
 
 void
-store_differed_ptrs(ParseContext * ctx) {
+store_deferred_ptrs(ParseContext * ctx) {
     for (int i=0; i < arrlen(ctx->ptr_stores); i++) {
         PtrStore ptr_store = ctx->ptr_stores[i];
         store_value(ctx, &ptr_store.data_size, 4);
@@ -281,137 +420,181 @@ store_differed_ptrs(ParseContext * ctx) {
 }
 
 int
-handle_value_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int member_index, IntroAttributeData * data, Token * p_tk) {
-    IntroType * type = i_struct->members[member_index].type;
+handle_value_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_index, AttributeData * data, Token * p_tk) {
+    IntroAttribute attr_info = ctx->p_info->attr.available[data->id];
+    IntroType * v_type;
+    if (attr_info.type_id == 0) {
+        v_type = type->i_struct->members[member_index].type;
+    } else {
+        v_type = ctx->p_info->types[attr_info.type_id];
+    }
     assert(arrlen(ctx->ptr_stores) == 0);
     uint32_t length_value = 0;
-    ptrdiff_t value_offset = parse_value(ctx, type, o_s, &length_value);
+    ptrdiff_t value_offset = parse_value(ctx, v_type, o_s, &length_value);
     if (value_offset < 0) {
         parse_error(ctx, p_tk, "Error parsing value attribute.");
         return -1;
     }
     if (length_value) {
-        DifferedDefault def = {
+        DeferredDefault def = {
+            .type = type,
             .member_index = member_index,
-            .attribute_type = data->type,
+            .attr_id = data->id,
             .value = length_value,
         };
-        arrput(ctx->differed_length_defaults, def);
+        arrput(ctx->deferred_length_defaults, def);
     }
-    store_differed_ptrs(ctx);
+    store_deferred_ptrs(ctx);
     data->v.i = value_offset;
     return 0;
 }
 
-int
-parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int member_index, IntroAttributeData * o_result) {
-    IntroAttributeData data = {0};
+int32_t
+parse_attribute_id(ParseContext * ctx, char ** o_s) {
     Token tk = next_token(o_s);
-    if (tk.type == TK_IDENTIFIER) {
-        STACK_TERMINATE(terminated_name, tk.start, tk.length);
-        int map_index = shgeti(ctx->attribute_map, terminated_name);
-        if (map_index < 0) {
-            parse_error(ctx, &tk, "No such attribute.");
+    STACK_TERMINATE(term, tk.start, tk.length);
+    int map_index = shgeti(ctx->attribute_map, term);
+    if (map_index < 0) {
+        parse_error(ctx, &tk, "No such attribute.");
+        return -1;
+    }
+
+    AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
+    if (attr_info.invalid_without_namespace) {
+        parse_error(ctx, &tk, "Name matches more than one namespace.");
+        return -1;
+    }
+    uint32_t id = attr_info.final_id;
+    return id;
+}
+
+int
+parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_index, AttributeData * o_result) {
+    IntroStruct * i_struct = type->i_struct;
+    AttributeData data = {0};
+
+    Token tk = next_token(o_s);
+    if (tk.type != TK_IDENTIFIER) {
+        parse_error(ctx, &tk, "Expected identifier.");
+        return -1;
+    }
+
+    STACK_TERMINATE(terminated_name, tk.start, tk.length);
+    int map_index = shgeti(ctx->attribute_map, terminated_name);
+    if (map_index < 0) {
+        parse_error(ctx, &tk, "No such attribute.");
+        return -1;
+    }
+
+    AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
+    if (attr_info.invalid_without_namespace) {
+        parse_error(ctx, &tk, "Name matches more than one namespace.");
+        return -1;
+    }
+    data.id = attr_info.final_id;
+    IntroAttributeType attribute_type = attr_info.type;
+
+    switch(attribute_type) {
+    default: break;
+    case INTRO_AT_FLAG: {
+        if (data.id == ctx->builtin.i_type) {
+            IntroType * type = i_struct->members[member_index].type;
+            if (!(type->category == INTRO_POINTER && strcmp(type->of->name, "IntroType") == 0)) {
+                parse_error(ctx, &tk, "Member must be of type 'IntroType *' to have type attribute.");
+                char typename [1024];
+                intro_sprint_type_name(typename, type);
+                fprintf(stderr, "member type is %s\n", typename);
+                return -1;
+            }
+        }
+        data.v.i = 0;
+    } break;
+
+    case INTRO_AT_INT: {
+        tk = next_token(o_s);
+        long result = strtol(tk.start, o_s, 0);
+        if (*o_s == tk.start) {
+            parse_error(ctx, &tk, "Invalid integer.");
             return -1;
         }
-
-        data.type = ctx->attribute_map[map_index].type;
-        data.value_type = ctx->attribute_map[map_index].value_type; // NOTE: you could just lookup the attribute's value type
-
-        switch(data.value_type) {
-        case INTRO_V_FLAG: {
-            if (data.type == INTRO_ATTR_TYPE) {
-                IntroType * type = i_struct->members[member_index].type;
-                if (!(type->category == INTRO_POINTER && strcmp(type->parent->name, "IntroType") == 0)) {
-                    parse_error(ctx, &tk, "Member must be of type 'IntroType *' to have type attribute.");
-                    char typename [1024];
-                    intro_sprint_type_name(typename, type);
-                    fprintf(stderr, "member type is %s\n", typename);
-                    return -1;
-                }
-            }
-            data.v.i = 0;
-        } break;
-
-        case INTRO_V_INT: {
-            tk = next_token(o_s);
-            long result = strtol(tk.start, o_s, 0);
-            if (*o_s == tk.start) {
-                parse_error(ctx, &tk, "Invalid integer.");
+        data.v.i = (int32_t)result;
+        if (data.id == ctx->builtin.i_id) {
+            if (!check_id_valid(i_struct, data.v.i)) {
+                parse_error(ctx, &tk, "This ID is reserved.");
                 return -1;
             }
-            data.v.i = (int32_t)result;
-            if (data.type == INTRO_ATTR_ID) {
-                if (!check_id_valid(i_struct, data.v.i)) {
-                    parse_error(ctx, &tk, "This ID is reserved.");
-                    return -1;
-                }
-                i_struct->members[member_index].id = data.v.i;
-            }
-        } break;
-
-        case INTRO_V_FLOAT: {
-            tk = next_token(o_s);
-            float result = strtof(tk.start, o_s);
-            if (*o_s == tk.start) {
-                parse_error(ctx, &tk, "Invalid floating point number.");
-                return -1;
-            }
-            data.v.f = result;
-        } break;
-
-        case INTRO_V_STRING: {
-            tk = next_token(o_s);
-            char * result = NULL;
-            if (data.type == INTRO_ATTR_ALIAS && tk.type == TK_IDENTIFIER) {
-                result = copy_and_terminate(ctx->arena, tk.start, tk.length);
-            } else {
-                if (tk.type != TK_STRING) {
-                    parse_error(ctx, &tk, "Expected string.");
-                    return -1;
-                }
-                result = copy_and_terminate(ctx->arena, tk.start+1, tk.length-2);
-            }
-            int32_t index = arrlen(ctx->string_set);
-            arrput(ctx->string_set, result);
-            data.v.i = index;
-        } break;
-
-        // TODO: error check: member used as length can't have a value if the member it is the length of has a value
-        // TODO: error check: if multiple members use the same member for length, values can't have different lengths
-        // NOTE: the previous 2 todo's do not apply if the values are for different attributes
-        case INTRO_V_VALUE: {
-            if (handle_value_attribute(ctx, o_s, i_struct, member_index, &data, &tk)) return -1;
-        } break;
-
-        case INTRO_V_MEMBER: {
-            tk = next_token(o_s);
-            if (tk.type != TK_IDENTIFIER || is_digit(tk.start[0])) {
-                parse_error(ctx, &tk, "Expected member name.");
-                return -1;
-            }
-            bool success = false;
-            for (int mi=0; mi < i_struct->count_members; mi++) {
-                if (tk_equal(&tk, i_struct->members[mi].name)) {
-                    if (data.type == INTRO_ATTR_LENGTH) {
-                        IntroType * type = i_struct->members[mi].type;
-                        uint32_t category_no_size = type->category & 0xf0;
-                        if (category_no_size != INTRO_SIGNED && category_no_size != INTRO_UNSIGNED) {
-                            parse_error(ctx, &tk, "Length defining member must be of an integer type.");
-                            return -1;
-                        }
-                    }
-                    data.v.i = mi;
-                    success = true;
-                    break;
-                }
-            }
-            if (!success) {
-                parse_error(ctx, &tk, "No such member.");
-                return -1;
-            }
-        } break;
         }
+    } break;
+
+    case INTRO_AT_FLOAT: {
+        tk = next_token(o_s);
+        float result = strtof(tk.start, o_s);
+        if (*o_s == tk.start) {
+            parse_error(ctx, &tk, "Invalid floating point number.");
+            return -1;
+        }
+        data.v.f = result;
+    } break;
+
+    case INTRO_AT_STRING: {
+        tk = next_token(o_s);
+        char * result = NULL;
+        if (data.id == ctx->builtin.i_alias && tk.type == TK_IDENTIFIER) {
+            result = copy_and_terminate(ctx->arena, tk.start, tk.length);
+        } else {
+            if (tk.type != TK_STRING) {
+                parse_error(ctx, &tk, "Expected string.");
+                return -1;
+            }
+            result = copy_and_terminate(ctx->arena, tk.start+1, tk.length-2);
+        }
+        int32_t index = arrlen(ctx->string_set);
+        arrput(ctx->string_set, result);
+        data.v.i = index;
+    } break;
+
+    // TODO: error check: member used as length can't have a value if the member it is the length of has a value
+    // TODO: error check: if multiple members use the same member for length, values can't have different lengths
+    // NOTE: the previous 2 todo's do not apply if the values are for different attributes
+    case INTRO_AT_VALUE: {
+        if (handle_value_attribute(ctx, o_s, type, member_index, &data, &tk)) return -1;
+    } break;
+
+    case INTRO_AT_MEMBER: {
+        tk = next_token(o_s);
+        if (tk.type != TK_IDENTIFIER || is_digit(tk.start[0])) {
+            parse_error(ctx, &tk, "Expected member name.");
+            return -1;
+        }
+        bool success = false;
+        for (int mi=0; mi < i_struct->count_members; mi++) {
+            if (tk_equal(&tk, i_struct->members[mi].name)) {
+                if (data.id == ctx->builtin.i_length) {
+                    IntroType * type = i_struct->members[mi].type;
+                    uint32_t category_no_size = type->category & 0xf0;
+                    if (category_no_size != INTRO_SIGNED && category_no_size != INTRO_UNSIGNED) {
+                        parse_error(ctx, &tk, "Length defining member must be of an integer type.");
+                        return -1;
+                    }
+                }
+                data.v.i = mi;
+                success = true;
+                break;
+            }
+        }
+        if (!success) {
+            parse_error(ctx, &tk, "No such member.");
+            return -1;
+        }
+    } break;
+
+    case INTRO_AT_REMOVE: {
+        int32_t id = parse_attribute_id(ctx, o_s);
+        if (id < 0) {
+            return -1;
+        }
+        data.v.i = id;
+    }break;
     }
 
     if (o_result) *o_result = data;
@@ -419,8 +602,9 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroStruct * i_struct, int mem
 }
 
 int
-parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int member_index, IntroAttributeData ** o_result, uint32_t * o_count_attributes) {
-    IntroAttributeData * attributes = NULL;
+parse_attributes(ParseContext * ctx, char * s, IntroType * type, int member_index, AttributeData ** o_result, uint32_t * o_count_attributes) {
+    IntroStruct * i_struct = type->i_struct;
+    AttributeData * attributes = NULL;
 
     Token tk = next_token(&s);
     if (tk.type != TK_L_PARENTHESIS) {
@@ -429,11 +613,10 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
     }
     while (1) {
         tk = next_token(&s);
-        IntroAttributeData data;
+        AttributeData data;
         if (tk.type == TK_IDENTIFIER) {
             if (is_digit(tk.start[0])) {
-                data.type = INTRO_ATTR_ID;
-                data.value_type = INTRO_V_INT;
+                data.id = ctx->builtin.i_id;
                 // @copy from above
                 long result = strtol(tk.start, &s, 0);
                 if (s == tk.start) {
@@ -445,17 +628,22 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
                     parse_error(ctx, &tk, "This ID is reserved.");
                     return -1;
                 }
-                i_struct->members[member_index].id = data.v.i;
             } else {
                 s = tk.start;
-                int error = parse_attribute(ctx, &s, i_struct, member_index, &data);
+                int error = parse_attribute(ctx, &s, type, member_index, &data);
                 if (error) return -1;
             }
             arrput(attributes, data);
         } else if (tk.type == TK_EQUAL) {
-            data.type = INTRO_ATTR_DEFAULT;
-            data.value_type = INTRO_V_VALUE;
-            if (handle_value_attribute(ctx, &s, i_struct, member_index, &data, &tk)) return -1;
+            data.id = ctx->builtin.i_default;
+            if (handle_value_attribute(ctx, &s, type, member_index, &data, &tk)) return -1;
+
+            arrput(attributes, data);
+        } else if (tk.type == TK_TILDE) {
+            data.id = ctx->builtin.i_remove;
+            int32_t remove_id = parse_attribute_id(ctx, &s);
+            if (remove_id < 0) return -1;
+            data.v.i = remove_id;
 
             arrput(attributes, data);
         } else if (tk.type == TK_R_PARENTHESIS) {
@@ -484,30 +672,235 @@ parse_attributes(ParseContext * ctx, char * s, IntroStruct * i_struct, int membe
     return 0;
 }
 
-void
-handle_differed_defaults(ParseContext * ctx, IntroStruct * i_struct) {
-    for (int i=0; i < arrlen(ctx->differed_length_defaults); i++) {
-        DifferedDefault def = ctx->differed_length_defaults[i];
-        IntroMember * array_member = &i_struct->members[def.member_index];
-        int32_t length_member_index;
-        if (intro_attribute_int(array_member, INTRO_ATTR_LENGTH, &length_member_index)) {
-            IntroMember * member = &i_struct->members[length_member_index];
-            ptrdiff_t value_offset = store_value(ctx, &def.value, intro_size(member->type));
-            IntroAttributeData data = {
-                .type = def.attribute_type,
-                .value_type = INTRO_V_VALUE,
-                .v = {value_offset},
-            };
+static void
+add_attribute(ParseContext * ctx, IntroInfo * o_info, AttributeParseInfo * info, AttributeParseInfo * next_info, char * name) {
+    IntroAttribute attribute = {
+        .name = name,
+        .attr_type = info->type,
+        .type_id = hmget(o_info->index_by_ptr_map, info->type_ptr),
+    };
+    int final_id = arrlen(o_info->attr.available);
+    arrput(o_info->attr.available, attribute);
+    info->final_id = final_id;
+    if (next_info) next_info->final_id = final_id;
+    int builtin_offset = shget(ctx->builtin_map, name);
+    if (builtin_offset >= 0) {
+        *((uint8_t *)&ctx->builtin + builtin_offset) = (uint8_t)final_id;
+    }
+    if (info->global) {
+        AttributeData data = {.id = final_id};
+        arrput(ctx->attribute_globals, data);
+    }
+}
 
-            IntroAttributeData * new_attributes = NULL;
-            for (int a=0; a < member->count_attributes; a++) {
-                arrput(new_attributes, member->attributes[a]);
+int
+attribute_data_sort_callback(const void * p_a, const void * p_b) {
+    const AttributeData a = *(AttributeData *)p_a;
+    const AttributeData b = *(AttributeData *)p_b;
+    return a.id - b.id;
+}
+
+void
+apply_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_index, AttributeData * data, int32_t count) {
+    AttributeDataKey key = {
+        .type = type,
+        .member_index = member_index,
+    };
+    AttributeDataMap * pcontent = hmgetp_null(ctx->attribute_data_map, key);
+    if (!pcontent) {
+        hmput(ctx->attribute_data_map, key, NULL);
+        pcontent = hmgetp_null(ctx->attribute_data_map, key);
+        assert(pcontent != NULL);
+    }
+    for (int i=0; i < count; i++) {
+        bool do_remove = data[i].id == ctx->builtin.i_remove;
+        uint32_t check_id = (do_remove)? data[i].v.i : data[i].id;
+        for (int j=0; j < arrlen(pcontent->value); j++) {
+            if (pcontent->value[j].id == check_id) {
+                arrdelswap(pcontent->value, j);
+                break;
             }
-            arrput(new_attributes, data);
-            arrfree(member->attributes);
-            member->attributes = new_attributes;
-            member->count_attributes = arrlen(new_attributes);
+        }
+        if (!do_remove) arrput(pcontent->value, data[i]);
+    }
+}
+
+static void
+handle_deferred_defaults(ParseContext * ctx) {
+    for (int i=0; i < arrlen(ctx->deferred_length_defaults); i++) {
+        DeferredDefault def = ctx->deferred_length_defaults[i];
+        AttributeDataKey key = {
+            .type = def.type,
+            .member_index = def.member_index,
+        };
+        AttributeDataMap * pcontent = hmgetp_null(ctx->attribute_data_map, key);
+        assert(pcontent != NULL);
+
+        IntroMember * length_member = NULL;
+        int32_t length_member_index = -1;
+        for (int a=0; a < arrlen(pcontent->value); a++) {
+            if (pcontent->value[a].id == ctx->builtin.i_length) {
+                length_member_index = pcontent->value[a].v.i;
+                length_member = &def.type->i_struct->members[length_member_index];
+                break;
+            }
+        }
+        if (!length_member) continue;
+
+        ptrdiff_t value_offset = store_value(ctx, &def.value, intro_size(length_member->type));
+        AttributeData data = {
+            .id = def.attr_id,
+            .v.i = value_offset,
+        };
+
+        apply_attributes_to_member(ctx, def.type, length_member_index, &data, 1);
+    }
+    arrsetlen(ctx->deferred_length_defaults, 0);
+}
+
+static void
+handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
+    int * flags = NULL;
+    arrsetcap(flags, 16);
+    arrsetcap(o_info->attr.available, 32);
+
+    for (int i=0; i < hmlen(ctx->attribute_map); i++) {
+        AttributeParseInfo * info = &ctx->attribute_map[i].value;
+        AttributeParseInfo * next_info = NULL;
+        int index = i;
+        if (i+1 < hmlen(ctx->attribute_map)) {
+            next_info = &ctx->attribute_map[i+1].value;
+            if (next_info->id != info->id) {
+                next_info = NULL;
+            } else {
+                i++;
+            }
+        }
+        if (info->type == INTRO_AT_FLAG) {
+            arrput(flags, index);
+            if (next_info) {
+                info->next_is_same = true;
+            }
+            continue;
+        }
+        add_attribute(ctx, o_info, info, next_info, ctx->attribute_map[index].key);
+    }
+
+    o_info->attr.first_flag = arrlen(o_info->attr.available);
+    for (int i=0; i < arrlen(flags); i++) {
+        int index = flags[i];
+        char * name = ctx->attribute_map[index].key;
+        AttributeParseInfo * info = &ctx->attribute_map[index].value;
+        AttributeParseInfo * next_info = (info->next_is_same)? &ctx->attribute_map[index+1].value : NULL;
+        add_attribute(ctx, o_info, info, next_info, name);
+    }
+    arrfree(flags);
+
+    IntroAttributeSpec * empty = arraddnptr(o_info->attr.spec_buffer, 1);
+    memset(empty, 0, sizeof(*empty));
+
+    for (int directive_i=0; directive_i < arrlen(ctx->attribute_directives); directive_i++) {
+        AttributeDirective directive = ctx->attribute_directives[directive_i];
+        // TODO: just pass &directive
+        int ret = parse_attributes(ctx, directive.location, directive.type, directive.member_index, &directive.attr_data, &directive.count);
+        if (ret) exit(1);
+
+        // add global flags
+        apply_attributes_to_member(ctx, directive.type, directive.member_index, ctx->attribute_globals, arrlen(ctx->attribute_globals));
+
+        // add type attributes
+        AttributeDataKey key = {0};
+        key.member_index = MIDX_TYPE;
+        if (directive.member_index >= 0) {
+            const IntroMember member = directive.type->i_struct->members[directive.member_index];
+            key.type = member.type;
+        } else {
+            if (directive.type->parent) {
+                key.type = directive.type->parent;
+            }
+        }
+        if (key.type != NULL) {
+            AttributeData * type_attr_data = hmget(ctx->attribute_data_map, key);
+            if (arrlen(type_attr_data) > 0) {
+                apply_attributes_to_member(ctx, directive.type, directive.member_index, type_attr_data, arrlen(type_attr_data));
+            }
+        }
+
+        // add attributes from directive
+        apply_attributes_to_member(ctx, directive.type, directive.member_index, directive.attr_data, directive.count);
+    }
+
+    handle_deferred_defaults(ctx);
+
+    for (int data_i=0; data_i < hmlen(ctx->attribute_data_map); data_i++) {
+        AttributeDataMap content = ctx->attribute_data_map[data_i];
+        IntroType * type = content.key.type;
+        int32_t member_index = content.key.member_index;
+        AttributeData * attr_data = content.value;
+
+        uint32_t spec_index = arrlen(o_info->attr.spec_buffer);
+        int32_t count = arrlen(attr_data);
+
+        qsort(attr_data, count, sizeof(attr_data[0]), &attribute_data_sort_callback);
+
+        int count_without_flags = 0;
+        for (int i=0; i < count; i++) {
+            if (attr_data[i].id < o_info->attr.first_flag) {
+                count_without_flags++;
+            }
+        }
+        int count_16_byte_sections_needed = 1 + ((count_without_flags * sizeof(uint32_t)) + 15) / 16;
+        IntroAttributeSpec * spec = arraddnptr(o_info->attr.spec_buffer, count_16_byte_sections_needed);
+        memset(spec, 0, count_16_byte_sections_needed * sizeof(*spec));
+
+        for (int i=0; i < count; i++) {
+            uint32_t bitset_index = attr_data[i].id >> 5; 
+            uint32_t bit_index = attr_data[i].id & 31;
+            uint32_t attr_bit = 1 << bit_index;
+            spec->bitset[bitset_index] |= attr_bit;
+
+            if (attr_data[i].id < o_info->attr.first_flag) {
+                memcpy(&spec->value_offsets[i], &attr_data[i].v, sizeof(uint32_t));
+            }
+        }
+
+        switch(member_index) {
+        case MIDX_TYPE: {
+            type->attr = spec_index;
+        }break;
+
+        default: {
+            type->i_struct->members[member_index].attr = spec_index;
+        }break;
+        }
+
+        arrfree(attr_data);
+    }
+    hmfree(ctx->attribute_data_map);
+
+    for (int type_i=0; type_i < arrlen(o_info->types); type_i++) {
+        IntroType * type = o_info->types[type_i];
+        if (type->attr == 0 && type->parent && type->parent->attr != 0) {
+            type->attr = type->parent->attr;
+        }
+        if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
+            for (int mi=0; mi < type->i_struct->count_members; mi++) {
+                IntroMember * member = &type->i_struct->members[mi];
+                if (member->attr == 0 && member->type->attr != 0) {
+                    member->attr = member->type->attr;
+                }
+            }
         }
     }
-    arrsetlen(ctx->differed_length_defaults, 0);
+
+    for (int i=0; i < arrlen(ctx->attribute_globals); i++) {
+        uint32_t id = ctx->attribute_globals[i].id;
+        uint32_t bitset_index = id >> 5; 
+        uint32_t bit_index = id & 31;
+        uint32_t attr_bit = 1 << bit_index;
+        o_info->attr.spec_buffer[0].bitset[bitset_index] |= attr_bit;
+    }
+
+    o_info->attr.count_available = arrlen(o_info->attr.available);
+    o_info->attr.builtin = ctx->builtin;
 }

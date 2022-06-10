@@ -80,10 +80,11 @@ Follow typedefs until the original type is found, then return that type.
 # attribute information
 
 **NOTE:** This section assumes you understand attributes. Please read the [attribute documentation](ATTRIBUTE.md).
+**ALSO NOTE:** These are all macros. Use the name of the attribute *with its namespace* to represent the attribute. This gets internally expanded to an enum value.
 
-### `intro_attribute_flag`
+### `intro_has_attribute`
 ```C
-bool intro_attribute_flag(const IntroMebmer * member, int32_t attribute);
+bool intro_attribute_flag(const IntroMebmer * member, attribute);
 ```
 Return true if `member` has the attribute `attribute`.
 
@@ -91,34 +92,64 @@ Return true if `member` has the attribute `attribute`.
 ```C
 for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
     const IntroMember * member = &type->i_struct->members[m_index];
-    if (intro_attribute_flag(member, MY_ATTR_SPECIAL)) {
+    if (intro_has_attribute(member, my_attr_special)) {
         printf("%s is special!\n", member->name);
     }
 }
 ```
 
+### `intro_attribute_value`
+```C
+bool intro_attribute_value(const IntroMember * member, attribute, IntroVariant * o_var);
+```
+If `member` has the specified `value` attribute, write the value to o\_var and return true. Otherwise return false.
+
+**example:**
+```C
+IntroVariant speed_var;
+if (intro_attribute_value(member, i_default, &speed_var) {
+    auto speed = intro_var_get(speed_var, float);
+}
+```
+
 ### `intro_attribute_int`
 ```C
-bool intro_attribute_int(const IntroMember * member, int32_t attribute, int32_t * o_int);
+bool intro_attribute_int(const IntroMember * member, attribute, int32_t * o_int);
 ```
-If `member` contains the attribute `attribute`, write the attribute's value as an int to `o_int` and return true. Otherwise, return false.    
-The data written to `o_int` differs depending on the value type of the attribute:
+If `member` contains the specified `int` attribute, write the attribute's value as an int to `o_int` and return true. Otherwise, return false.    
 
-|value type|content      | example attribute | example usage where `o_int == &i` |
-|----------|-------------|-------------------|-------------------------------|
-| int      |an integer   | `I(id 5)`         |`i`                            |
-| member   |index into `IntroType.i_struct->members`|`I(length count)`|`type->i_struct->members[i]`   |
-| string   |index into `__intro_notes`              |`I(note "hello")`|`INTRO_CTX->notes[i]`          |
-| value    |index intro `__intro_values`            |`I(default 5)`   |`&INTRO_CTX->values[i]`        |
+### `intro_attribute_member`
+```C
+bool intro_attribute_member(const IntroMember * member, attribute, int32_t * o_member_index);
+```
+If `member` has the specified `member` attribute, write the member index to `o_member_index` and return true. Otherwise return false.
+
+**example:**  
+```C
+for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
+    const IntroMember * member = &type->i_struct->members[m_index];
+    int32_t friend_index;
+    if (intro_attribute_member(member, my_attr_friend, &friend_index)) {
+        const IntroMember * friend_member = &type->i_struct->members[friend_index];
+        printf("%s has a friend: %s\n", member->name, friend_member->name);
+    }
+}
+```
+
+### `intro_attribute_float`
+```C
+bool intro_attribute_float(const IntroMember * member, int32_t attribute, float * o_float);
+```
+If `member` has the specified `float` attribute, write the attribute's value as a float to `o_float` and return true. Otherwise, return false.    
+This is only valid if the value type of `attribute` is [float](#./ATTRIBUTE.md#float).
 
 **example:**
 ```C
 for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
     const IntroMember * member = &type->i_struct->members[m_index];
-    int32_t friend_index;
-    if (intro_attribute_int(member, MY_ATTR_FRIEND, &friend_index)) {
-        const IntroMember * friend_member = &type->i_struct->members[friend_index];
-        printf("%s has a friend: %s\n", member->name, friend_member->name);
+    float scale;
+    if (intro_attribute_float(member, gui_attr_scale, &scale)) {
+        printf("%s has scale %f\n", member->name, scale);
     }
 }
 ```
@@ -145,24 +176,6 @@ for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
             }
             printf("\n");
         }
-    }
-}
-```
-
-### `intro_attribute_float`
-```C
-bool intro_attribute_float(const IntroMember * member, int32_t attribute, float * o_float);
-```
-If `member` has the attribute `attribute`, write the attribute's value as a float to `o_float` and return true. Otherwise, return false.    
-This is only valid if the value type of `attribute` is [float](#./ATTRIBUTE.md#float).
-
-**example:**
-```C
-for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
-    const IntroMember * member = &type->i_struct->members[m_index];
-    float scale;
-    if (intro_attribute_float(member, MY_ATTR_SCALE, &scale)) {
-        printf("%s has scale %f\n", member->name, scale);
     }
 }
 ```

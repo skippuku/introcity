@@ -10,13 +10,10 @@ if [ $(dirname $0) = . ]; then
     cd ..
 fi
 
-if [ ! -f intro.cfg ]; then
-    sudo -u ${SUDO_USER} -- make config || exit 1
-fi
+# git doesn't like to be run as super user, plus doing so would create protected files
 
-if [ ! -f build/release/intro ]; then
-    sudo -u ${SUDO_USER} -- make release || exit 1
-fi
+sudo -u ${SUDO_USER} -- make config || exit 1
+sudo -u ${SUDO_USER} -- make release || exit 1
 
 PREFIX=/usr/local
 set -x

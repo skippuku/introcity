@@ -8,12 +8,25 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #ifndef __INTRO__
 #define I(...)
 #endif
 
-#define ITYPE(x) (&__intro_types[ITYPE_##x])
+#ifndef INTRO_CTX
+#define INTRO_CTX (&__intro_ctx)
+#endif
+
+#ifndef INTRO_API_INLINE
+#define INTRO_API_INLINE static inline
+#endif
+
+#ifndef INTRO_MAX_ATTRIBUTES
+#define INTRO_MAX_ATTRIBUTES 128
+#endif
+
+#define ITYPE(x) (&INTRO_CTX->types[ITYPE_##x])
 
 #ifndef INTRO_ANON_UNION_NAME
   #if __STDC_VERSION__ < 199901L && !defined(__cplusplus) && !defined(__GNUC__)
@@ -22,6 +35,16 @@ extern "C" {
     #define INTRO_ANON_UNION_NAME
   #endif
 #endif
+
+#if defined(__GNUC__)
+  #define INTRO_ALIGN(x) __attribute__((aligned(x)))
+#elif defined(_MSC_VER)
+  #define INTRO_ALIGN(x) __declspec(align(x))
+#else
+  #define INTRO_ALIGN(x)
+#endif
+
+typedef uint8_t IntroGuiColor [4] I(gui_edit_color);
 
 typedef enum IntroCategory {
     INTRO_UNKNOWN = 0x0,
@@ -59,7 +82,7 @@ typedef enum {
 
 typedef struct IntroLocation {
     const char * path;
-    int32_t line;
+    int32_t line; // NOTE: might be a better idea to just save the buffer offset
     int32_t column;
 } IntroLocation;
 
@@ -71,61 +94,33 @@ typedef enum IntroFlags {
     INTRO_EXPLICITLY_GENERATED = 0x08,
 } IntroFlags;
 
-typedef struct IntroType IntroType;
+typedef struct IntroType IntroType I(~gui_edit);
 typedef struct IntroStruct IntroStruct;
 typedef struct IntroEnum IntroEnum;
 typedef struct IntroTypePtrList IntroTypePtrList;
 
 struct IntroType {
-    const char * name;
-    IntroType * parent;
-    IntroCategory category;
-    uint32_t flags; // not currently implemented
+    uint32_t category;
+    uint32_t flags I(gui_format "0x%02x");
     union {
-        void * __data;
+        void * __data I(~gui_show);
         uint32_t array_size;
         IntroStruct * i_struct;
         IntroEnum * i_enum;
         IntroTypePtrList * args;
     } INTRO_ANON_UNION_NAME;
-    IntroLocation location;
+    IntroType * of;
+    IntroType * parent;
+    const char * name;
+    uint32_t attr;
+    IntroLocation location; // TODO: this should go somewhere else
 };
-
-typedef enum IntroAttribute {
-    INTRO_ATTR_ID      = -16,
-    INTRO_ATTR_DEFAULT = -15,
-    INTRO_ATTR_LENGTH  = -14,
-    INTRO_ATTR_TYPE    = -13,
-    INTRO_ATTR_NOTE    = -12,
-    INTRO_ATTR_ALIAS   = -11,
-} IntroAttribute;
-
-typedef enum IntroAttributeValueType {
-    INTRO_V_FLAG,
-    INTRO_V_INT,
-    INTRO_V_FLOAT,
-    INTRO_V_VALUE,
-    INTRO_V_MEMBER,
-    INTRO_V_STRING,
-} IntroAttributeValueType;
-
-typedef struct IntroAttributeData {
-    int32_t type;
-    IntroAttributeValueType value_type;
-    union {
-        int32_t i;
-        float f;
-    } v;
-} IntroAttributeData;
 
 typedef struct IntroMember {
     const char * name;
     IntroType * type;
-    uint8_t  bitfield;
-    uint16_t id;
     uint32_t offset;
-    uint32_t count_attributes;
-    const IntroAttributeData * attributes I(length count_attributes);
+    uint32_t attr;
 } IntroMember;
 
 struct IntroStruct {
@@ -162,49 +157,132 @@ typedef struct IntroFunction {
     const char * arg_names [];
 } IntroFunction;
 
+typedef enum IntroAttributeType {
+    INTRO_AT_FLAG = 0,
+    INTRO_AT_INT,
+    INTRO_AT_FLOAT,
+    INTRO_AT_VALUE,
+    INTRO_AT_MEMBER,
+    INTRO_AT_STRING,
+    INTRO_AT_TYPE, // unimplemented
+    INTRO_AT_EXPR, // unimplemented
+    INTRO_AT_REMOVE,
+    INTRO_AT_COUNT
+} IntroAttributeType;
+
+typedef struct IntroAttribute {
+    const char * name;
+    int attr_type;
+    uint32_t type_id;
+} IntroAttribute;
+
+typedef struct IntroAttributeSpec {
+    INTRO_ALIGN(16) uint32_t bitset [(INTRO_MAX_ATTRIBUTES+31) / 32];
+    uint32_t value_offsets [];
+} IntroAttributeSpec;
+
+typedef struct IntroBuiltinAttributeIds {
+    uint8_t i_id;
+    uint8_t i_btfld;
+    uint8_t i_default;
+    uint8_t i_length;
+    uint8_t i_alias;
+    uint8_t i_city;
+    uint8_t i_cstring;
+    uint8_t i_type;
+    uint8_t i_remove;
+
+    uint8_t gui_note;
+    uint8_t gui_name;
+    uint8_t gui_min;
+    uint8_t gui_max;
+    uint8_t gui_format;
+    uint8_t gui_scale;
+    uint8_t gui_vector;
+    uint8_t gui_color;
+    uint8_t gui_show;
+    uint8_t gui_edit;
+    uint8_t gui_edit_color;
+    uint8_t gui_edit_text;
+} IntroBuiltinAttributeIds;
+
+typedef struct IntroAttributeContext {
+    IntroAttribute * available I(length count_available);
+    IntroAttributeSpec * spec_buffer;
+    uint32_t count_available;
+    uint16_t first_flag;
+
+    IntroBuiltinAttributeIds builtin;
+} IntroAttributeContext;
+
 typedef struct IntroContext {
-    IntroType * types          I(length count_types);
-    const char ** notes        I(length count_notes);
-    uint8_t * values           I(length size_values);
+    IntroType * types     I(length count_types);
+    const char ** strings I(length count_strings);
+    uint8_t * values      I(length size_values);
     IntroFunction ** functions I(length count_functions);
+    IntroAttributeContext attr; 
 
     uint32_t count_types;
-    uint32_t count_notes;
+    uint32_t count_strings;
     uint32_t size_values;
     uint32_t count_functions;
 } IntroContext;
 
-#ifndef INTRO_CTX
-#define INTRO_CTX &__intro_ctx
-#endif
+typedef struct IntroVariant {
+    void * data;
+    const IntroType * type;
+} IntroVariant;
 
-#ifndef INTRO_INLINE
-#define INTRO_INLINE static inline
-#endif
+I(attribute i_ (
+    id:       int,
+    btfld:    int,
+    default:  value(@inherit),
+    length:   member,
+    alias:    string,
+    city:     flag @global,
+    cstring:  flag,
+    type:     flag,
+    remove:   __remove,
+))
 
-#define intro_set_defaults(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
-#define intro_set_values(dest, type, attribute) intro_set_values_ctx(INTRO_CTX, dest, type, attribute)
-#define intro_type_with_name(name) intro_type_with_name_ctx(INTRO_CTX, name)
-#define intro_print(data, type, opt) intro_print_ctx(INTRO_CTX, data, type, opt)
+I(attribute gui_ (
+    note:   string,
+    name:   string,
+    min:    value(@inherit),
+    max:    value(@inherit),
+    format: string,
+    scale:  float,
+    vector: flag,
+    color:  value(IntroGuiColor),
+    show:   flag @global,
+    edit:   flag @global,
+    edit_color: flag,
+    edit_text:  flag,
+))
 
-INTRO_INLINE bool
+I(apply_to (char *) (cstring))
+
+#define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
+#define intro_var_ptr(var, T) ((type->of == ITYPE(T))? (T *)var.data : (T *)0)
+
+INTRO_API_INLINE bool
 intro_is_scalar(const IntroType * type) {
     return (type->category >= INTRO_U8 && type->category <= INTRO_F64);
 }
 
-INTRO_INLINE bool
+INTRO_API_INLINE bool
 intro_is_int(const IntroType * type) {
     return (type->category >= INTRO_U8 && type->category <= INTRO_S64);
 }
 
-INTRO_INLINE bool
+INTRO_API_INLINE bool
 intro_is_complex(const IntroType * type) {
     return (type->category == INTRO_STRUCT
          || type->category == INTRO_UNION
          || type->category == INTRO_ENUM);
 }
 
-INTRO_INLINE int
+INTRO_API_INLINE int
 intro_size(const IntroType * type) {
     switch(type->category) {
     case INTRO_U8:
@@ -219,7 +297,7 @@ intro_size(const IntroType * type) {
     case INTRO_F64:     return 8;
     case INTRO_F128:    return 16;
     case INTRO_POINTER: return sizeof(void *);
-    case INTRO_ARRAY:   return type->array_size * intro_size(type->parent);
+    case INTRO_ARRAY:   return type->array_size * intro_size(type->of);
     case INTRO_UNION:
     case INTRO_STRUCT:  return type->i_struct->size;
     case INTRO_ENUM:    return type->i_enum->size;
@@ -227,44 +305,79 @@ intro_size(const IntroType * type) {
     }
 }
 
-INTRO_INLINE const IntroType *
+INTRO_API_INLINE const IntroType *
 intro_origin(const IntroType * type) {
-    while (type->parent && type->category != INTRO_ARRAY && type->category != INTRO_POINTER) {
+    while (type->parent) {
         type = type->parent;
     }
     return type;
+}
+
+#define intro_has_attribute(m, a) intro_has_attribute_x(INTRO_CTX, m->attr, IATTR_##a)
+INTRO_API_INLINE bool
+intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
+    assert(attr_id < INTRO_MAX_ATTRIBUTES);
+    IntroAttributeSpec * spec = ctx->attr.spec_buffer + attr_spec_location;
+    uint32_t bitset_index = attr_id >> 5; 
+    uint32_t bit_index = attr_id & 31;
+    uint32_t attr_bit = 1 << bit_index;
+    return (spec->bitset[bitset_index] & attr_bit);
 }
 
 typedef struct {
     int indent;
 } IntroPrintOptions;
 
-const char * intro_enum_name(const IntroType * type, int value);
-int64_t intro_int_value(const void * data, const IntroType * type);
-bool intro_attribute_flag(const IntroMember * m, int32_t attr_type);
-bool intro_attribute_int(const IntroMember * m, int32_t attr_type, int32_t * o_int);
-bool intro_attribute_float(const IntroMember * m, int32_t attr_type, float * o_float);
-bool intro_attribute_length(const void * struct_data, const IntroType * struct_type, const IntroMember * m, int64_t * o_length);
-void intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, int member_index, int value_attribute);
-void intro_set_values_ctx(IntroContext * ctx, void * dest, const IntroType * type, int value_attribute);
+// ATTRIBUTE INFO
+#define intro_attribute_value(m, a, out) intro_attribute_value_x(INTRO_CTX, m->type, m->attr, IATTR_##a, out)
+bool intro_attribute_value_x(IntroContext * ctx, const IntroType * type, uint32_t attr_spec, uint32_t attr_id, IntroVariant * o_var);
+#define intro_attribute_int(m, a, out) intro_attribute_int_x(INTRO_CTX, m->attr, IATTR_##a, out)
+bool intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, int32_t * o_int);
+#define intro_attribute_member(m, a, out) intro_attribute_member_x(INTRO_CTX, m->attr, IATTR_##a, out)
+bool intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, int32_t * o_int);
+#define intro_attribute_float(m, a, out) intro_attribute_float_x(INTRO_CTX, m->attr, IATTR_##a, out)
+bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, float * o_float);
+#define intro_attribute_string(m, a) intro_attribute_string_x(INTRO_CTX, m->attr, IATTR_##a)
+const char * intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id);
+#define intro_attribute_length(c, ct, m, out) intro_attribute_length_x(INTRO_CTX, c, ct, m, out)
+bool intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length);
+
+// INITIALIZERS
+void intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);
+#define intro_set_values(dest, type, a) intro_set_values_x(INTRO_CTX, dest, type, IATTR_##a)
+void intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute);
+#define intro_set_defaults(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
+#define intro_default(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
 void intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type);
+
+// PRINTERS
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
+#define intro_print(data, type, opt) intro_print_ctx(INTRO_CTX, data, type, opt)
 void intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt);
 IntroType * intro_type_with_name_ctx(IntroContext * ctx, const char * name);
 
-#define intro_load_city(dest, dest_type, data, data_size) intro_load_city_ctx(INTRO_CTX, dest, dest_type, data, data_size)
-#define intro_load_city_file(dest, dest_type, filename) intro_load_city_file_ctx(INTRO_CTX, dest, dest_type, filename)
-
+// CITY IMPLEMENTATION
 char * intro_read_file(const char * filename, size_t * o_size);
 int intro_dump_file(const char * filename, void * data, size_t data_size);
+#define intro_load_city_file(dest, dest_type, filename) intro_load_city_file_ctx(INTRO_CTX, dest, dest_type, filename)
 void * intro_load_city_file_ctx(IntroContext * ctx, void * dest, const IntroType * dest_type, const char * filename);
-bool intro_create_city_file(const char * filename, void * src, const IntroType * src_type);
-void * intro_create_city(const void * src, const IntroType * s_type, size_t *o_size);
+#define intro_create_city_file(filename, src, src_type) intro_create_city_file_x(INTRO_CTX, filename, src, src_type)
+bool intro_create_city_file_x(IntroContext * ctx, const char * filename, void * src, const IntroType * src_type);
+#define intro_create_city(src, s_type, o_size) intro_create_city_x(INTRO_CTX, src, s_type, o_size)
+void * intro_create_city_x(IntroContext * ctx, const void * src, const IntroType * s_type, size_t *o_size);
+#define intro_load_city(dest, dest_type, data, data_size) intro_load_city_ctx(INTRO_CTX, dest, dest_type, data, data_size)
 int intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size);
 
+// DEAR IMGUI (must link with intro_imgui.cpp to use)
 #define intro_imgui_edit(data, data_type) intro_imgui_edit_ctx(INTRO_CTX, data, data_type, #data)
 void intro_imgui_edit_ctx(IntroContext * ctx, void * data, const IntroType * data_type, const char * name);
+
+// MISC
+const char * intro_enum_name(const IntroType * type, int value);
+int64_t intro_int_value(const void * data, const IntroType * type);
+#define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
+const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 
 #ifdef __cplusplus
 }

@@ -2,7 +2,6 @@
 
 The *intro/city* project consists of tooling for effortless introspection and serialization of C data.
  - *intro* is parser which generates a c header with information about the types in your program.
- - *introlib* provides helpful procedures that work on this data.
  - *city* is a file format for arbitrary data serialization which is implemented in *introlib*.
 
 ## Features
@@ -11,10 +10,10 @@ The *intro/city* project consists of tooling for effortless introspection and se
     - No accessors. When you load city data, it is written directly to your structure.
     - City does not need IDs on every struct member. It can use the members' name. If you change the name of a member, you can alias to the old name using an [attribute](doc/ATTRIBUTE.md#alias).
  - **Simple**    
-    - The entire project is about 6000 lines of code (this is mostly the parser). The city implementation is only a few hundred lines.
+    - *intro* does not depend on any external parsing library. It even uses its own preprocessor.
+    - The library is only about 1000 lines. The city implementation is only a few hundred lines.
     - The generated header is made up of pure data, no functions. The data does not even need to be initialized in any way.
-    - The project is written in plain C99 code. No weird dyslexia-inciting C++ jargon. This also means APIs can be written for other languages.
-    - The only link dependency is libc.
+    - The project is written in plain C99 code. No dyslexia-inciting C++ jargon. This also means APIs can be written for other languages.
  - **Attributes**
     - Attributes provide extra information about a piece of data. They are defined with the `I` macro. They can be used for a variety of purposes, for example the `length` attribute defines a member which is the length of a buffer for serialization.
     - You can create **custom attributes** for your own purposes. This might include information for an interface such as ranges and precision, or alternative defaults for different situations, or anything else you can think of.
@@ -105,16 +104,16 @@ You will probably want to use the library. The source is at `lib/introlib.c`. Yo
 
 ## Disclaimers
 
- - *intro/city* is currently in beta. APIs and implementations are subject to change. If you intend to use this seriously, please be careful about updating. If you run into problems or friction that I am not aware of (check todo.txt and other issues), please create a new issue on [github](https://github.com/cyman-ide/introcity).
+ - *intro/city* is currently in beta. APIs and implementations are subject to change. If you intend to use this seriously, please be careful about updating. If you run into problems or friction that I am not aware of, please create a new issue on [github](https://github.com/cyman-ide/introcity).
  - *intro/city* currently only supports x86\_64. This may change in the future.
- - the *intro* parser is currently not aware of C++ concepts such as `private` or methods. Only C99 features are fully supported. This may change in the future.
+ - the *intro* parser is currently not aware of C++ concepts such as `private` or methods. Only C99 features are fully supported. This may change in the future. You can simply keep relevant types in a seperate file.
  - *intro/city* is not built to be safe with foreign data. Don't use these tools with data from a source you don't trust.
 
 ## Documentation
 Documentation is provided in the [doc/](doc/) directory. It may not always be complete, but should cover the important things. It may be useful to look at the tests in [test/](test/) or the library source in [lib/](lib/).    
- - [usage](doc/USAGE.md)
- - [library reference](doc/LIB.md)
- - [attribute reference](doc/ATTRIBUTE.md)
+ - [usage (USAGE.md)](doc/USAGE.md)
+ - [library reference (LIB.md)](doc/LIB.md)
+ - [attribute reference (ATTRIBUTE.md)](doc/ATTRIBUTE.md)
 
 ## Credits
-*intro/city* makes heavy use of `stb_ds.h` and `stb_sprintf.h` from the [stb libraries](https://github.com/nothings/stb) provided by Sean Barrett.
+*intro/city* makes extensive use of `stb_ds.h` and `stb_sprintf.h` from the [stb libraries](https://github.com/nothings/stb) provided by Sean Barrett.

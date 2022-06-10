@@ -1079,7 +1079,7 @@ static size_t stbds_siphash_bytes(void *p, size_t len, size_t seed)
     } while (0)
 
   for (i=0; i+sizeof(size_t) <= len; i += sizeof(size_t), d += sizeof(size_t)) {
-    data = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
+    data = d[0] | ((size_t)d[1] << 8) | ((size_t)d[2] << 16) | ((size_t)d[3] << 24);
     data |= (size_t) (d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)) << 16 << 16; // discarded if size_t == 4
 
     v3 ^= data;
@@ -1177,8 +1177,8 @@ size_t stbds_hash_bytes(void *p, size_t len, size_t seed)
 
     return (((size_t) hash << 16 << 16) | hash) ^ seed;
   } else if (len == 8 && sizeof(size_t) == 8) {
-    size_t hash = d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24);
-    hash |= (size_t) (d[4] | (d[5] << 8) | (d[6] << 16) | (d[7] << 24)) << 16 << 16; // avoid warning if size_t == 4
+    size_t hash = d[0] | (d[1] << 8) | (d[2] << 16) | ((size_t)d[3] << 24);
+    hash |= (size_t) (d[4] | (d[5] << 8) | (d[6] << 16) | ((size_t)d[7] << 24)) << 16 << 16; // avoid warning if size_t == 4
     hash ^= seed;
     hash = (~hash) + (hash << 21);
     hash ^= STBDS_ROTATE_RIGHT(hash,24);

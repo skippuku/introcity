@@ -22,10 +22,10 @@ void
 fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
     while (1) {
         if (type->category == INTRO_POINTER) {
-            if (type->parent == ITYPE(void)) {
+            if (type->of == ITYPE(void)) {
                 fprintf(out, "rawptr");
                 return;
-            } else if (type->parent == ITYPE(char)) {
+            } else if (type->of == ITYPE(char)) {
                 fprintf(out, "cstring");
                 return;
             } else {
@@ -69,7 +69,7 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
                         do_indent(out, depth + 1);
                         fprintf(out, "%s: ", m->name);
                         int m_flags = 0;
-                        if (intro_attribute_flag(m, INTRO_ATTR_LENGTH)) {
+                        if (intro_has_attribute(m, i_length)) {
                             m_flags |= FLAG_ARRAY_LIKE;
                         }
                         fprint_odin_type(out, m->type, depth + 1, m_flags);
@@ -124,7 +124,7 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
             fprintf(out, "%s", name);
             return;
         }
-        type = type->parent;
+        type = type->of;
         flags &= ~(FLAG_ARRAY_LIKE);
         depth = 1;
     }
@@ -161,9 +161,9 @@ main() {
             fprintf(out, "%s: ", name);
             fprint_odin_type(out, type, 1, 0);
         }
-        if (func->type->parent && func->type->parent->category != INTRO_UNKNOWN) {
+        if (func->type->of && func->type->of->category != INTRO_UNKNOWN) {
             fprintf(out, ") -> ");
-            fprint_odin_type(out, func->type->parent, 1, 0);
+            fprint_odin_type(out, func->type->of, 1, 0);
             fprintf(out, " ---\n");
         } else {
             fprintf(out, ") ---\n");

@@ -6,6 +6,8 @@ extern "C" {
 
 #include <imgui.h>
 
+#define GUIATTR(x) (ctx->attr.builtin.gui_##x)
+
 static const ImVec4 ptr_color    = ImVec4(0.9, 0.9, 0.2, 1.0);
 static const ImVec4 struct_color = ImVec4(0.2, 0.9, 0.2, 1.0);
 static const ImVec4 array_color  = ImVec4(0.8, 0.1, 0.3, 1.0);
@@ -35,6 +37,8 @@ static void edit_member(
     void * member_data,
     const IntroType * type,
     int id,
+
+    // TODO: i hate this
     const void * container = NULL,
     const IntroType * container_type = NULL,
     const IntroMember * m = NULL
@@ -59,8 +63,55 @@ edit_array(IntroContext * ctx, void * src, const IntroType * type, int count) {
     }
 }
 
+struct IntroImGuiScalarParams {
+    float scale;
+    void * min, * max;
+    const char * format;
+};
+
+static IntroImGuiScalarParams
+get_scalar_params(IntroContext * ctx, const IntroType * type, uint32_t attr) {
+    IntroImGuiScalarParams result = {};
+    result.scale = 1.0f;
+    intro_attribute_float_x(ctx, attr, GUIATTR(scale), &result.scale);
+            
+    IntroVariant max_var = {0}, min_var = {0};
+    intro_attribute_value_x(ctx, type, attr, GUIATTR(min), &min_var);
+    intro_attribute_value_x(ctx, type, attr, GUIATTR(max), &max_var);
+    result.min = min_var.data;
+    result.max = max_var.data;
+    result.format = intro_attribute_string_x(ctx, attr, GUIATTR(format));
+
+    return result;
+}
+
+static void
+do_note(const char * note) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+        ImGui::TextUnformatted(note);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
+ImU32
+color_from_var(const void * in) {
+    auto buf = reinterpret_cast<const uint8_t *>(in);
+    return IM_COL32(buf[0], buf[1], buf[2], buf[3]);
+}
+
 static void
 edit_member(IntroContext * ctx, const char * name, void * member_data, const IntroType * type, int id, const void * container, const IntroType * container_type, const IntroMember * m) {
+    uint32_t attr = (m)? m->attr : type->attr;
+
+    if (!intro_has_attribute_x(ctx, attr, GUIATTR(show))) {
+        return;
+    }
+
     ImGui::PushID(id);
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
@@ -73,46 +124,135 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
     if (!has_children) {
         tree_flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     }
-    bool is_open = ImGui::TreeNodeEx(name, tree_flags);
 
-    int32_t note_index;
-    if (m && intro_attribute_int(m, INTRO_ATTR_NOTE, &note_index)) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(?)");
-        if (ImGui::IsItemHovered()) {
-            const char * note = ctx->notes[note_index];
-            ImGui::BeginTooltip();
-            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-            ImGui::TextUnformatted(note);
-            ImGui::PopTextWrapPos();
-            ImGui::EndTooltip();
+    IntroVariant colorv;
+    ImU32 member_color = 0xffffffff;
+    if (m && intro_attribute_value_x(ctx, type, m->attr, GUIATTR(color), &colorv)) {
+        member_color = color_from_var(colorv.data);
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, member_color);
+    bool is_open = ImGui::TreeNodeEx(name, tree_flags);
+    ImGui::PopStyleColor();
+
+    char type_buf [1024];
+    intro_sprint_type_name(type_buf, type);
+
+    ImVec4 type_color;
+    if (intro_attribute_value_x(ctx, type, type->attr, GUIATTR(color), &colorv)) {
+        type_color = ImColor(color_from_var(colorv.data)).Value;
+    } else {
+        switch(type->category) {
+        case INTRO_STRUCT:
+        case INTRO_UNION: type_color = struct_color; break;
+        case INTRO_ENUM: type_color = enum_color; break;
+        case INTRO_POINTER: type_color = ptr_color; break;
+        case INTRO_ARRAY:   type_color = array_color; break;
+        default: type_color = default_color; break;
         }
+    }
+
+    // drag drop
+
+    if (ImGui::BeginDragDropSource()) {
+        IntroVariant var;
+        var.data = member_data;
+        var.type = type;
+        ImGui::SetDragDropPayload("IntroVariant", &var, sizeof(IntroVariant));
+
+        ImGui::TextColored(type_color, type_buf);
+
+        ImGui::EndDragDropSource();
+    }
+
+    const ImGuiPayload * payload = ImGui::GetDragDropPayload();
+    if (payload && payload->IsDataType("IntroVariant")) {
+        auto var = (const IntroVariant *)payload->Data;
+        if (var->type == type) {
+            ImGui::SameLine(); ImGui::TextColored(ptr_color, "[ ]");
+            if (ImGui::BeginDragDropTarget()) {
+                if (ImGui::AcceptDragDropPayload("IntroVariant")) {
+                    memcpy(member_data, var->data, intro_size(type));
+                }
+                
+                ImGui::EndDragDropTarget();
+            }
+        }
+    }
+
+    const char * note = NULL;
+    if (m && (note = intro_attribute_string_x(ctx, m->attr, GUIATTR(note))) != NULL) {
+        do_note(note);
     }
 
     int64_t length = -1;
     bool has_length = false;
-    if (m && intro_attribute_length(container, container_type, m, &length)) {
+    if (m && intro_attribute_length_x(ctx, container, container_type, m, &length)) {
         has_length = true;
     }
 
     ImGui::TableNextColumn();
-    char type_buf [1024];
-    intro_sprint_type_name(type_buf, type);
-    ImVec4 type_color;
-    switch(type->category) {
-    case INTRO_STRUCT:
-    case INTRO_UNION: type_color = struct_color; break;
-    case INTRO_ENUM: type_color = enum_color; break;
-    case INTRO_POINTER: type_color = ptr_color; break;
-    case INTRO_ARRAY:   type_color = array_color; break;
-    default: type_color = default_color; break;
+    if (has_length) {
+        ImGui::TextColored(type_color, "%s (%li)", type_buf, length);
+    } else {
+        ImGui::TextColored(type_color, "%s", type_buf);
     }
-    ImGui::TextColored(type_color, "%s", type_buf);
+    if ((note = intro_attribute_string_x(ctx, type->attr, GUIATTR(note))) != NULL) {
+        do_note(note);
+    }
 
     ImGui::TableNextColumn();
     ImGui::PushItemWidth(-1);
+
+    bool do_tree_place_holder = true;
+    if (intro_has_attribute_x(ctx, attr, GUIATTR(edit_color))) {
+        size_t size = intro_size(type);
+        switch(size) {
+        case 12:
+            ImGui::ColorEdit3("##", (float *)member_data);
+            break;
+        case 16:
+            ImGui::ColorEdit4("##", (float *)member_data);
+            break;
+        case 4:
+            float im_color [4];
+            uint8_t * buf = (uint8_t *)member_data;
+            im_color[0] = buf[0] / 256.0f;
+            im_color[1] = buf[1] / 256.0f;
+            im_color[2] = buf[2] / 256.0f;
+            im_color[3] = buf[3] / 256.0f;
+
+            ImGui::ColorEdit4("##", im_color);
+
+            buf[0] = im_color[0] * 256;
+            buf[1] = im_color[1] * 256;
+            buf[2] = im_color[2] * 256;
+            buf[3] = im_color[3] * 256;
+            break;
+        defualt:
+            ImGui::Text("bad color size");
+            break;
+        }
+        do_tree_place_holder = false;
+    }
+
+    if (intro_has_attribute_x(ctx, attr, GUIATTR(vector))) {
+        int count_components;
+        const IntroType * scalar_type;
+        if (type->category == INTRO_ARRAY) {
+            count_components = type->array_size;
+            scalar_type = type->of;
+        } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
+            const IntroType * m_type = type->i_struct->members[0].type;
+            scalar_type = m_type;
+            count_components = intro_size(type) / intro_size(m_type);
+        }
+        auto param = get_scalar_params(ctx, type, attr);
+        ImGui::DragScalarN("##", intro_imgui_scalar_type(scalar_type), member_data, count_components, param.scale, param.min, param.max, param.format);
+        do_tree_place_holder = false;
+    }
+
     if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
-        ImGui::TextDisabled("---");
+        if (do_tree_place_holder) ImGui::TextDisabled("---");
         if (is_open) {
             edit_struct_children(ctx, member_data, type);
             ImGui::TreePop();
@@ -121,7 +261,9 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         if (type->name && strcmp(type->name, "bool") == 0) {
             ImGui::Checkbox("##", (bool *)member_data);
         } else {
-            ImGui::DragScalar("##", intro_imgui_scalar_type(type), member_data);
+            auto param = get_scalar_params(ctx, type, attr);
+
+            ImGui::DragScalar("##", intro_imgui_scalar_type(type), member_data, param.scale, param.min, param.max, param.format);
         }
     } else if (type->category == INTRO_ENUM) {
         if (type->i_enum->is_flags) {
@@ -162,19 +304,27 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             }
         }
     } else if (type->category == INTRO_ARRAY) {
-        ImGui::TextDisabled("---");
+        if (do_tree_place_holder) {
+            if (intro_has_attribute_x(ctx, attr, GUIATTR(edit_text))) {
+                ImGui::InputText("##", (char *)member_data, type->array_size);
+            } else {
+                ImGui::TextDisabled("---");
+            }
+        }
         if (is_open) {
-            edit_array(ctx, member_data, type->parent, (length > 0)? length : type->array_size);
+            edit_array(ctx, member_data, type->of, (length > 0)? length : type->array_size);
             ImGui::TreePop();
         }
     } else if (type->category == INTRO_POINTER) {
         void * ptr_data = *(void **)member_data;
-        if (ptr_data) {
+        if (intro_has_attribute_x(ctx, attr, ctx->attr.builtin.i_cstring)) {
+            ImGui::Text("\"%s\"", (const char *)ptr_data);
+        } else if (ptr_data) {
             ImGui::TextColored(ptr_color, "0x%llx", (uintptr_t)ptr_data);
             if (!has_length) length = 1;
             if (length > 0) {
                 if (is_open) {
-                    edit_array(ctx, ptr_data, type->parent, length);
+                    edit_array(ctx, ptr_data, type->of, length);
                 }
             }
         } else {

@@ -3,26 +3,77 @@
 #include "global.c"
 
 static const IntroType known_types [] = {
-    {"void",     NULL, INTRO_UNKNOWN},
-    {"uint8_t",  NULL, INTRO_U8 },
-    {"uint16_t", NULL, INTRO_U16},
-    {"uint32_t", NULL, INTRO_U32},
-    {"uint64_t", NULL, INTRO_U64},
-    {"int8_t",   NULL, INTRO_S8 },
-    {"int16_t",  NULL, INTRO_S16},
-    {"int32_t",  NULL, INTRO_S32},
-    {"int64_t",  NULL, INTRO_S64},
-    {"float",    NULL, INTRO_F32},
-    {"double",   NULL, INTRO_F64},
-    {"bool",     NULL, INTRO_U8 },
-    {"va_list",  NULL, INTRO_VA_LIST},
+    {INTRO_UNKNOWN, 0, {}, 0, 0, "void"},
+    {INTRO_U8, 0, {}, 0, 0, "uint8_t"},
+    {INTRO_U16, 0, {}, 0, 0, "uint16_t"},
+    {INTRO_U32, 0, {}, 0, 0, "uint32_t"},
+    {INTRO_U64, 0, {}, 0, 0, "uint64_t"},
+    {INTRO_S8, 0, {}, 0, 0, "int8_t"},
+    {INTRO_S16, 0, {}, 0, 0, "int16_t"},
+    {INTRO_S32, 0, {}, 0, 0, "int32_t"},
+    {INTRO_S64, 0, {}, 0, 0, "int64_t"},
+    {INTRO_F32, 0, {}, 0, 0, "float"},
+    {INTRO_F64, 0, {}, 0, 0, "double"},
+    {INTRO_U8, 0, {}, 0, 0, "bool"},
+    {INTRO_VA_LIST, 0, {}, 0, 0, "va_list"},
 };
 
 typedef struct {
-    char * key;
-    int32_t type;
-    int32_t value_type;
-} AttributeMap;
+    uint32_t id;
+    uint32_t final_id;
+    IntroType * type_ptr;
+    IntroAttributeType type;
+    bool builtin;
+    bool global;
+    bool repress;
+    bool without_namespace;
+    bool invalid_without_namespace;
+    bool next_is_same;
+} AttributeParseInfo;
+
+enum SpecialMemberIndex {
+    MIDX_TYPE = INT32_MIN,
+    MIDX_ALL,
+    MIDX_ALL_RECURSE,
+};
+
+typedef struct {
+    uint32_t id;
+    union {
+        int32_t i;
+        float f;
+    } v;
+} AttributeData;
+
+typedef struct {
+    IntroType * type;
+    char * location;
+    int32_t member_index;
+    uint32_t count;
+    AttributeData * attr_data;
+} AttributeDirective;
+
+typedef struct {
+    IntroType * type;
+    ptrdiff_t member_index;
+} AttributeDataKey;
+
+typedef struct {
+    AttributeDataKey key;
+    AttributeData * value;
+} AttributeDataMap;
+
+typedef struct {
+    ptrdiff_t value_offset;
+    void * data;
+    size_t data_size;
+} PtrStore;
+
+typedef struct {
+    IntroType * type;
+    int32_t member_index, attr_id;
+    uint32_t value;
+} DeferredDefault;
 
 struct ParseContext {
     char * buffer;
@@ -37,7 +88,7 @@ struct ParseContext {
     uint8_t * value_buffer;
     PtrStore * ptr_stores;
 
-    DifferedDefault * differed_length_defaults;
+    DeferredDefault * deferred_length_defaults;
 
     ExprContext * expr_ctx;
     LocationContext loc;
@@ -46,8 +97,17 @@ struct ParseContext {
     struct {char * key; IntroFunction * value;} * function_map;
     struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
 
-    AttributeMap * attribute_map;
+    struct{ char * key; AttributeParseInfo value; } * attribute_map;
+    struct{ char * key; int value; } * attribute_token_map;
+    struct{ char * key; int value; } * builtin_map;
+    AttributeData * attribute_globals;
+    AttributeDirective * attribute_directives;
+    AttributeDataMap * attribute_data_map;
+    IntroBuiltinAttributeIds builtin;
     char ** string_set;
+    uint32_t attribute_id_counter;
+    uint32_t attribute_flag_id_counter;
+    IntroInfo * p_info;
 };
 
 static void
@@ -78,23 +138,49 @@ register_enum_name(ParseContext * ctx, Token tk) {
     }
 }
 
+static bool
+funcs_are_equal(const IntroType * a, const IntroType * b) {
+    if (intro_origin(a->of) != intro_origin(b->of)) return false;
+    if (a->args->count != b->args->count) return false;
+    for (int i=0; i < a->args->count; i++) {
+        const IntroType * a_arg = intro_origin(a->args->types[i]);
+        const IntroType * b_arg = intro_origin(b->args->types[i]);
+        while (a_arg->of) {
+            if (a_arg->category == b_arg->category) {
+                a_arg = a_arg->of;
+                b_arg = b_arg->of;
+            } else {
+                return false;
+            }
+            a_arg = intro_origin(a_arg);
+            b_arg = intro_origin(b_arg);
+        }
+        if (a_arg != b_arg) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static IntroTypePtrList *
 store_arg_type_list(ParseContext * ctx, IntroType ** list) {
     static const size_t hash_seed = 0xF58D6349C6431963; // this is just some random number
 
-    size_t count_list_bytes = arrlen(list) * sizeof(list[0]);
-    size_t hash = (list)? stbds_hash_bytes(list, count_list_bytes, hash_seed) : 0;
+    size_t count_bytes = arrlen(list) * sizeof(list[0]);
+    size_t hash = (count_bytes > 0)? stbds_hash_bytes(list, count_bytes, hash_seed) : 0;
     IntroTypePtrList * stored = hmget(ctx->arg_list_by_hash, hash);
-    if (stored && list != NULL) {
+    if (stored) {
         // TODO: actually handle this somehow instead of aborting
-        assert(0 == memcmp(stored->types, list, count_list_bytes));
-    } else {
-        stored = arena_alloc(ctx->arena, sizeof(*stored) + count_list_bytes);
-        stored->count = arrlen(list);
-        if (count_list_bytes > 0) {
-            memcpy(stored->types, list, count_list_bytes);
+        if (count_bytes > 0) {
+            assert(0 == memcmp(stored->types, list, count_bytes));
         }
-        stored = hmput(ctx->arg_list_by_hash, hash, stored);
+    } else {
+        stored = arena_alloc(ctx->arena, sizeof(*stored) + count_bytes);
+        stored->count = arrlen(list);
+        if (count_bytes > 0) {
+            memcpy(stored->types, list, count_bytes);
+        }
+        hmput(ctx->arg_list_by_hash, hash, stored);
     }
 
     return stored;
@@ -162,27 +248,40 @@ store_type(ParseContext * ctx, IntroType type, char * pos) {
     return stored;
 }
 
-int
-maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t i, Token * o_tk, AttributeSpecifier ** p_attribute_specifiers) {
-    if (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
+bool
+maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t member_index, Token * o_tk) {
+    bool had_application = false;
+    while (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
         Token paren = next_token(o_s);
         if (paren.type != TK_L_PARENTHESIS) {
             parse_error(ctx, &paren, "Expected '('.");
-            return -1;
+            exit(1);
         }
-        AttributeSpecifier spec;
-        spec.location = paren.start;
-        spec.i = i;
-        arrput(*p_attribute_specifiers, spec);
-        char * closing = find_closing(paren.start);
-        if (!closing) {
-            parse_error(ctx, &paren, "Missing closing ')'.");
-            return -1;
-        }
-        *o_s = closing + 1;
+
         *o_tk = next_token(o_s);
+        if (tk_equal(o_tk, "attribute") || tk_equal(o_tk, "apply_to")) {
+            *o_s = paren.start;
+            parse_global_directive(ctx, o_s);
+            *o_tk = next_token(o_s);
+        } else {
+            AttributeDirective directive = {
+                .type = NULL,
+                .location = paren.start,
+                .member_index = member_index,
+            };
+            arrput(ctx->attribute_directives, directive);
+            char * closing = find_closing(paren.start);
+            if (!closing) {
+                parse_error(ctx, &paren, "Missing closing ')'.");
+                exit(1);
+            }
+            *o_s = closing + 1;
+            *o_tk = next_token(o_s);
+
+            had_application = true;
+        }
     }
-    return 0;
+    return had_application;
 }
 
 static int
@@ -270,7 +369,8 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         strputf(&complex_type_name, "%s %.*s",
                 (is_union)? "union" : "struct", name_tk.length, name_tk.start);
 
-        if (shgeti(ctx->type_map, complex_type_name) < 0) {
+        IntroType * stored = shget(ctx->type_map, complex_type_name);
+        if (!stored) {
             IntroType temp_type = {0};
             temp_type.name = complex_type_name;
             store_type(ctx, temp_type, NULL);
@@ -286,9 +386,12 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         return -1;
     }
 
+    int start_attribute_directives = arrlen(ctx->attribute_directives);
     IntroMember * members = NULL;
     NestInfo * nests = NULL;
-    DeclState decl = {.state = DECL_MEMBERS};
+    DeclState decl = {
+        .state = DECL_MEMBERS,
+    };
     while (1) {
         decl.member_index = arrlen(members);
         int ret = parse_declaration(ctx, o_s, &decl);
@@ -310,8 +413,16 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         if (!decl.name_tk.start) {
             if (decl.type->category == INTRO_STRUCT || decl.type->category == INTRO_UNION) {
                 IntroStruct * s = decl.base->i_struct;
+                int member_index_offset = arrlen(members);
                 for (int i=0; i < s->count_members; i++) {
                     arrput(members, s->members[i]);
+                }
+                for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
+                    AttributeDirective * p_directive = &ctx->attribute_directives[i];
+                    if (p_directive->type == decl.base) {
+                        p_directive->type = NULL;
+                        p_directive->member_index += member_index_offset; 
+                    }
                 }
                 continue;
             } else {
@@ -322,7 +433,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
         member.type = decl.type;
-        member.bitfield = decl.bitfield;
+        //member.bitfield = decl.bitfield; // TODO
 
         if (decl.base->name == NULL) {
             NestInfo info = {0};
@@ -330,7 +441,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             info.member_index_in_container = arrlen(members);
             IntroType * tt = decl.type;
             while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
-                tt = tt->parent;
+                tt = tt->of;
                 info.indirection_level++;
             }
             arrput(nests, info);
@@ -345,13 +456,14 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     memcpy(result->members, members, sizeof(IntroMember) * arrlen(members));
     arrfree(members);
 
+    IntroType * stored;
     {
         IntroType type = {0};
         type.name = complex_type_name;
         type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
         type.i_struct = result;
         
-        IntroType * stored = store_type(ctx, type, position);
+        stored = store_type(ctx, type, position);
         arrfree(complex_type_name);
 
         for (int i=0; i < arrlen(nests); i++) {
@@ -362,21 +474,14 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrfree(nests);
     }
 
-    if (arrlen(decl.attribute_specifiers) > 0) {
-        IntroAttributeData * d;
-        uint32_t count;
-        for (int i=0; i < arrlen(decl.attribute_specifiers); i++) {
-            int member_index = decl.attribute_specifiers[i].i;
-            char * location = decl.attribute_specifiers[i].location;
-            int error = parse_attributes(ctx, location, result, member_index, &d, &count);
-            if (error) return error;
-            result->members[member_index].attributes = d;
-            result->members[member_index].count_attributes = count;
+    if (arrlen(ctx->attribute_directives) > start_attribute_directives) {
+        for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
+            AttributeDirective * p_directive = &ctx->attribute_directives[i];
+            if (p_directive->type == NULL) { // this will be set if it is from a nested struct definition
+                p_directive->type = stored;
+            }
         }
-
-        handle_differed_defaults(ctx, result);
     }
-    arrfree(decl.attribute_specifiers);
 
     return 0;
 }
@@ -405,28 +510,6 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         }
     }
 
-    bool is_attribute = false;
-    AttributeSpecifier * attribute_specifiers = NULL;
-    if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "I")) {
-        tk = next_token(o_s);
-        if (tk.type != TK_L_PARENTHESIS) {
-            parse_error(ctx, &tk, "Expected '('.");
-            return -1;
-        }
-        tk = next_token(o_s);
-        if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "attribute")) {
-            is_attribute = true;
-        } else {
-            parse_error(ctx, &tk, "Invalid.");
-            return -1;
-        }
-        tk = next_token(o_s);
-        if (tk.type != TK_R_PARENTHESIS) {
-            parse_error(ctx, &tk, "Expected ')'.");
-            return -1;
-        }
-        tk = next_token(o_s);
-    }
     if (tk.type != TK_L_BRACE) {
         if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return RET_NOT_DEFINITION;
         parse_error(ctx, &tk, "Expected '{'.");
@@ -452,13 +535,6 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         v.name = register_enum_name(ctx, name);
 
         tk = next_token(o_s);
-        if (is_attribute) {
-            int index = arrlen(attribute_specifiers);
-            maybe_expect_attribute(ctx, o_s, arrlen(members), &tk, &attribute_specifiers);
-            if (arrlen(attribute_specifiers) != index) {
-                attribute_specifiers[index].tk = name;
-            }
-        }
         bool set = false;
         bool is_last = false;
         if (tk.type == TK_COMMA) {
@@ -512,14 +588,6 @@ parse_enum(ParseContext * ctx, char ** o_s) {
 
         store_type(ctx, type, position);
         arrfree(complex_type_name);
-    }
-
-    if (attribute_specifiers != NULL) {
-        for (int i=0; i < arrlen(attribute_specifiers); i++) {
-            AttributeSpecifier spec = attribute_specifiers[i];
-            int error = parse_attribute_register(ctx, spec.location, spec.i, &spec.tk);
-            if (error) return error;
-        }
     }
 
     return 0;
@@ -644,6 +712,11 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 type.category |= 0x08;
             }break;
 
+            case KEYW_MS_INT32: {
+                CHECK_INT((type.category & 0x0f));
+                type.category |= 0x04;
+            }break;
+
             case KEYW_SHORT: {
                 CHECK_INT((type.category & 0x0f));
                 type.category |= 0x02;
@@ -655,7 +728,6 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                 break_loop = true;
             }break;
 
-            case KEYW_MS_INT32:
             case KEYW_INT: {
                 CHECK_INT((type.category & 0x0f) == 0x01);
                 if ((type.category & 0x0f) == 0) {
@@ -803,21 +875,22 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
     IntroType * last_type = decl->base;
     for (int i=0; i < arrlen(indirection); i++) {
         int32_t it = indirection[i];
-        IntroType new_type = {0};
+        IntroType new_type;
+        memset(&new_type, 0, sizeof(new_type));
         if (it == POINTER) {
             new_type.category = INTRO_POINTER;
-            new_type.parent = last_type;
+            new_type.of = last_type;
         } else if (it == FUNCTION) {
             IntroType ** arg_types = arrpop(func_args_stack);
             IntroTypePtrList * stored_args = store_arg_type_list(ctx, arg_types);
             arrfree(arg_types);
 
-            new_type.parent = last_type; // return type
+            new_type.of = (IntroType *)intro_origin(last_type); // return type
             new_type.category = INTRO_FUNCTION;
             new_type.args = stored_args;
         } else {
             new_type.category = INTRO_ARRAY;
-            new_type.parent = last_type;
+            new_type.of = last_type;
             new_type.array_size = it;
         }
         last_type = store_type(ctx, new_type, NULL);
@@ -834,6 +907,15 @@ static int
 parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     IntroFunction * func = NULL;
     int ret = 0;
+    bool attribute_at_start = false;
+
+    if (decl->state != DECL_MEMBERS) {
+        decl->member_index = MIDX_TYPE;
+    }
+    Token tk = next_token(o_s);
+    attribute_at_start = maybe_expect_attribute(ctx, o_s, decl->member_index, &tk);
+    *o_s = tk.start;
+
     if (!decl->reuse_base) ret = parse_type_base(ctx, o_s, decl);
     if (ret < 0 || ret == RET_FOUND_END) return ret;
     if (ret == RET_NOT_TYPE) {
@@ -860,6 +942,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     ret = parse_type_annex(ctx, o_s, decl);
     if (ret < 0) return -1;
 
+    IntroType * typedef_type = NULL;
     if (decl->state == DECL_TYPEDEF) {
         char * name;
         if (decl->name_tk.start) {
@@ -877,7 +960,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
             const IntroType * og_prev = intro_origin(prev);
             const IntroType * og_this = intro_origin(decl->type);
             bool effectively_equal = og_prev->category == og_this->category
-                                  && og_prev->parent == og_this->parent
+                                  && og_prev->of == og_this->of
                                   && og_prev->__data == og_this->__data;
             if (!effectively_equal) {
                 parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
@@ -889,16 +972,14 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         } else {
             IntroType new_type = *decl->type;
             new_type.name = name;
-            bool new_type_is_indirect = new_type.category == INTRO_POINTER || new_type.category == INTRO_ARRAY;
-            if (!new_type_is_indirect) {
-                new_type.parent = decl->type;
-            }
+            new_type.parent = decl->type;
             IntroType * stored = store_type(ctx, new_type, decl->name_tk.start);
-            if (!new_type_is_indirect && decl->type->category == INTRO_UNKNOWN) {
+            if (decl->type->category == INTRO_UNKNOWN) {
                 IntroType ** list = hmget(ctx->incomplete_typedefs, decl->type);
                 arrput(list, stored);
                 hmput(ctx->incomplete_typedefs, decl->type, list);
             }
+            typedef_type = stored;
         }
     }
 
@@ -908,8 +989,11 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
         int32_t count_args = decl->type->args->count;
         if (decl->func_specifies_args) {
             if (prev) {
-                if (intro_origin(prev->type) != intro_origin(decl->type)) {
+                if (!funcs_are_equal(decl->type, prev->type)) {
                     parse_error(ctx, &decl->name_tk, "Function declaration does not match previous.");
+                    if (prev->location.path) {
+                        location_note(&ctx->loc, prev->location, "Previous definition here.");
+                    }
                     return -1;
                 } else {
                     //if (prev->has_body) {
@@ -931,6 +1015,8 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
                     }
                     loc.path = file->filename;
                     loc.column = pos - start_of_line;
+                    assert(loc.line >= 0);
+                    assert(loc.column >= 0);
                     func->location = loc;
                 }
                 shput(ctx->function_map, func->name, func);
@@ -945,12 +1031,15 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     }
 
 find_end: ;
-    decl->bitfield = 0;
     bool in_expr = false;
     while (1) {
         Token tk = next_token(o_s);
         if (decl->state == DECL_MEMBERS) {
-            maybe_expect_attribute(ctx, o_s, decl->member_index, &tk, &decl->attribute_specifiers);
+            maybe_expect_attribute(ctx, o_s, decl->member_index, &tk);
+        } else if (typedef_type) {
+            if (maybe_expect_attribute(ctx, o_s, MIDX_TYPE, &tk) || attribute_at_start) {
+                arrlast(ctx->attribute_directives).type = typedef_type;
+            }
         }
         if (tk.type == TK_COMMA) {
             if (decl->state != DECL_ARGS) {
@@ -964,8 +1053,7 @@ find_end: ;
         } else if (tk.type == TK_EQUAL) {
             in_expr = true;
         } else if (tk.type == TK_COLON && decl->state == DECL_MEMBERS) {
-            intmax_t bitfield = parse_constant_expression(ctx, o_s);
-            decl->bitfield = (uint8_t)bitfield;
+            UNUSED intmax_t bitfield = parse_constant_expression(ctx, o_s);
             continue;
         } else {
             bool do_find_closing = false;
@@ -1008,7 +1096,9 @@ find_end: ;
                 } else {
                     *o_s = tk.start;
                 }
+                int state = decl->state;
                 memset(decl, 0, sizeof(*decl));
+                decl->state = state;
                 *o_s = tk.start;
                 return RET_DECL_CONTINUE;
             }
@@ -1055,6 +1145,9 @@ add_to_gen_info(ParseContext * ctx, IntroInfo * info, IntroType * type) {
 
         if (type->parent) {
             add_to_gen_info(ctx, info, type->parent);
+        }
+        if (type->of) {
+            add_to_gen_info(ctx, info, type->of);
         }
         if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
             for (int mi=0; mi < type->i_struct->count_members; mi++) {
@@ -1118,7 +1211,7 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         db_assert(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
     }
 
-    create_initial_attributes(ctx);
+    attribute_parse_init(ctx);
 
     DeclState decl = {.state = DECL_GLOBAL};
 
@@ -1126,10 +1219,10 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     while (1) {
         int ret = parse_declaration(ctx, &s, &decl);
 
-        if (ret < 0) {
-            return -1;
-        } else if (ret == RET_FOUND_END) {
+        if (ret == RET_FOUND_END) {
             break;
+        } else if (ret < 0) {
+            return -1;
         }
     }
 
@@ -1152,6 +1245,11 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
             add_to_gen_info(ctx, o_info, func->type);
         }
     }
+
+    ctx->p_info = o_info;
+
+    reset_location_context(&ctx->loc);
+    handle_attributes(ctx, o_info);
 
     o_info->count_types = arrlen(o_info->types);
     o_info->nest_map = ctx->nest_map;
