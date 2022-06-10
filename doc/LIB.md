@@ -84,7 +84,7 @@ Follow typedefs until the original type is found, then return that type.
 
 ### `intro_has_attribute`
 ```C
-bool intro_attribute_flag(const IntroMebmer * member, attribute);
+bool intro_has_attribute(const IntroMebmer * member, attribute);
 ```
 Return true if `member` has the attribute `attribute`.
 
