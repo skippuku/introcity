@@ -40,8 +40,8 @@ $(EXE): db_%: %.c $(INTROLIB)
 clean:
 	rm -f *.intro *.o *.d $(EXE)
 
-%.d:
-	$(INTRO_PARSE) $(CPPFLAGS) -MM -MG -MT 'db_$*' $*.c > $@
+%.d: $(INTRO_PARSE)
+	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) -MM -MG -MT 'db_$*' $*.c > $@
 
 DEPS := $(SRC:.c=.d)
 ifeq (,$(filter clean,$(MAKECMDGOALS)))
