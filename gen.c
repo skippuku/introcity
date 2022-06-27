@@ -227,7 +227,7 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
             strputf(&s, "0, ");
         }
 
-        strputf(&s, "%u", t->attr);
+        strputf(&s, "%u, %u, %u", t->attr, t->size, t->align);
 
         if (t->location.path) {
             strputf(&s, ", {\"%s\", %u, %u}", t->location.path, t->location.line, t->location.column);

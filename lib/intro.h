@@ -18,6 +18,8 @@ extern "C" {
 #define INTRO_CTX (&__intro_ctx)
 #endif
 
+#define ITYPE(x) (&INTRO_CTX->types[ITYPE_##x])
+
 #ifndef INTRO_API_INLINE
 #define INTRO_API_INLINE static inline
 #endif
@@ -25,8 +27,6 @@ extern "C" {
 #ifndef INTRO_MAX_ATTRIBUTES
 #define INTRO_MAX_ATTRIBUTES 128
 #endif
-
-#define ITYPE(x) (&INTRO_CTX->types[ITYPE_##x])
 
 #ifndef INTRO_ANON_UNION_NAME
   #if __STDC_VERSION__ < 199901L && !defined(__cplusplus) && !defined(__GNUC__)
@@ -113,6 +113,8 @@ struct IntroType {
     IntroType * parent;
     const char * name;
     uint32_t attr;
+    uint32_t size;
+    uint8_t align;
     IntroLocation location; // TODO: this should go somewhere else
 };
 
@@ -284,25 +286,7 @@ intro_is_complex(const IntroType * type) {
 
 INTRO_API_INLINE int
 intro_size(const IntroType * type) {
-    switch(type->category) {
-    case INTRO_U8:
-    case INTRO_S8:      return 1;
-    case INTRO_U16:
-    case INTRO_S16:     return 2;
-    case INTRO_U32:
-    case INTRO_S32:
-    case INTRO_F32:     return 4;
-    case INTRO_U64:
-    case INTRO_S64:
-    case INTRO_F64:     return 8;
-    case INTRO_F128:    return 16;
-    case INTRO_POINTER: return sizeof(void *);
-    case INTRO_ARRAY:   return type->array_size * intro_size(type->of);
-    case INTRO_UNION:
-    case INTRO_STRUCT:  return type->i_struct->size;
-    case INTRO_ENUM:    return type->i_enum->size;
-    default: return 0;
-    }
+    return type->size;
 }
 
 INTRO_API_INLINE const IntroType *

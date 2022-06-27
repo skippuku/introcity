@@ -73,10 +73,10 @@ main(int argc, char ** argv) {
     intro_print(&dumb, ITYPE(Dumb), NULL);
     printf("\n\n");
 
-    const IntroType * dumb_array_type = ITYPE(Dumb)->i_struct->members[0].type;
-    fprintf(stderr, "dumb_array_size: %i\n", dumb_array_type->array_size);
-    assert(dumb_array_type->category == INTRO_ARRAY);
-    assert(dumb_array_type->array_size == LENGTH(dumb.strange_array));
+    const IntroType * strange_array_type = ITYPE(Dumb)->i_struct->members[0].type;
+    fprintf(stderr, "strange_array_size: %i\n", strange_array_type->array_size);
+    assert(strange_array_type->category == INTRO_ARRAY);
+    assert(strange_array_type->array_size == LENGTH(dumb.strange_array));
     for (int i=0; i < LENGTH(dumb.strange_array); i++) {
         assert(dumb.strange_array[i] == 0);
     }

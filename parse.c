@@ -4,17 +4,17 @@
 
 static const IntroType known_types [] = {
     {INTRO_UNKNOWN, 0, {}, 0, 0, "void"},
-    {INTRO_U8, 0, {}, 0, 0, "uint8_t"},
-    {INTRO_U16, 0, {}, 0, 0, "uint16_t"},
-    {INTRO_U32, 0, {}, 0, 0, "uint32_t"},
-    {INTRO_U64, 0, {}, 0, 0, "uint64_t"},
-    {INTRO_S8, 0, {}, 0, 0, "int8_t"},
-    {INTRO_S16, 0, {}, 0, 0, "int16_t"},
-    {INTRO_S32, 0, {}, 0, 0, "int32_t"},
-    {INTRO_S64, 0, {}, 0, 0, "int64_t"},
-    {INTRO_F32, 0, {}, 0, 0, "float"},
-    {INTRO_F64, 0, {}, 0, 0, "double"},
-    {INTRO_U8, 0, {}, 0, 0, "bool"},
+    {INTRO_U8, 0, {}, 0, 0,  "uint8_t",  0, 1, 1},
+    {INTRO_U16, 0, {}, 0, 0, "uint16_t", 0, 2, 2},
+    {INTRO_U32, 0, {}, 0, 0, "uint32_t", 0, 4, 4},
+    {INTRO_U64, 0, {}, 0, 0, "uint64_t", 0, 8, 8},
+    {INTRO_S8, 0, {}, 0, 0,  "int8_t",   0, 1, 1},
+    {INTRO_S16, 0, {}, 0, 0, "int16_t",  0, 2, 2},
+    {INTRO_S32, 0, {}, 0, 0, "int32_t",  0, 4, 4},
+    {INTRO_S64, 0, {}, 0, 0, "int64_t",  0, 8, 8},
+    {INTRO_F32, 0, {}, 0, 0, "float",    0, 4, 4},
+    {INTRO_F64, 0, {}, 0, 0, "double",   0, 8, 8},
+    {INTRO_U8, 0, {}, 0, 0,  "bool",     0, 1, 1},
     {INTRO_VA_LIST, 0, {}, 0, 0, "va_list"},
 };
 
@@ -392,6 +392,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     DeclState decl = {
         .state = DECL_MEMBERS,
     };
+    uint32_t total_size = 0, total_align = 1;
     while (1) {
         decl.member_index = arrlen(members);
         int ret = parse_declaration(ctx, o_s, &decl);
@@ -435,12 +436,22 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         member.type = decl.type;
         //member.bitfield = decl.bitfield; // TODO
 
+        if (member.type->align == 0) {
+            fprintf(stderr, "type category: 0x%02x\n", member.type->category);
+            db_break();
+        }
+        assert(member.type->align != 0);
+        if (total_align < member.type->align) total_align = member.type->align;
+        total_size += member.type->align - (total_size % member.type->align);
+        member.offset = total_size;
+        total_size += member.type->size;
+
         if (decl.base->name == NULL) {
             NestInfo info = {0};
             info.key = decl.base;
             info.member_index_in_container = arrlen(members);
             IntroType * tt = decl.type;
-            while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
+            while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) { // TODO(simplify)
                 tt = tt->of;
                 info.indirection_level++;
             }
@@ -449,6 +460,8 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
         arrput(members, member);
     }
+
+    total_size += total_align - (total_size % total_align);
 
     IntroStruct * result = arena_alloc(ctx->arena, sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
     result->count_members = arrlen(members);
@@ -462,6 +475,8 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         type.name = complex_type_name;
         type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
         type.i_struct = result;
+        type.size = total_size;
+        type.align = total_align;
         
         stored = store_type(ctx, type, position);
         arrfree(complex_type_name);
@@ -585,6 +600,8 @@ parse_enum(ParseContext * ctx, char ** o_s) {
         type.name = complex_type_name;
         type.category = INTRO_ENUM;
         type.i_enum = result;
+        type.size = 4; // TODO: this could be other things in C++
+        type.align = type.size;
 
         store_type(ctx, type, position);
         arrfree(complex_type_name);
@@ -698,6 +715,8 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
                     tk = tk2;
                 } else if (tk_equal(&tk2, "double")) {
                     type.category = INTRO_F128;
+                    type.size = 16;
+                    type.align = 16;
                     tk = tk2;
                     strputf(&type_name, " %.*s", tk.length, tk.start);
                     break;
@@ -769,7 +788,11 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             case INTRO_S64: parent_index = 8; break;
             default: break;
             }
-            type.parent = ctx->type_set[parent_index].value;
+            if (parent_index) {
+                type.parent = ctx->type_set[parent_index].value;
+                type.size  = type.parent->size;
+                type.align = type.parent->align;
+            }
         }
 
         decl->base_tk.length = tk.start - first.start + tk.length;
@@ -880,6 +903,8 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
         if (it == POINTER) {
             new_type.category = INTRO_POINTER;
             new_type.of = last_type;
+            new_type.size = 8; // TODO: base on architecture
+            new_type.align = 8;
         } else if (it == FUNCTION) {
             IntroType ** arg_types = arrpop(func_args_stack);
             IntroTypePtrList * stored_args = store_arg_type_list(ctx, arg_types);
@@ -892,6 +917,8 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
             new_type.category = INTRO_ARRAY;
             new_type.of = last_type;
             new_type.array_size = it;
+            new_type.size = last_type->size * new_type.array_size;
+            new_type.align = last_type->align;
         }
         last_type = store_type(ctx, new_type, NULL);
     }

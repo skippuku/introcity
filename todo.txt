@@ -73,6 +73,7 @@ lib:
     a little dubious and evil: ability to create types at runtime
     sprint/mprint version of everything that uses stdout
     single header?
+    the preprocessor and parser could be part of the lib?
 
 test:
     !! add sanitized target
