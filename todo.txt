@@ -32,7 +32,6 @@ config:
     static assert in .intro file if types don't match
 
 parse:
-    !! handle sizeof struct/union in expression (see: the struct layout precipce)
     handle character literals including L'x'
     fix bitfield regression
     handle bit field accessing
@@ -96,28 +95,3 @@ misc:
     memory cleanup
     parse program options and pass only relevant ones to sub-processes
     preprocessor should output tokens instead of text
-
-The struct layout precipice:
-    Struct layout is dependent on the platform ABI.
-    In addition to this there are many ways a struct layout can be altered (push(pack), __attribute__((aligned)), etc.)
-    
-    Right now, intro just generates offsetof's in the header.
-
-    Ideally, C would have actual layout specifications, and we could easily generate all of the type information in a binary format.
-    (Of course C would also ideally have introspection, but here we are.)
-
-    The options are:
-
-    Continue to use offsetof
-        + guaranteed correct
-        + easiest to implement (already done)
-        - Only useful in C/C++
-        - generated header is big and redundant
-        - parser is limited in capability due to incomplete type information:
-            struct value attributes are difficult (currently just unimplemented)
-            certain expressions cannot be evaluated
-
-    Calculate the correct layout information based on platform
-        + generated information can be in binary form
-        + language agnostic
-        - incorrect generation is difficult/impossible to mitigate

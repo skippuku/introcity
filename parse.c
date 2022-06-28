@@ -83,7 +83,6 @@ struct ParseContext {
     struct{IntroType key; IntroType * value;} * type_set;
     NameSet * keyword_set;
     NameSet * enum_name_set;
-    NestInfo * nest_map;
 
     uint8_t * value_buffer;
     PtrStore * ptr_stores;
@@ -390,7 +389,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
 
     int start_attribute_directives = arrlen(ctx->attribute_directives);
     IntroMember * members = NULL;
-    NestInfo * nests = NULL;
     DeclState decl = {
         .state = DECL_MEMBERS,
     };
@@ -453,18 +451,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             member.offset = 0;
         }
 
-        if (decl.base->name == NULL) {
-            NestInfo info = {0};
-            info.key = decl.base;
-            info.member_index_in_container = arrlen(members);
-            IntroType * tt = decl.type;
-            while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) { // TODO(simplify)
-                tt = tt->of;
-                info.indirection_level++;
-            }
-            arrput(nests, info);
-        }
-
         arrput(members, member);
     }
 
@@ -487,13 +473,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         
         stored = store_type(ctx, type, position);
         arrfree(complex_type_name);
-
-        for (int i=0; i < arrlen(nests); i++) {
-            NestInfo info = nests[i];
-            info.container_type = stored;
-            hmputs(ctx->nest_map, info);
-        }
-        arrfree(nests);
     }
 
     if (arrlen(ctx->attribute_directives) > start_attribute_directives) {
@@ -1286,7 +1265,6 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
     handle_attributes(ctx, o_info);
 
     o_info->count_types = arrlen(o_info->types);
-    o_info->nest_map = ctx->nest_map;
     o_info->value_buffer = ctx->value_buffer;
     o_info->count_arg_lists = arrlen(o_info->arg_lists);
     o_info->count_functions = count_gen_functions;

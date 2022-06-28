@@ -173,19 +173,9 @@ typedef struct {
     int32_t value;
 } IndexByPtrMap;
 
-typedef struct {
-    void * key;
-    IntroType * container_type;
-    int member_index_in_container;
-    int indirection_level;
-    char * member_name_in_container;
-    const char * top_level_name;
-} NestInfo;
-
 typedef struct IntroInfo {
     IntroType ** types;
     IndexByPtrMap * index_by_ptr_map;
-    NestInfo * nest_map;
     uint8_t * value_buffer;
     IntroTypePtrList ** arg_lists;
     IntroFunction ** functions;

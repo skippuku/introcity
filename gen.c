@@ -5,42 +5,6 @@
 #define VERSION "unknown-version"
 #endif
 
-static const char *
-get_ref_name(IntroInfo * info, const IntroType * t) {
-    if (!t->name) {
-        for (int t2_index=15; t2_index < info->count_types; t2_index++) {
-            const IntroType * t2 = info->types[t2_index];
-            if (t2 == t) continue;
-            if (t2->category == t->category && t2->i_struct == t->i_struct) {
-                return t2->name;
-            }
-        }
-        return NULL;
-    } else {
-        return t->name;
-    }
-}
-
-static char *
-get_container_member_name(IntroInfo * info, NestInfo * nest, const char ** o_top_level_name) {
-    NestInfo * container = hmgetp_null(info->nest_map, nest->container_type);
-    if (container) {
-        char * result = get_container_member_name(info, container, o_top_level_name);
-        strputf(&result, ".%s", nest->container_type->i_struct->members[nest->member_index_in_container].name);
-        return result;
-    } else {
-        char * result = NULL;
-        strputf(&result, "%s", nest->container_type->i_struct->members[nest->member_index_in_container].name);
-
-        for (int i=0; i < nest->indirection_level; i++) {
-            strputf(&result, "[0]");
-        }
-
-        *o_top_level_name = get_ref_name(info, nest->container_type);
-        return result;
-    }
-}
-
 static char *
 make_identifier_safe_name(const char * name) {
     size_t name_len = strlen(name);
@@ -54,12 +18,6 @@ make_identifier_safe_name(const char * name) {
 
 char *
 generate_c_header(IntroInfo * info, const char * output_filename) {
-    // generate info needed to get offset and sizeof for anonymous types
-    for (int i=0; i < hmlen(info->nest_map); i++) {
-        NestInfo * nest = &info->nest_map[i];
-        nest->member_name_in_container = get_container_member_name(info, nest, &nest->top_level_name);
-    }
-
     char * s = NULL;
 
     const char * tab = "";
@@ -95,43 +53,22 @@ generate_c_header(IntroInfo * info, const char * output_filename) {
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         IntroType * t = info->types[type_index];
         if (intro_is_complex(t) && hmgeti(complex_type_map, t->i_struct) < 0) {
-            const NestInfo * nest = hmgetp_null(info->nest_map, t);
-            const char * ref_name = NULL;
-            if (!nest) {
-                ref_name = get_ref_name(info, t);
-                if (!ref_name) continue; // TODO: maybe we should warn here (this would require location information for types)
-            } else {
-                if (nest->top_level_name == NULL) continue;
-            }
-
             char * saved_name = malloc(8);
             stbsp_snprintf(saved_name, 7, "%04x", type_index);
 
             hmput(complex_type_map, t->i_struct, saved_name);
 
             strputf(&s, "%s __intro_%s = {", (t->category == INTRO_ENUM)? "IntroEnum" : "IntroStruct", saved_name);
-            if (!nest) {
-                strputf(&s, "sizeof(%s)", ref_name);
-            } else {
-                strputf(&s, "sizeof(((%s*)0)->%s)", nest->top_level_name, nest->member_name_in_container);
-            }
             if (t->category == INTRO_STRUCT || t->category == INTRO_UNION) {
-                strputf(&s, ", %u, %u, {\n", t->i_struct->count_members, t->i_struct->is_union);
+                strputf(&s, "%u, %u, {\n", t->i_struct->count_members, t->i_struct->is_union);
                 for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
                     const IntroMember * m = &t->i_struct->members[m_index];
                     int32_t member_type_index = hmget(info->index_by_ptr_map, m->type);
                     strputf(&s, "%s{\"%s\", &__intro_types[%i], ", tab, m->name, member_type_index);
-                    if (!nest) {
-                        strputf(&s, "offsetof(%s, %s)", ref_name, m->name);
-                    } else {
-                        strputf(&s, "offsetof(%s, %s.%s) - offsetof(%s, %s)",
-                                nest->top_level_name, nest->member_name_in_container, m->name,
-                                nest->top_level_name, nest->member_name_in_container);
-                    }
-                    strputf(&s, ", %u},\n", m->attr);
+                    strputf(&s, "%u, %u},\n", m->offset, m->attr);
                 }
             } else if (t->category == INTRO_ENUM) {
-                strputf(&s, ", %u, %u, %u, {\n", t->i_enum->count_members, t->i_enum->is_flags, t->i_enum->is_sequential);
+                strputf(&s, "%u, %u, %u, {\n", t->i_enum->count_members, t->i_enum->is_flags, t->i_enum->is_sequential);
                 for (int m_index = 0; m_index < t->i_enum->count_members; m_index++) {
                     const IntroEnumValue * v = &t->i_enum->members[m_index];
                     strputf(&s, "%s{\"%s\", %i},\n", tab, v->name, v->value);

@@ -680,7 +680,7 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
 
         case INTRO_ENUM: {
             put_uint(&ctx->info, type->category, 1);
-            put_uint(&ctx->info, type->i_enum->size, 1);
+            put_uint(&ctx->info, type->size, 1);
         }break;
 
         case INTRO_UNION:
@@ -786,7 +786,6 @@ city__serialize_pointer_data(CityCreationContext * ctx, const IntroType * s_type
 void *
 intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_type, size_t *o_size) {
     assert(s_type->category == INTRO_STRUCT);
-    const IntroStruct * s_struct = s_type->i_struct;
 
     CityHeader header = {0};
     memcpy(header.magic_number, "ICTY", 4);
@@ -802,8 +801,8 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     ctx->offset_size = 3;
     header.size_info = ((ctx->type_size-1) << 4) | (ctx->offset_size-1);
 
-    void * src_cpy = arraddnptr(ctx->data, s_struct->size);
-    memcpy(src_cpy, src, s_struct->size);
+    void * src_cpy = arraddnptr(ctx->data, s_type->size);
+    memcpy(src_cpy, src, s_type->size);
 
     uint32_t main_type_id = city__get_serialized_id(ctx, s_type);
 
@@ -1083,7 +1082,6 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
 
             IntroEnum * i_enum = (IntroEnum *)calloc(sizeof(*i_enum), 1);
             memset(i_enum, 0, sizeof(*i_enum));
-            i_enum->size = size;
 
             type->i_enum = i_enum;
             type->size = size;
