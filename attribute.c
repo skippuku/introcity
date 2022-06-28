@@ -306,8 +306,7 @@ ptrdiff_t
 parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_count) {
     if ((type->category >= INTRO_U8 && type->category <= INTRO_S64) || type->category == INTRO_ENUM) {
         intmax_t result = parse_constant_expression(ctx, o_s);
-        int size = (type->category == INTRO_ENUM)? sizeof(int) : intro_size(type);
-        return store_value(ctx, &result, size);
+        return store_value(ctx, &result, type->size);
     } else if (type->category == INTRO_F32) {
         float result = strtof(*o_s, o_s);
         return store_value(ctx, &result, 4);
@@ -364,45 +363,72 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
 
 ptrdiff_t
 parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint32_t * o_count) {
-    Token tk = next_token(o_s);
+    Token tk;
 
-    ptrdiff_t result = arrlen(ctx->value_buffer);
-    size_t array_element_size = intro_size(type->of);
-    uint32_t count = 0;
+    uint8_t * prev_buf = ctx->value_buffer;
+    ctx->value_buffer = NULL;
+    arrsetcap(ctx->value_buffer, type->size);
+    memset(ctx->value_buffer, 0, type->size);
 
-    if (tk.type == TK_L_BRACE) {
-        while (1) {
-            tk = next_token(o_s);
-            if (tk.type == TK_COMMA) {
-                parse_error(ctx, &tk, "Invalid symbol.");
+    int count_ptrs_last = arrlen(ctx->ptr_stores);
+
+    size_t array_element_size = type->of->size;
+    intmax_t index = 0;
+    intmax_t highest_index = 0;
+
+    EXPECT('{');
+    while (1) {
+        tk = next_token(o_s);
+        if (tk.type == TK_L_BRACKET) {
+            index = parse_constant_expression(ctx, o_s);
+            if (index < 0 || index >= type->array_size) {
+                parse_error(ctx, &tk, "Invalid index.");
                 return -1;
-            } else if (tk.type == TK_R_BRACE) {
-                break;
             }
+            EXPECT(']');
+            EXPECT('=');
+        } else if (tk.type == TK_COMMA) {
+            parse_error(ctx, &tk, "Invalid symbol.");
+            return -1;
+        } else if (tk.type == TK_R_BRACE) {
+            break;
+        } else {
             *o_s = tk.start;
-            parse_value(ctx, type->of, o_s, NULL);
-            count++;
+        }
+        if (highest_index < index) highest_index = index;
+        arrsetlen(ctx->value_buffer, index * array_element_size);
+        ptrdiff_t parse_ret = parse_value(ctx, type->of, o_s, NULL);
+        if (parse_ret < 0) {
+            return -1;
+        }
 
-            tk = next_token(o_s);
-            if (tk.type == TK_COMMA) {
-            } else if (tk.type == TK_R_BRACE) {
-                break;
-            } else {
-                parse_error(ctx, &tk, "Invalid symbol.");
-                return -1;
-            }
+        tk = next_token(o_s);
+        if (tk.type == TK_COMMA) {
+            index++;
+        } else if (tk.type == TK_R_BRACE) {
+            break;
+        } else {
+            parse_error(ctx, &tk, "Invalid symbol.");
+            return -1;
         }
-        if (type->category == INTRO_ARRAY) {
-            int left = array_element_size * (type->array_size - count);
-            if (count < type->array_size) {
-                memset(arraddnptr(ctx->value_buffer, left), 0, left);
-            }
-        }
-        if (o_count) *o_count = count;
-    } else {
-        parse_error(ctx, &tk, "Expected '{'.");
-        return -1;
     }
+    uint32_t count = highest_index + 1;
+    if (type->category == INTRO_ARRAY && type->array_size > 0) {
+        arrsetlen(ctx->value_buffer, type->size);
+    } else {
+        arrsetlen(ctx->value_buffer, count * array_element_size);
+    }
+
+    uint8_t * temp_buf = ctx->value_buffer;
+    ctx->value_buffer = prev_buf;
+    ptrdiff_t result = store_value(ctx, temp_buf, arrlen(temp_buf));
+    arrfree(temp_buf);
+
+    for (int i = count_ptrs_last; i < arrlen(ctx->ptr_stores); i++) {
+        ctx->ptr_stores[i].value_offset += result;
+    }
+
+    if (o_count) *o_count = count;
     return result;
 }
 
@@ -414,12 +440,39 @@ parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
     uint8_t * prev_buf = ctx->value_buffer;
     ctx->value_buffer = NULL;
     arrsetcap(ctx->value_buffer, type->size);
+    memset(ctx->value_buffer, 0, type->size);
+
+    int count_ptrs_last = arrlen(ctx->ptr_stores);
 
     int member_index = 0;
     while (1) {
         tk = next_token(o_s);
         if (tk.type == TK_PERIOD) {
-            // TODO
+            tk = next_token(o_s);
+            if (tk.type != TK_IDENTIFIER) {
+                parse_error(ctx, &tk, "Expected identifier.");
+                return -1;
+            }
+            bool found_match = false;
+            for (int i=0; i < type->i_struct->count_members; i++) {
+                IntroMember check = type->i_struct->members[i];
+                if (tk_equal(&tk, check.name)) {
+                    found_match = true;
+                    member_index = i;
+                    break;
+                }
+            }
+            if (!found_match) {
+                char buf [1024];
+                if (type->name) {
+                    stbsp_sprintf(buf, "Not a member of %s.", type->name);
+                } else {
+                    strcpy(buf, "Invalid member name.");
+                }
+                parse_error(ctx, &tk, buf);
+                return -1;
+            }
+            EXPECT('=');
         } else if (tk.type == TK_R_BRACE) {
             break;
         } else {
@@ -427,17 +480,10 @@ parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
         }
 
         IntroMember member = type->i_struct->members[member_index];
+        arrsetlen(ctx->value_buffer, member.offset);
         ptrdiff_t parse_ret = parse_value(ctx, member.type, o_s, NULL);
         if (parse_ret < 0) {
             return -1;
-        }
-
-        if (member_index + 1 < type->i_struct->count_members) {
-            IntroMember next = type->i_struct->members[member_index + 1];
-            int pad_size = next.offset - arrlen(ctx->value_buffer);
-            uint8_t * pad = ctx->value_buffer + arrlen(ctx->value_buffer);
-            memset(pad, 0, pad_size);
-            arrsetlen(ctx->value_buffer, next.offset);
         }
 
         tk = next_token(o_s);
@@ -455,6 +501,11 @@ parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
     ctx->value_buffer = prev_buf;
     ptrdiff_t result = store_value(ctx, struct_buf, arrlen(struct_buf));
     arrfree(struct_buf);
+
+    for (int i = count_ptrs_last; i < arrlen(ctx->ptr_stores); i++) {
+        ctx->ptr_stores[i].value_offset += result;
+    }
+
     return result;
 }
 
@@ -812,6 +863,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
     int * flags = NULL;
     arrsetcap(flags, 16);
     arrsetcap(o_info->attr.available, 32);
+    arrsetcap(ctx->value_buffer, (1 << 16));
 
     for (int i=0; i < hmlen(ctx->attribute_map); i++) {
         AttributeParseInfo * info = &ctx->attribute_map[i].value;

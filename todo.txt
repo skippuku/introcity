@@ -2,6 +2,7 @@ attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
     more strict namespacing
         maybe use dot
+    attributes on enum values
     impl: cache matching data
     @repress trait, disable propagation
     general 'terminated' attribute?
@@ -18,7 +19,6 @@ attribute:
     expression attribute type
         select: attribute describes when a member is valid, ex. unions
         length: change to expression ex. I(length map_width * map_height)
-    attributes on enum values?
     parse c++ struct defaults as intro defaults?
 
 city:
@@ -33,6 +33,7 @@ config:
 
 parse:
     !! GNU and MS alignment attributes
+    !! GNU and MS pack attributes/pragma
     return IntroContext
     handle character literals including L'x'
     fix bitfield regression

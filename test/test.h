@@ -117,7 +117,7 @@ typedef struct {
     char * name I(= "Brian");
 
     uint8_t numbers [8] I(= {4, 5, 8, 9, 112, 9});
-    char * words [5] I(= {"apple", "banana", "mango", "pineapple", "newline\ntest"});
+    char * words [5] I(= {[3] = "apple", [1] = "banana", "mango", [0] = "pineapple", [4] = "newline\ntest"});
 
     float * speeds I(length count_speeds, default {3.4, 5.6, 1.7, 8.2, 0.002});
     uint32_t count_speeds I(remove gui_show);
@@ -125,7 +125,7 @@ typedef struct {
     Skills skills I(= SKILL_MUSICIAN | SKILL_PROGRAMMER);
 
     Vector3 v3 I(= {3.5, -0.75, 12.25});
-    DefaultAlignTest align I(= {15, 2001, 100456.12});
+    DefaultAlignTest align I(= {.b = 2001, .a = 15, .c = 100456.12});
 } TestDefault;
 
 typedef struct {
