@@ -31,6 +31,11 @@ typedef struct {
     char * long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file I(id 9, = "jerry");
 
     int * _internal I(10, ~city);
+
+    struct {
+        char * buffer I(1);
+        char * bookmark I(2, ~cstring);
+    } text;
 } Basic;
 
 typedef struct {
@@ -63,6 +68,11 @@ typedef struct {
     char * character I(6);
     char * long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file I(9);
 
+    struct {
+        char * buffer I(1);
+        char * bookmark I(2, ~cstring);
+    } text;
+
     int * _internal I(10, ~city);
 } BasicPlus;
 
@@ -89,6 +99,9 @@ main() {
     obj_save.cool_number = 102928348;
     obj_save.character = "bingus";
     obj_save._internal = &obj_save.b;
+
+    obj_save.text.buffer = "Long ago, 4 nations ruled over the earth in harmony, but everything changed when the fire nation attacked.";
+    obj_save.text.bookmark = obj_save.text.buffer + 53;
 
     printf("obj_save: Basic = ");
     intro_print(&obj_save, ITYPE(Basic), NULL);
