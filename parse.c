@@ -239,6 +239,8 @@ store_type(ParseContext * ctx, IntroType type, char * pos) {
                 IntroType * t = typedef_deps[i];
                 t->category = type.category;
                 t->i_struct = type.i_struct; // covers i_enum
+                t->align = type.align;
+                t->size = type.size;
             }
             arrfree(typedef_deps);
             (void) hmdel(ctx->incomplete_typedefs, stored);
