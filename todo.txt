@@ -23,6 +23,8 @@ attribute:
     parse c++ struct defaults as intro defaults?
 
 city:
+    offsets might not need to be saved for struct members
+    maybe it would be better to save the struct packed anyway?
 
 config:
     allow config to be appended with another config?

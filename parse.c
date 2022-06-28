@@ -436,13 +436,9 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         member.type = decl.type;
         //member.bitfield = decl.bitfield; // TODO
 
-        if (member.type->align == 0) {
-            fprintf(stderr, "type category: 0x%02x\n", member.type->category);
-            db_break();
-        }
         assert(member.type->align != 0);
         if (total_align < member.type->align) total_align = member.type->align;
-        total_size += member.type->align - (total_size % member.type->align);
+        total_size += (member.type->align - (total_size % member.type->align)) % member.type->align;
         member.offset = total_size;
         total_size += member.type->size;
 
@@ -461,7 +457,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         arrput(members, member);
     }
 
-    total_size += total_align - (total_size % total_align);
+    total_size += (total_align - (total_size % total_align)) % total_align;
 
     IntroStruct * result = arena_alloc(ctx->arena, sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
     result->count_members = arrlen(members);

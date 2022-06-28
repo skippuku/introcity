@@ -337,7 +337,7 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
             return pointer_offset;
         }
     } else if (type->category == INTRO_ARRAY) {
-        if (type->of->category == INTRO_S8 && 0==strcmp(type->of->name, "char")) {
+        if (type->of->category == INTRO_S8 && 0==strcmp(type->of->name, "char")) { // NOTE: this should probably check attributes instead
             Token tk = next_token(o_s);
             if (tk.type == TK_STRING) {
                 size_t str_length;

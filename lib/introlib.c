@@ -885,6 +885,7 @@ city__safe_copy_struct(
         }
 
         bool found_match = false;
+        // TODO: it would probably be faster to build a hash lookup during the type parse so this isn't slow searching
         for (int j=0; j < s_struct->count_members; j++) {
             const IntroMember * sm = &s_struct->members[j];
 
@@ -1011,7 +1012,7 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
     TypePtrOf * deferred_pointer_ofs = NULL;
 
     for (int i=0; i < header->count_types; i++) {
-        IntroType * type = (IntroType *)malloc(sizeof(*type));
+        IntroType * type = (IntroType *)malloc(sizeof(*type)); // TODO: use arena allocator
         memset(type, 0, sizeof(*type));
 
         type->category = next_uint(&b, 1);
@@ -1063,6 +1064,8 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
             ptrof.of_id = of_id;
 
             arrput(deferred_pointer_ofs, ptrof);
+
+            type->size = 8;
         }break;
 
         case INTRO_ARRAY: {
@@ -1072,6 +1075,7 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
             IntroType * elem_type = hmget(info_by_id, elem_id);
             type->of = elem_type;
             type->array_size = array_size;
+            type->size = elem_type->size * array_size;
         }break;
 
         case INTRO_ENUM: {
@@ -1082,9 +1086,19 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
             i_enum->size = size;
 
             type->i_enum = i_enum;
+            type->size = size;
         }break;
 
         default: break;
+        }
+        if (type->size == 0) {
+            switch(type->category) {
+            case INTRO_U8: case INTRO_S8:                   type->size = 1; break;
+            case INTRO_U16: case INTRO_S16:                 type->size = 2; break;
+            case INTRO_U32: case INTRO_S32: case INTRO_F32: type->size = 4; break;
+            case INTRO_U64: case INTRO_S64: case INTRO_F64: type->size = 8; break;
+            case INTRO_F128: type->size = 16; break;
+            }
         }
         hmput(info_by_id, i, type);
     }
