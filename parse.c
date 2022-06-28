@@ -439,10 +439,19 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         //member.bitfield = decl.bitfield; // TODO
 
         assert(member.type->align != 0);
-        if (total_align < member.type->align) total_align = member.type->align;
-        total_size += (member.type->align - (total_size % member.type->align)) % member.type->align;
-        member.offset = total_size;
-        total_size += member.type->size;
+        if (total_align < member.type->align) {
+            total_align = member.type->align;
+        }
+        if (!is_union) {
+            total_size += (member.type->align - (total_size % member.type->align)) % member.type->align;
+            member.offset = total_size;
+            total_size += member.type->size;
+        } else {
+            if (total_size < member.type->size) {
+                total_size = member.type->size;
+            }
+            member.offset = 0;
+        }
 
         if (decl.base->name == NULL) {
             NestInfo info = {0};
