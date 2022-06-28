@@ -268,9 +268,7 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
     const IntroMember * m = &struct_type->i_struct->members[member_index];
     size_t size = intro_size(m->type);
     IntroVariant var;
-    if (m->type->category == INTRO_STRUCT) {
-        intro_set_values_x(ctx, (u8 *)dest + m->offset, m->type, value_attribute);
-    } else if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_type)) {
+    if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_type)) {
         memcpy((u8 *)dest + m->offset, &struct_type, sizeof(void *));
     } else if (intro_attribute_value_x(ctx, m->type, m->attr, value_attribute, &var)) {
         assert(var.type == m->type);
@@ -284,6 +282,8 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
             memcpy((u8 *)dest + m->offset, value_ptr, size);
             intro_offset_pointers((u8 *)dest + m->offset, m->type, ctx->values);
         }
+    } else if (m->type->category == INTRO_STRUCT) {
+        intro_set_values_x(ctx, (u8 *)dest + m->offset, m->type, value_attribute);
     // TODO: this seems inelegant
     } else if (m->type->category == INTRO_ARRAY && m->type->of->category == INTRO_STRUCT) {
         int elem_size = intro_size(m->type->of);

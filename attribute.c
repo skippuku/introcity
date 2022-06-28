@@ -299,6 +299,7 @@ store_ptr(ParseContext * ctx, void * data, size_t size) {
 }
 
 ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint32_t * o_count);
+ptrdiff_t parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s);
 
 // TODO: change to parse_expression
 ptrdiff_t
@@ -354,6 +355,9 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
         }
         ptrdiff_t result = parse_array_value(ctx, type, o_s, NULL);
         return result;
+    } else if (intro_has_fields(type)) {
+        ptrdiff_t result = parse_struct_value(ctx, type, o_s);
+        return result;
     }
     return -1;
 }
@@ -399,6 +403,58 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint3
         parse_error(ctx, &tk, "Expected '{'.");
         return -1;
     }
+    return result;
+}
+
+ptrdiff_t
+parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
+    Token tk;
+    EXPECT('{');
+
+    uint8_t * prev_buf = ctx->value_buffer;
+    ctx->value_buffer = NULL;
+    arrsetcap(ctx->value_buffer, type->size);
+
+    int member_index = 0;
+    while (1) {
+        tk = next_token(o_s);
+        if (tk.type == TK_PERIOD) {
+            // TODO
+        } else if (tk.type == TK_R_BRACE) {
+            break;
+        } else {
+            *o_s = tk.start;
+        }
+
+        IntroMember member = type->i_struct->members[member_index];
+        ptrdiff_t parse_ret = parse_value(ctx, member.type, o_s, NULL);
+        if (parse_ret < 0) {
+            return -1;
+        }
+
+        if (member_index + 1 < type->i_struct->count_members) {
+            IntroMember next = type->i_struct->members[member_index + 1];
+            int pad_size = next.offset - arrlen(ctx->value_buffer);
+            uint8_t * pad = ctx->value_buffer + arrlen(ctx->value_buffer);
+            memset(pad, 0, pad_size);
+            arrsetlen(ctx->value_buffer, next.offset);
+        }
+
+        tk = next_token(o_s);
+        if (tk.type == TK_COMMA) {
+            member_index += 1;
+        } else if (tk.type == TK_R_BRACE) {
+            break;
+        } else {
+            parse_error(ctx, &tk, "Expected ',' or '}'.");
+            return -1;
+        }
+    }
+
+    uint8_t * struct_buf = ctx->value_buffer;
+    ctx->value_buffer = prev_buf;
+    ptrdiff_t result = store_value(ctx, struct_buf, arrlen(struct_buf));
+    arrfree(struct_buf);
     return result;
 }
 

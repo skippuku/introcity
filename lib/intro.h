@@ -282,6 +282,11 @@ intro_is_complex(const IntroType * type) {
          || type->category == INTRO_ENUM);
 }
 
+INTRO_API_INLINE bool
+intro_has_fields(const IntroType * type) {
+    return (type->category & 0xf0) == INTRO_STRUCT;
+}
+
 INTRO_API_INLINE int
 intro_size(const IntroType * type) {
     return type->size;

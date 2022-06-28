@@ -99,6 +99,16 @@ typedef struct {
 } TestUndefined;
 
 typedef struct {
+    float x,y,z;
+} Vector3;
+
+typedef struct {
+    uint8_t a;
+    short b;
+    double c;
+} DefaultAlignTest;
+
+typedef struct {
     int v_int I(default 123);
     uint8_t v_u8 I(=1);
     int64_t v_s64 I(=-54321);
@@ -113,6 +123,9 @@ typedef struct {
     uint32_t count_speeds I(remove gui_show);
 
     Skills skills I(= SKILL_MUSICIAN | SKILL_PROGRAMMER);
+
+    Vector3 v3 I(= {3.5, -0.75, 12.25});
+    DefaultAlignTest align I(= {15, 2001, 100456.12});
 } TestDefault;
 
 typedef struct {

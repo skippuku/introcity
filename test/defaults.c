@@ -34,5 +34,13 @@ main() {
     }
     assert(default_test.skills == (SKILL_PROGRAMMER | SKILL_MUSICIAN));
 
+    assert(ABS(default_test.v3.x - 3.5) < 0.0001);
+    assert(ABS(default_test.v3.y - -0.75) < 0.0001);
+    assert(ABS(default_test.v3.z - 12.25) < 0.0001);
+
+    assert(default_test.align.a == 15);
+    assert(default_test.align.b == 2001);
+    assert(ABS(default_test.align.c - 100456.12) < 0.000001);
+
     return 0;
 }

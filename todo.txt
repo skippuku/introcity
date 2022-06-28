@@ -1,6 +1,5 @@
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
-    !! struct/union values (see: the struct layout precipice)
     more strict namespacing
         maybe use dot
     impl: cache matching data
