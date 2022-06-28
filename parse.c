@@ -105,8 +105,7 @@ struct ParseContext {
     IntroBuiltinAttributeIds builtin;
     char ** string_set;
     uint32_t attribute_id_counter;
-    uint32_t attribute_flag_id_counter;
-    IntroInfo * p_info;
+    ParseInfo * p_info;
 };
 
 static void
@@ -1150,7 +1149,7 @@ parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_dec
 }
 
 static void
-add_to_gen_info(ParseContext * ctx, IntroInfo * info, IntroType * type) {
+add_to_gen_info(ParseContext * ctx, ParseInfo * info, IntroType * type) {
     ptrdiff_t map_index = hmgeti(info->index_by_ptr_map, type);
     if (map_index < 0) {
         arrput(info->types, type);
@@ -1177,7 +1176,7 @@ add_to_gen_info(ParseContext * ctx, IntroInfo * info, IntroType * type) {
 }
 
 int
-parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
+parse_preprocessed_text(PreInfo * pre_info, ParseInfo * o_info) {
     ParseContext * ctx = calloc(1, sizeof(ParseContext));
     ctx->buffer = pre_info->result_buffer;
     ctx->arena = new_arena((1 << 20)); // 1mb buckets

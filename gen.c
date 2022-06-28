@@ -17,7 +17,7 @@ make_identifier_safe_name(const char * name) {
 }
 
 char *
-generate_c_header(IntroInfo * info, const char * output_filename) {
+generate_c_header(ParseInfo * info, const char * output_filename) {
     char * s = NULL;
 
     const char * tab = "";

@@ -173,7 +173,7 @@ typedef struct {
     int32_t value;
 } IndexByPtrMap;
 
-typedef struct IntroInfo {
+typedef struct ParseInfo {
     IntroType ** types;
     IndexByPtrMap * index_by_ptr_map;
     uint8_t * value_buffer;
@@ -184,7 +184,7 @@ typedef struct IntroInfo {
     uint32_t count_types;
     uint32_t count_arg_lists;
     uint32_t count_functions;
-} IntroInfo;
+} ParseInfo;
 
 enum ReturnCode {
     RET_IRRELEVANT_ERROR = -1,

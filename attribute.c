@@ -44,8 +44,6 @@ attribute_parse_init(ParseContext * ctx) {
 
     sh_new_arena(ctx->attribute_map);
     ctx->attribute_id_counter = 0;
-    // TODO: do we still need this?
-    ctx->attribute_flag_id_counter = UINT32_MAX / 2;
 }
 
 int
@@ -108,9 +106,7 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
             }
             info.type = a_tk;
 
-            if (info.type == INTRO_AT_FLAG) {
-                info.id = ctx->attribute_flag_id_counter++;
-            } else {
+            if (info.type != INTRO_AT_FLAG) {
                 info.id = ctx->attribute_id_counter++;
             }
 
@@ -602,8 +598,9 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_in
 }
 
 int
-parse_attributes(ParseContext * ctx, char * s, IntroType * type, int member_index, AttributeData ** o_result, uint32_t * o_count_attributes) {
-    IntroStruct * i_struct = type->i_struct;
+parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
+    char * s = directive->location;
+    IntroStruct * i_struct = directive->type->i_struct;
     AttributeData * attributes = NULL;
 
     Token tk = next_token(&s);
@@ -630,13 +627,13 @@ parse_attributes(ParseContext * ctx, char * s, IntroType * type, int member_inde
                 }
             } else {
                 s = tk.start;
-                int error = parse_attribute(ctx, &s, type, member_index, &data);
+                int error = parse_attribute(ctx, &s, directive->type, directive->member_index, &data);
                 if (error) return -1;
             }
             arrput(attributes, data);
         } else if (tk.type == TK_EQUAL) {
             data.id = ctx->builtin.i_default;
-            if (handle_value_attribute(ctx, &s, type, member_index, &data, &tk)) return -1;
+            if (handle_value_attribute(ctx, &s, directive->type, directive->member_index, &data, &tk)) return -1;
 
             arrput(attributes, data);
         } else if (tk.type == TK_TILDE) {
@@ -663,17 +660,13 @@ parse_attributes(ParseContext * ctx, char * s, IntroType * type, int member_inde
         }
     }
 
-    if (o_result && o_count_attributes) {
-        *o_count_attributes = arrlenu(attributes);
-        *o_result = attributes;
-    } else {
-        arrfree(attributes);
-    }
+    directive->count = arrlenu(attributes);
+    directive->attr_data = attributes;
     return 0;
 }
 
 static void
-add_attribute(ParseContext * ctx, IntroInfo * o_info, AttributeParseInfo * info, AttributeParseInfo * next_info, char * name) {
+add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info, AttributeParseInfo * next_info, char * name) {
     IntroAttribute attribute = {
         .name = name,
         .attr_type = info->type,
@@ -759,7 +752,7 @@ handle_deferred_defaults(ParseContext * ctx) {
 }
 
 static void
-handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
+handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
     int * flags = NULL;
     arrsetcap(flags, 16);
     arrsetcap(o_info->attr.available, 32);
@@ -801,8 +794,7 @@ handle_attributes(ParseContext * ctx, IntroInfo * o_info) {
 
     for (int directive_i=0; directive_i < arrlen(ctx->attribute_directives); directive_i++) {
         AttributeDirective directive = ctx->attribute_directives[directive_i];
-        // TODO: just pass &directive
-        int ret = parse_attributes(ctx, directive.location, directive.type, directive.member_index, &directive.attr_data, &directive.count);
+        int ret = parse_attributes(ctx, &directive);
         if (ret) exit(1);
 
         // add global flags

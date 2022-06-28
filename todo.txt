@@ -25,6 +25,7 @@ attribute:
 city:
     offsets might not need to be saved for struct members
     maybe it would be better to save the struct packed anyway?
+    type id's
 
 config:
     allow config to be appended with another config?
@@ -32,6 +33,8 @@ config:
     static assert in .intro file if types don't match
 
 parse:
+    !! GNU and MS alignment attributes
+    return IntroContext
     handle character literals including L'x'
     fix bitfield regression
     handle bit field accessing
@@ -53,7 +56,6 @@ pre:
         option to ignore functions
     errors are fucked (again)
         location system is just bad, replace it
-    stop after a .intro include as to not depend on types defined later
     don't evaluate location line until it is known the type will be in info
     save location of includes and defines
     parse #line directives
