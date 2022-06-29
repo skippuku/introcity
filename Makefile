@@ -78,11 +78,14 @@ EXE := $(OBJDIR)/intro
 
 .PHONY: build test install clean cleanall config
 
-build: $(EXE)
+build: lib/intro.h.intro $(EXE)
 	@echo "Build complete for $(PROFILE)."
 
 $(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
 	$(CC) -o $@ $^ $(LDFLAGS)
+
+lib/intro.h.intro: lib/intro.h
+	intro $< -o $@
 
 test:
 	@$(MAKE) --no-print-directory --directory=test/ run

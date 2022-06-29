@@ -1416,6 +1416,8 @@ run_preprocessor(int argc, char ** argv) {
                 } else if (0==strcmp(arg, "help")) {
                     fputs(help_dialog, stderr);
                     exit(0);
+                } else if (0==strcmp(arg, "gen-city")) {
+                    info.gen_city = true;
                 } else {
                     fprintf(stderr, "Unknown option: '%s'\n", arg);
                     exit(1);
@@ -1631,7 +1633,11 @@ run_preprocessor(int argc, char ** argv) {
         exit(1);
     }
     if (info.output_filename == NULL) {
-        strputf(&info.output_filename, "%s.intro", filepath);
+        if (info.gen_city) {
+            strputf(&info.output_filename, "%s.cty", filepath);
+        } else {
+            strputf(&info.output_filename, "%s.intro", filepath);
+        }
     }
 
     int error = preprocess_filename(ctx, filepath);

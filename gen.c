@@ -1,6 +1,8 @@
 #include "lib/intro.h"
 #include "global.c"
 
+#include "lib/intro.h.intro"
+
 #ifndef VERSION
 #define VERSION "unknown-version"
 #endif
@@ -129,20 +131,22 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
 
         strputf(&s, "0x%02x, %u, ", t->category, t->flags);
 
+        strputf(&s, "{");
         if (intro_is_complex(t) || t->category == INTRO_FUNCTION) {
             char * saved_name = hmget(complex_type_map, t->i_struct);
             if (saved_name) {
-                strputf(&s, "&__intro_%s, ", saved_name);
+                strputf(&s, "&__intro_%s", saved_name);
             } else {
-                strputf(&s, "0, ");
+                strputf(&s, "0");
             }
         } else {
             if (t->category == INTRO_ARRAY) {
-                strputf(&s, "(void *)0x%x, ", t->array_size);
+                strputf(&s, "(void *)0x%x", t->array_size);
             } else {
-                strputf(&s, "0, ");
+                strputf(&s, "0");
             }
         }
+        strputf(&s, "}, ");
 
         if (t->of) {
             int32_t of_index = hmget(info->index_by_ptr_map, t->of);
@@ -244,11 +248,11 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
     strputf(&s, "%s{(IntroAttribute *)__intro_attr_t, ", tab);
     strputf(&s, "%s(IntroAttributeSpec *)__intro_attr_data, ", tab);
     strputf(&s, "%s%u, ", tab, info->attr.count_available);
-    strputf(&s, "%s%u,", tab, info->attr.first_flag);
+    strputf(&s, "%s%u,{", tab, info->attr.first_flag);
     for (int i=0; i < LENGTH(g_builtin_attributes); i++) {
         strputf(&s, "IATTR_%s,", g_builtin_attributes[i].key);
     }
-    strputf(&s, "},\n");
+    strputf(&s, "}},\n");
     strputf(&s, "%s%u,", tab, info->count_types);
     strputf(&s, "%s%i,", tab, (int)arrlenu(info->string_set));
     strputf(&s, "%s%i,", tab, (int)arrlenu(info->value_buffer));
@@ -260,4 +264,31 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
     hmfree(complex_type_map);
 
     return s;
+}
+
+int
+generate_context_city(char * filename, ParseInfo * info) {
+    IntroContext * saved = calloc(1, sizeof(IntroContext));
+
+    saved->types = malloc(info->count_types * sizeof(IntroType));
+    saved->count_types = info->count_types;
+    for (int type_i=0; type_i < info->count_types; type_i++) {
+        IntroType * type = info->types[type_i];
+        saved->types[type_i] = *type;
+    }
+
+    saved->strings = (const char **)info->string_set;
+    saved->count_strings = arrlen(info->string_set);
+
+    saved->values = info->value_buffer;
+    saved->size_values = arrlen(info->value_buffer);
+
+    saved->functions = info->functions;
+    saved->count_functions = info->count_functions;
+
+    saved->attr = info->attr;
+
+    int ret = intro_create_city_file(filename, saved, ITYPE(IntroContext));
+
+    return ret;
 }

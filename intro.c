@@ -40,17 +40,21 @@ main(int argc, char * argv []) {
         return 2;
     }
 
-    char * header = generate_c_header(&parse_info, pre_info.output_filename);
-    if (!header) {
-        fprintf(stderr, "generator failed.\n");
-        return 3;
-    }
+    if (pre_info.gen_city) {
+        return generate_context_city(pre_info.output_filename, &parse_info);
+    } else {
+        char * header = generate_c_header(&parse_info, pre_info.output_filename);
+        if (!header) {
+            fprintf(stderr, "generator failed.\n");
+            return 3;
+        }
 
-    error = intro_dump_file(pre_info.output_filename, header, strlen(header));
-    arrfree(header);
-    if (error) {
-        fprintf(stderr, "failed to write to file '%s'.\n", pre_info.output_filename);
-        return 4;
+        error = intro_dump_file(pre_info.output_filename, header, strlen(header));
+        arrfree(header);
+        if (error) {
+            fprintf(stderr, "failed to write to file '%s'.\n", pre_info.output_filename);
+            return 4;
+        }
     }
 
     return 0;

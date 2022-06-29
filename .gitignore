@@ -10,3 +10,4 @@ test/log.txt
 test/intro.odin
 build/
 intro.cfg
+*.lz4

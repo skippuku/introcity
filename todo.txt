@@ -34,7 +34,6 @@ config:
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
-    return IntroContext
     handle character literals including L'x'
     fix bitfield regression
     handle bit field accessing
@@ -66,6 +65,7 @@ pre:
 gen:
     !! clang doesn't like flexible array initialization in c++
         might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
+    !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
     include macros in introspection data (optionally)
     option to create typedefs for structs and enums
     place all data in one big buffer accessible only through the context, write protect the buffer

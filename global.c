@@ -162,6 +162,7 @@ typedef struct {
     char * output_filename;
     LocationContext loc;
     int ret;
+    bool gen_city;
 } PreInfo;
 
 typedef struct {
