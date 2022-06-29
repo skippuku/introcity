@@ -1417,7 +1417,9 @@ run_preprocessor(int argc, char ** argv) {
                     fputs(help_dialog, stderr);
                     exit(0);
                 } else if (0==strcmp(arg, "gen-city")) {
-                    info.gen_city = true;
+                    info.gen_mode = GEN_CITY;
+                } else if (0==strcmp(arg, "gen-vim-syntax")) {
+                    info.gen_mode = GEN_VIM_SYNTAX;
                 } else {
                     fprintf(stderr, "Unknown option: '%s'\n", arg);
                     exit(1);
@@ -1633,11 +1635,14 @@ run_preprocessor(int argc, char ** argv) {
         exit(1);
     }
     if (info.output_filename == NULL) {
-        if (info.gen_city) {
-            strputf(&info.output_filename, "%s.cty", filepath);
-        } else {
-            strputf(&info.output_filename, "%s.intro", filepath);
+        char * ext;
+        switch(info.gen_mode) {
+        default:
+        case GEN_HEADER:     ext = ".intro"; break;
+        case GEN_CITY:       ext = ".cty"; break;
+        case GEN_VIM_SYNTAX: ext = ".vim"; break;
         }
+        strputf(&info.output_filename, "%s%s", filepath, ext);
     }
 
     int error = preprocess_filename(ctx, filepath);

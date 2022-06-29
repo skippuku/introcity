@@ -157,12 +157,18 @@ reset_location_context(LocationContext * lctx) {
     lctx->pos = NULL;
 }
 
+enum GenMode {
+    GEN_HEADER = 0,
+    GEN_CITY,
+    GEN_VIM_SYNTAX,
+};
+
 typedef struct {
     char * result_buffer;
     char * output_filename;
     LocationContext loc;
     int ret;
-    bool gen_city;
+    enum GenMode gen_mode;
 } PreInfo;
 
 typedef struct {
@@ -188,6 +194,7 @@ typedef struct ParseInfo {
 } ParseInfo;
 
 enum ReturnCode {
+    RET_FAILED_FILE_WRITE = -2,
     RET_IRRELEVANT_ERROR = -1,
     RET_OK = 0,
 

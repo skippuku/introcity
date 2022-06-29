@@ -61,6 +61,12 @@ define PROFILE.install
   MAGIC_NODEP := 1
 endef
 
+define PROFILE.vim_syntax
+  $(PROFILE.release)
+  PROFILEDIR := release
+  MAGIC_TARGET := .syntax.vim
+endef
+
 define PROFILE.clean
   MAGIC_NODEP := 1
 endef
@@ -101,6 +107,9 @@ else ifeq (Windows_NT,$(OS))
 	./scripts/install_msys2.sh
 	@echo "install successful, enjoy!"
 endif
+
+.syntax.vim: $(OBJDIR)/intro.o
+	./$(EXE) --gen-vim-syntax intro.c -o $@
 
 clean:
 	rm -rf $(BUILDDIR)/*

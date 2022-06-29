@@ -18,11 +18,9 @@ make_identifier_safe_name(const char * name) {
     return result;
 }
 
-char *
-generate_c_header(ParseInfo * info, const char * output_filename) {
+int
+generate_c_header(const char * output_filename, ParseInfo * info) {
     char * s = NULL;
-
-    const char * tab = "";
 
     char * header_def = NULL;
     arrsetcap(header_def, strlen(output_filename) + 2);
@@ -66,14 +64,14 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
                 for (int m_index = 0; m_index < t->i_struct->count_members; m_index++) {
                     const IntroMember * m = &t->i_struct->members[m_index];
                     int32_t member_type_index = hmget(info->index_by_ptr_map, m->type);
-                    strputf(&s, "%s{\"%s\", &__intro_types[%i], ", tab, m->name, member_type_index);
+                    strputf(&s, "{\"%s\", &__intro_types[%i], ", m->name, member_type_index);
                     strputf(&s, "%u, %u},\n", m->offset, m->attr);
                 }
             } else if (t->category == INTRO_ENUM) {
                 strputf(&s, "%u, %u, %u, {\n", t->i_enum->count_members, t->i_enum->is_flags, t->i_enum->is_sequential);
                 for (int m_index = 0; m_index < t->i_enum->count_members; m_index++) {
                     const IntroEnumValue * v = &t->i_enum->members[m_index];
-                    strputf(&s, "%s{\"%s\", %i},\n", tab, v->name, v->value);
+                    strputf(&s, "{\"%s\", %i},\n", v->name, v->value);
                 }
             }
             strputf(&s, "}};\n\n");
@@ -93,7 +91,7 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
         for (int arg_i=0; arg_i < args->count; arg_i++) {
             IntroType * arg_type = args->types[arg_i];
             int arg_type_index = hmget(info->index_by_ptr_map, arg_type);
-            strputf(&s, "%s&__intro_types[%i],\n", tab, arg_type_index);
+            strputf(&s, "&__intro_types[%i],\n", arg_type_index);
         }
         strputf(&s, "}};\n\n");
     }
@@ -109,9 +107,9 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
         for (int name_i=0; name_i < func->type->args->count; name_i++) {
             const char * name = func->arg_names[name_i];
             if (name) {
-                strputf(&s, "%s\"%s\",\n", tab, name);
+                strputf(&s, "\"%s\",\n", name);
             } else {
-                strputf(&s, "%s0,\n", tab);
+                strputf(&s, "0,\n");
             }
         }
         strputf(&s, "}};\n\n");
@@ -127,7 +125,7 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
     strputf(&s, "IntroType __intro_types [%u] = {\n", info->count_types);
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         const IntroType * t = info->types[type_index];
-        strputf(&s, "%s{", tab);
+        strputf(&s, "{");
 
         strputf(&s, "0x%02x, %u, ", t->category, t->flags);
 
@@ -184,26 +182,26 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
     strputf(&s, "const IntroAttribute __intro_attr_t [] = {\n");
     for (int attr_index = 0; attr_index < info->attr.count_available; attr_index++) {
         IntroAttribute attr = info->attr.available[attr_index];
-        strputf(&s, "%s{\"%s\", 0x%x, %u},\n", tab, attr.name, attr.attr_type, attr.type_id);
+        strputf(&s, "{\"%s\", 0x%x, %u},\n", attr.name, attr.attr_type, attr.type_id);
     }
     strputf(&s, "};\n\n");
 
     strputf(&s, "const char * __intro_strings [%i] = {\n", (int)arrlen(info->string_set));
     for (int i=0; i < arrlen(info->string_set); i++) {
-        strputf(&s, "%s\"%s\",\n", tab, info->string_set[i]);
+        strputf(&s, "\"%s\",\n", info->string_set[i]);
     }
     strputf(&s, "};\n\n");
 
     strputf(&s, "enum {\n");
     for (int i=0; i < info->attr.count_available; i++) {
-        strputf(&s, "%sIATTR_%s = %i,\n", tab, info->attr.available[i].name, i);
+        strputf(&s, "IATTR_%s = %i,\n", info->attr.available[i].name, i);
     }
     strputf(&s, "};\n\n");
 
     strputf(&s, "const unsigned char __intro_attr_data [] = {");
     for (int i=0; i < arrlen(info->attr.spec_buffer) * sizeof(info->attr.spec_buffer[0]); i++) {
         if (i % 16 == 0) {
-            strputf(&s, "\n%s", tab);
+            strputf(&s, "\n");
         }
         uint8_t byte = ((uint8_t *)info->attr.spec_buffer)[i];
         strputf(&s, "0x%02x,", byte);
@@ -214,7 +212,7 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
     strputf(&s, "unsigned char __intro_values [%i] = {", (int)arrlen(info->value_buffer));
     for (int i=0; i < arrlen(info->value_buffer); i++) {
         if (i % 16 == 0) {
-            strputf(&s, "\n%s", tab);
+            strputf(&s, "\n");
         }
         uint8_t byte = info->value_buffer[i];
         strputf(&s, "0x%02x,", byte);
@@ -232,7 +230,7 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
             } else {
                 name = t->name;
             }
-            strputf(&s, "%sITYPE_%s = %i,\n", tab, name, type_index);
+            strputf(&s, "ITYPE_%s = %i,\n", name, type_index);
             if (name != t->name) free((void *)name);
         }
     }
@@ -241,54 +239,100 @@ generate_c_header(ParseInfo * info, const char * output_filename) {
     // context
     
     strputf(&s, "IntroContext __intro_ctx = {\n");
-    strputf(&s, "%s__intro_types,\n", tab);
-    strputf(&s, "%s__intro_strings,\n", tab);
-    strputf(&s, "%s__intro_values,\n", tab);
-    strputf(&s, "%s__intro_fns,\n", tab);
-    strputf(&s, "%s{(IntroAttribute *)__intro_attr_t, ", tab);
-    strputf(&s, "%s(IntroAttributeSpec *)__intro_attr_data, ", tab);
-    strputf(&s, "%s%u, ", tab, info->attr.count_available);
-    strputf(&s, "%s%u,{", tab, info->attr.first_flag);
+    strputf(&s, "__intro_types,\n");
+    strputf(&s, "__intro_strings,\n");
+    strputf(&s, "__intro_values,\n");
+    strputf(&s, "__intro_fns,\n");
+    strputf(&s, "{(IntroAttribute *)__intro_attr_t, ");
+    strputf(&s, "(IntroAttributeSpec *)__intro_attr_data, ");
+    strputf(&s, "%u, ", info->attr.count_available);
+    strputf(&s, "%u,{", info->attr.first_flag);
     for (int i=0; i < LENGTH(g_builtin_attributes); i++) {
         strputf(&s, "IATTR_%s,", g_builtin_attributes[i].key);
     }
     strputf(&s, "}},\n");
-    strputf(&s, "%s%u,", tab, info->count_types);
-    strputf(&s, "%s%i,", tab, (int)arrlenu(info->string_set));
-    strputf(&s, "%s%i,", tab, (int)arrlenu(info->value_buffer));
-    strputf(&s, "%s%u,\n", tab, info->count_functions);
+    strputf(&s, "%u,", info->count_types);
+    strputf(&s, "%i,", (int)arrlenu(info->string_set));
+    strputf(&s, "%i,", (int)arrlenu(info->value_buffer));
+    strputf(&s, "%u,\n", info->count_functions);
     strputf(&s, "};\n");
 
     strputf(&s, "#endif\n");
 
     hmfree(complex_type_map);
 
-    return s;
+    int error = intro_dump_file(output_filename, s, strlen(s));
+    arrfree(s);
+
+    if (error) return RET_FAILED_FILE_WRITE;
+    else return 0;
 }
 
 int
 generate_context_city(char * filename, ParseInfo * info) {
-    IntroContext * saved = calloc(1, sizeof(IntroContext));
+    IntroContext ser = {0};
 
-    saved->types = malloc(info->count_types * sizeof(IntroType));
-    saved->count_types = info->count_types;
+    ser.types = malloc(info->count_types * sizeof(IntroType));
+    ser.count_types = info->count_types;
     for (int type_i=0; type_i < info->count_types; type_i++) {
         IntroType * type = info->types[type_i];
-        saved->types[type_i] = *type;
+        ser.types[type_i] = *type;
     }
 
-    saved->strings = (const char **)info->string_set;
-    saved->count_strings = arrlen(info->string_set);
+    ser.strings = (const char **)info->string_set;
+    ser.count_strings = arrlen(info->string_set);
 
-    saved->values = info->value_buffer;
-    saved->size_values = arrlen(info->value_buffer);
+    ser.values = info->value_buffer;
+    ser.size_values = arrlen(info->value_buffer);
 
-    saved->functions = info->functions;
-    saved->count_functions = info->count_functions;
+    ser.functions = info->functions;
+    ser.count_functions = info->count_functions;
 
-    saved->attr = info->attr;
+    ser.attr = info->attr;
 
-    int ret = intro_create_city_file(filename, saved, ITYPE(IntroContext));
+    int ret = intro_create_city_file(filename, &ser, ITYPE(IntroContext));
+
+    free(ser.types);
 
     return ret;
+}
+
+int
+generate_vim_syntax(char * filename, ParseInfo * info) {
+    char * buf = NULL;
+    char ** s = &buf;
+
+    strputf(s, "\" generated with intro version %s\n\n", VERSION);
+
+    for (int type_i=LENGTH(known_types)-1; type_i < info->count_types; type_i++) {
+        const IntroType * type = info->types[type_i];
+        if (type->name && type->parent && !strchr(type->name, ' ')) {
+            strputf(s, "syn keyword Type %s\n", type->name);
+        }
+        if (!type->parent && type->category == INTRO_ENUM && type->i_enum->count_members > 0) {
+            strputf(s, "  syn keyword Constant");
+            for (int ei=0; ei < type->i_enum->count_members; ei++) {
+                IntroEnumValue value = type->i_enum->members[ei];
+                strputf(s, " %s", value.name);
+            }
+            strputf(s, "\n");
+        }
+    }
+
+    strputf(s, "\n");
+    for (int func_i=0; func_i < info->count_functions; func_i++) {
+        const IntroFunction * func = info->functions[func_i];
+        strputf(s, "syn keyword Function %s\n", func->name);
+    }
+
+    strputf(s, "\nsyn keyword IntroAttribute");
+    for (int attr_i=0; attr_i < info->attr.count_available; attr_i++) {
+        IntroAttribute attr = info->attr.available[attr_i];
+        strputf(s, " %s", attr.name);
+    }
+    strputf(s, "\n");
+
+    intro_dump_file(filename, buf, arrlen(buf));
+
+    return 0;
 }

@@ -40,21 +40,11 @@ main(int argc, char * argv []) {
         return 2;
     }
 
-    if (pre_info.gen_city) {
-        return generate_context_city(pre_info.output_filename, &parse_info);
-    } else {
-        char * header = generate_c_header(&parse_info, pre_info.output_filename);
-        if (!header) {
-            fprintf(stderr, "generator failed.\n");
-            return 3;
-        }
-
-        error = intro_dump_file(pre_info.output_filename, header, strlen(header));
-        arrfree(header);
-        if (error) {
-            fprintf(stderr, "failed to write to file '%s'.\n", pre_info.output_filename);
-            return 4;
-        }
+    switch(pre_info.gen_mode) {
+    default:
+    case GEN_HEADER:     return generate_c_header(pre_info.output_filename, &parse_info);
+    case GEN_CITY:       return generate_context_city(pre_info.output_filename, &parse_info);
+    case GEN_VIM_SYNTAX: return generate_vim_syntax(pre_info.output_filename, &parse_info);
     }
 
     return 0;

@@ -11,3 +11,4 @@ test/intro.odin
 build/
 intro.cfg
 *.lz4
+.syntax.vim
