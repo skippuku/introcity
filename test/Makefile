@@ -32,6 +32,9 @@ $(ICFG):
 %.intro: % $(INTRO_PARSE) FORCE
 	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) $< -o $@
 
+intro.h.intro: ../lib/intro.h $(INTRO_PARSE) FORCE
+	$(INTRO_PARSE) --pragma "enable all" --cfg $(ICFG) $(CPPFLAGS) $< -o $@
+
 FORCE:
 
 $(EXE): db_%: %.c $(INTROLIB)

@@ -191,9 +191,10 @@ store_type(ParseContext * ctx, IntroType type, char * pos) {
 
     if (pos) {
         IntroLocation loc = {0};
+        NoticeState notice;
         char * start_of_line;
-        FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
-        if (file->gen) {
+        FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line, &notice);
+        if ((notice & NOTICE_ENABLED)) {
             type.flags |= INTRO_EXPLICITLY_GENERATED;
         }
         loc.path = file->filename;
@@ -1021,8 +1022,9 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
                     IntroLocation loc = {0};
                     char * pos = decl->name_tk.start;
                     char * start_of_line;
-                    FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
-                    if (file->gen) {
+                    NoticeState notice;
+                    FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line, &notice);
+                    if ((notice & NOTICE_ENABLED) && (notice & NOTICE_FUNCTIONS)) {
                         func->flags |= INTRO_EXPLICITLY_GENERATED;
                     }
                     loc.path = file->filename;

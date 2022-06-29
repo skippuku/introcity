@@ -50,9 +50,7 @@ parse:
         operator overloads?
 
 pre:
-    !! more options for what parts have information generated
-        option to exclude by default, enable with #if __INTRO__
-        option to ignore functions
+    include macros in introspection data (optionally)
     errors are fucked (again)
         location system is just bad, replace it
     don't evaluate location line until it is known the type will be in info
@@ -63,12 +61,13 @@ pre:
     trim big newline gaps
 
 gen:
+    (these 3 points all kind of go together)
     !! clang doesn't like flexible array initialization in c++
         might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
     !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
-    include macros in introspection data (optionally)
+    c header: use write protected buffer, load intro context from binary
+
     option to create typedefs for structs and enums
-    place all data in one big buffer accessible only through the context, write protect the buffer
     typeof with _Generic?
 
 lib:

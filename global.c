@@ -120,7 +120,6 @@ typedef struct {
     size_t buffer_size;
     time_t mtime;
     bool once;
-    bool gen; // whether type info should be generated for types declared in this file
 } FileInfo;
 
 typedef enum {
@@ -130,12 +129,27 @@ typedef enum {
     LOC_POP,
 } LocationEnum;
 
+typedef enum {
+    NOTICE_NONE = 0,
+    NOTICE_ENABLED = 0x01,
+    NOTICE_FUNCTIONS = 0x02,
+    NOTICE_MACROS = 0x04,
+
+    NOTICE_INCLUDES = 0x0100,
+    NOTICE_SYS_HEADERS = 0x0200,
+
+    NOTICE_DEFAULT = NOTICE_ENABLED | NOTICE_INCLUDES,
+
+    NOTICE_ALL = 0x00FF,
+} NoticeState;
+
 typedef struct {
     size_t offset;
     size_t file_offset;
     FileInfo * file;
     char * macro_name;
     LocationEnum mode;
+    NoticeState notice;
 } FileLoc;
 
 typedef struct {
@@ -145,8 +159,9 @@ typedef struct {
     int64_t index;
     FileInfo * file;
     int * stack;
-    int line_num;
     char * pos;
+    int line_num;
+    NoticeState notice;
 } LocationContext;
 
 void

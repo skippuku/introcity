@@ -149,4 +149,16 @@ typedef struct {
 } MsExt;
 #endif
 
+#pragma intro push, disable
+typedef struct {
+    int uh_oh;
+    char asdf;
+} ThisShouldNotShowUp;
+#pragma intro pop
+
+typedef struct {
+    int yay;
+    bool yeah;
+} ThisShouldShowUp;
+
 #include "test.h.intro"

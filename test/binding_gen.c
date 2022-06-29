@@ -5,7 +5,7 @@
 #endif
 
 #include "../lib/intro.h"
-#include "../lib/intro.h.intro"
+#include "intro.h.intro"
 
 static const char * tab = "  ";
 

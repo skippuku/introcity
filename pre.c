@@ -72,6 +72,9 @@ typedef struct {
     char * expansion_site;
     LocationContext loc;
 
+    NoticeState * notice_stack;
+    NoticeState notice;
+
     const char * base_file;
     int counter;
     int include_level;
@@ -86,6 +89,7 @@ typedef struct {
     PreContext * ctx;
     FileInfo * chunk_file;
     char * begin_chunk;
+    NoticeState notice;
 } PasteState;
 
 #define BOLD_RED "\e[1;31m"
@@ -172,7 +176,7 @@ count_newlines_in_range(char * start, char * end, char ** o_last_line) {
 }
 
 FileInfo *
-get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_line, char ** o_start_of_line) {
+get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_line, char ** o_start_of_line, NoticeState * o_notice) {
     FileLoc * pos_loc;
     int loc_index = -1;
     int max = (lctx->count)? lctx->count : arrlen(lctx->list);
@@ -185,6 +189,7 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
             pos_loc = &lctx->list[loc_index];
             break;
         } else {
+            lctx->notice = loc.notice;
             if (loc.file) lctx->file = loc.file;
             switch(loc.mode) {
             case LOC_NONE:
@@ -198,7 +203,7 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
                 (void)arrpop(lctx->stack);
                 int last_stack = lctx->stack[arrlen(lctx->stack) - 1];
                 lctx->file = lctx->list[last_stack].file;
-                continue;
+                break;
             }
         }
     }
@@ -226,6 +231,7 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
     lctx->pos = *o_pos;
 
     *o_line = line_num;
+    if (o_notice) *o_notice = lctx->notice;
     return lctx->file;
 }
 
@@ -269,7 +275,7 @@ parse_msg_internal(LocationContext * lctx, char * buffer, const Token * tk, char
     char * filename = "?";
     char * hl_start = tk->start;
     int line_num = -1;
-    FileInfo * file = get_line(lctx, buffer, &hl_start, &line_num, &start_of_line);
+    FileInfo * file = get_line(lctx, buffer, &hl_start, &line_num, &start_of_line, NULL);
     filename = file->filename;
     assert(start_of_line != NULL);
     char * hl_end = hl_start + tk->length;
@@ -380,6 +386,7 @@ ignore_section(PasteState * state, char * begin_ignored, char * end_ignored) {
         FileLoc loc = {
             .offset      = arrlen(ctx->result_buffer),
             .file_offset = (size_t)signed_file_offset,
+            .notice = state->notice,
         };
         FileLoc * plast = &arrlast(ctx->loc.list);
         if ((loc.offset == plast->offset) && (plast->mode == LOC_NONE)) {
@@ -396,6 +403,7 @@ ignore_section(PasteState * state, char * begin_ignored, char * end_ignored) {
     }
     state->begin_chunk = end_ignored;
     state->chunk_file = ctx->current_file;
+    state->notice = ctx->notice;
 }
 
 void
@@ -901,6 +909,58 @@ pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
     }
 }
 
+int
+pre_handle_intro_pragma(PreContext * ctx, char ** o_s, Token * o_tk) {
+#define SET_BITS(var, mask, state) (var = state? var | mask : var & ~mask)
+    static const struct{const char * key; NoticeState value;} elements [] = {
+        {"functions", NOTICE_FUNCTIONS},
+        {"macros", NOTICE_MACROS},
+        {"all", NOTICE_ALL},
+    };
+    Token tk;
+    while (1) {
+        tk = pre_next_token(o_s);
+        bool is_disable = false, found_match = false;
+        if (tk_equal(&tk, "enable") || (is_disable = tk_equal(&tk, "disable"))) {
+            tk = pre_next_token(o_s);
+            if (tk.type == TK_IDENTIFIER) {
+                for (int element_i=0; element_i < LENGTH(elements); element_i++) {
+                    if (tk_equal(&tk, elements[element_i].key)) {
+                        int bit = elements[element_i].value;
+                        SET_BITS(ctx->notice, bit, !is_disable);
+                        found_match = true;
+                        break;
+                    }
+                }
+                if (!found_match) {
+                    preprocess_error(&tk, "Invalid element.");
+                    return -1;
+                }
+            } else {
+                SET_BITS(ctx->notice, NOTICE_ENABLED, !is_disable);
+                *o_s = tk.start;
+            }
+        } else if (tk_equal(&tk, "push")) {
+            arrpush(ctx->notice_stack, ctx->notice);
+        } else if (tk_equal(&tk, "pop")) {
+            if (arrlen(ctx->notice_stack) < 1) {
+                preprocess_error(&tk, "attempt to pop stack of 0");
+                return -1;
+            }
+            ctx->notice = arrpop(ctx->notice_stack);
+        } else if (tk.type == TK_COMMA) {
+            continue;
+        } else if (tk.type == TK_NEWLINE) {
+            break;
+        } else {
+            preprocess_error(&tk, "Unknown intro directive.");
+            return -1;
+        }
+    }
+    if (o_tk) *o_tk = tk;
+    return 0;
+}
+
 int preprocess_filename(PreContext * ctx, char * filename);
 
 int
@@ -930,6 +990,7 @@ preprocess_buffer(PreContext * ctx) {
         .file_offset = 0,
         .file = file,
         .mode = LOC_FILE,
+        .notice = ctx->notice,
     };
     arrput(ctx->loc.list, loc_push_file);
 
@@ -1101,6 +1162,18 @@ preprocess_buffer(PreContext * ctx) {
                 tk = pre_next_token(&s);
                 if (tk_equal(&tk, "once")) {
                     ctx->current_file->once = true;
+                } else if (tk_equal(&tk, "intro")) {
+                    int ret = pre_handle_intro_pragma(ctx, &s, &tk);
+                    if (ret < 0) return ret;
+                } else if (tk_equal(&tk, "pack")) {
+                } else if (tk_equal(&tk, "GCC")) {
+                } else if (tk_equal(&tk, "clang")) {
+                } else if (tk_equal(&tk, "push_macro")) {
+                } else if (tk_equal(&tk, "pop_macro")) {
+                } else {
+                    if (!ctx->is_sys_header) {
+                        preprocess_warning(&tk, "Unknown pragma, ignoring.");
+                    }
                 }
             } else {
             unknown_directive:
@@ -1168,7 +1241,13 @@ preprocess_buffer(PreContext * ctx) {
                 ctx->is_sys_header = is_from_sys;
                 ctx->include_level++;
 
+                arrpush(ctx->notice_stack, ctx->notice);
+                bool enable_notice = (ctx->notice & NOTICE_INCLUDES) && !(ctx->is_sys_header && !(ctx->notice & NOTICE_SYS_HEADERS));
+                SET_BITS(ctx->notice, NOTICE_ENABLED, enable_notice);
+
                 int error = preprocess_filename(ctx, inc_filepath_stored);
+
+                ctx->notice = arrpop(ctx->notice_stack);
 
                 ctx->is_sys_header = prev;
                 ctx->include_level--;
@@ -1185,6 +1264,7 @@ preprocess_buffer(PreContext * ctx) {
             FileLoc pop_file = {
                 .offset = arrlen(ctx->result_buffer),
                 .mode = LOC_POP,
+                .notice = ctx->notice,
             };
             if (arrlast(ctx->loc.list).mode == LOC_FILE) {
                 (void)arrpop(ctx->loc.list);
@@ -1212,6 +1292,7 @@ preprocess_buffer(PreContext * ctx) {
                             .file = file,
                             .macro_name = ctx->expand_ctx.last_macro_name,
                             .mode = LOC_MACRO,
+                            .notice = ctx->notice,
                         };
                         arrput(ctx->loc.list, loc_push_macro);
 
@@ -1228,6 +1309,7 @@ preprocess_buffer(PreContext * ctx) {
                                         FileLoc loc = {
                                             .offset = arrlen(ctx->result_buffer) + 1*mtk.preceding_space,
                                             .file_offset = file_offset,
+                                            .notice = ctx->notice,
                                         };
                                         if (origin) loc.file = origin;
                                         arrput(ctx->loc.list, loc);
@@ -1247,6 +1329,7 @@ preprocess_buffer(PreContext * ctx) {
                         FileLoc pop_macro = {
                             .offset = arrlen(ctx->result_buffer),
                             .mode = LOC_POP,
+                            .notice = ctx->notice,
                         };
                         arrput(ctx->loc.list, pop_macro);
 
@@ -1299,9 +1382,6 @@ preprocess_filename(PreContext * ctx, char * filename) {
         new_buf->buffer = file_buffer;
         new_buf->buffer_size = file_size;
         new_buf->mtime = mtime;
-        if (!ctx->is_sys_header) {
-            new_buf->gen = true;
-        }
         ctx->current_file = new_buf;
         arrput(ctx->loc.file_buffers, new_buf);
     }
@@ -1368,6 +1448,9 @@ run_preprocessor(int argc, char ** argv) {
     ctx->expr_ctx->mode = MODE_PRE;
     ctx->expr_ctx->arena = new_arena(EXPR_BUCKET_CAP);
 
+    ctx->notice = NOTICE_DEFAULT;
+    ctx->notice_stack = NULL;
+
     PreInfo info = {0};
 
     sh_new_arena(ctx->defines);
@@ -1420,6 +1503,14 @@ run_preprocessor(int argc, char ** argv) {
                     info.gen_mode = GEN_CITY;
                 } else if (0==strcmp(arg, "gen-vim-syntax")) {
                     info.gen_mode = GEN_VIM_SYNTAX;
+                } else if (0==strcmp(arg, "pragma")) {
+                    char * text = argv[++i];
+                    char * text_cpy = malloc(strlen(text) + 2);
+                    strcpy(text_cpy, text);
+                    strcat(text_cpy, "\n");
+                    char * s = text_cpy;
+                    pre_handle_intro_pragma(ctx, &s, NULL);
+                    free(text_cpy);
                 } else {
                     fprintf(stderr, "Unknown option: '%s'\n", arg);
                     exit(1);
