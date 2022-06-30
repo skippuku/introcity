@@ -5,7 +5,6 @@ db_*
 *.o
 *.d
 intro
-test/interactive_test
 test/log.txt
 test/intro.odin
 build/

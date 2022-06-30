@@ -411,28 +411,6 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         }
 
         IntroMember member = {0};
-        if (!decl.name_tk.start) {
-            if (decl.type->category == INTRO_STRUCT || decl.type->category == INTRO_UNION) {
-                IntroStruct * s = decl.base->i_struct;
-                int member_index_offset = arrlen(members);
-                for (int i=0; i < s->count_members; i++) {
-                    arrput(members, s->members[i]);
-                }
-                for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
-                    AttributeDirective * p_directive = &ctx->attribute_directives[i];
-                    if (p_directive->type == decl.base) {
-                        p_directive->type = NULL;
-                        p_directive->member_index += member_index_offset; 
-                    }
-                }
-                continue;
-            } else {
-                parse_error(ctx, &tk, "Struct member has no name, or type is unknown.");
-                return -1;
-            }
-        }
-
-        member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
         member.type = decl.type;
         //member.bitfield = decl.bitfield; // TODO
 
@@ -449,6 +427,33 @@ parse_struct(ParseContext * ctx, char ** o_s) {
                 total_size = member.type->size;
             }
             member.offset = 0;
+        }
+
+        if (decl.name_tk.start) {
+            member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
+        } else {
+            if (decl.type->category == INTRO_STRUCT || decl.type->category == INTRO_UNION) {
+                IntroStruct * s = decl.type->i_struct;
+                total_size += (decl.type->align - (total_size % decl.type->align)) % decl.type->align;
+                int member_index_offset = arrlen(members);
+                for (int i=0; i < s->count_members; i++) {
+                    IntroMember embed_member = s->members[i];
+                    embed_member.offset = member.offset + embed_member.offset;
+                    arrput(members, embed_member);
+                }
+                // correct member_index for attributes applied to members in the embedded type
+                for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
+                    AttributeDirective * p_directive = &ctx->attribute_directives[i];
+                    if (p_directive->type == decl.type) {
+                        p_directive->type = NULL;
+                        p_directive->member_index += member_index_offset;
+                    }
+                }
+                continue;
+            } else {
+                parse_error(ctx, &tk, "Struct member has no name, or type is unknown.");
+                return -1;
+            }
         }
 
         arrput(members, member);

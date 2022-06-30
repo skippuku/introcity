@@ -353,19 +353,15 @@ post_reverse: ;
     return proc;
 }
 
-#pragma GCC diagnostic push
-#ifndef __clang__
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-#endif
 intmax_t
 run_expression(ExprProcedure * proc) {
     intmax_t stack [proc->stack_size + 1]; // +1: no undefined behavior
     intmax_t stack_index = 0;
     intmax_t result = 0;
+    intmax_t left = 0, right = 0;
     for (int i=0; i < proc->count_instructions; i++) {
         ExprInstruction ins = proc->instructions[i];
 
-        intmax_t left, right;
         switch(ins.left_type) {
         case REG_VALUE: left = ins.left_value; break;
         case REG_LAST_RESULT: left = result; break;
@@ -425,4 +421,3 @@ run_expression(ExprProcedure * proc) {
 
     return result;
 }
-#pragma GCC diagnostic pop

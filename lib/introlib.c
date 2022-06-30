@@ -622,6 +622,11 @@ typedef struct {
 } CityBuffer;
 
 typedef struct {
+    uint32_t data_location;
+    uint32_t offset_value;
+} CityDeferredPointer;
+
+typedef struct {
     uint32_t type_id_counter;
     uint8_t type_size;
     uint8_t offset_size;
@@ -631,6 +636,7 @@ typedef struct {
     CityTypeSet * type_set;
     IntroContext * ictx;
     CityBuffer * buffers;
+    CityDeferredPointer * deferred_ptrs;
     struct{ char * key; uint32_t value; } * name_cache;
 } CityCreationContext;
 
@@ -734,65 +740,90 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
 
 // TODO: support ptr to ptr, array of ptr
 static void
-city__serialize_pointer_data(CityCreationContext * ctx, uint32_t data_offset, const IntroType * s_type) {
-    assert(s_type->category == INTRO_STRUCT);
+city__serialize_pointer_data(CityCreationContext * ctx, uint32_t data_offset, const IntroType * type, uint32_t elem_count) {
+    switch(type->category) {
+    case INTRO_STRUCT: {
+        uint32_t last_offset = 0xFFffFFff;
+        for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
+            const IntroMember * member = &type->i_struct->members[m_index];
 
-    for (int m_index=0; m_index < s_type->i_struct->count_members; m_index++) {
-        const IntroMember * member = &s_type->i_struct->members[m_index];
-
-        if (intro_has_fields(member->type)) {
-            city__serialize_pointer_data(ctx, data_offset + member->offset, member->type);
-        } else if (member->type->category == INTRO_POINTER) {
-            void ** o_ptr = (void **)(ctx->data + data_offset + member->offset);
-            u8 * ptr = *o_ptr;
-            if (!ptr) continue;
+            if (member->offset == last_offset) {
+                continue;
+            }
+            last_offset = member->offset;
 
             if (!intro_has_attribute_x(ctx->ictx, member->attr, ctx->ictx->attr.builtin.i_city)) {
-                *o_ptr = 0;
+                memset(ctx->data + data_offset + member->offset, 0, member->type->size);
                 continue;
             }
 
             int64_t length;
-            if (intro_attribute_length_x(ctx->ictx, ctx->data + data_offset, s_type, member, &length)) {
+            if (intro_attribute_length_x(ctx->ictx, ctx->data + data_offset, type, member, &length)) {
             } else if (intro_has_attribute_x(ctx->ictx, member->attr, ctx->ictx->attr.builtin.i_cstring)) {
-                length = strlen((char *)ptr) + 1;
+                char * str = *(char **)(ctx->data + data_offset + member->offset);
+                if (str) {
+                    length = strlen(str) + 1;
+                } else {
+                    length = 0;
+                }
             } else {
                 length = 1;
             }
 
-            uint64_t elem_size = intro_size(member->type->of);
-            uint64_t buf_size = elem_size * length;
-            CityBuffer buf;
-            bool is_within_existing_buffer = false;
-            for (int buf_i=0; buf_i < arrlen(ctx->buffers); buf_i++) {
-                buf = ctx->buffers[buf_i];
-                if (ptr >= buf.origin && ptr + buf_size < buf.origin + buf.size) {
-                    is_within_existing_buffer = true;
-                    *o_ptr = (void *)(uintptr_t)(ptr - buf.origin + buf.ser_offset);
-                    break;
-                }
-            }
-            if (is_within_existing_buffer) continue;
-
-            align_arr_to(&ctx->data, 4, 0x7e);
-            uint32_t * ser_length = (uint32_t *)arraddnptr(ctx->data, 4);
-            *ser_length = length;
-
-            uint64_t alignment = member->type->of->align;
-            align_arr_to(&ctx->data, alignment, 0x2b);
-            void * ser_data = arraddnptr(ctx->data, buf_size);
-            memcpy(ser_data, ptr, buf_size);
-
-            uint32_t offset = (u8 *)ser_data - (u8 *)ctx->data;
-
-            buf.origin = ptr;
-            buf.ser_offset = offset;
-            buf.size = buf_size;
-            arrput(ctx->buffers, buf);
-
-            o_ptr = (void **)(ctx->data + data_offset + member->offset);
-            *o_ptr = (u8 *)(uintptr_t)offset;
+            city__serialize_pointer_data(ctx, data_offset + member->offset, member->type, (uint32_t)length);
         }
+    }break;
+
+    case INTRO_POINTER: {
+        if (type->of->size == 0) return;
+        u8 * ptr = *(u8 **)(ctx->data + data_offset);
+        if (!ptr) return;
+
+        uint32_t elem_size = type->of->size;
+        uint32_t buf_size = elem_size * elem_count;
+        CityBuffer buf;
+        CityDeferredPointer dptr;
+        dptr.data_location = data_offset;
+        for (int buf_i=0; buf_i < arrlen(ctx->buffers); buf_i++) {
+            buf = ctx->buffers[buf_i];
+            if (ptr >= buf.origin && ptr + buf_size <= buf.origin + buf.size) {
+                dptr.offset_value = ptr - buf.origin + buf.ser_offset,
+                arrput(ctx->deferred_ptrs, dptr);
+                return;
+            }
+        }
+
+        align_arr_to(&ctx->data, 4, 0x7e);
+        uint32_t * ser_length = (uint32_t *)arraddnptr(ctx->data, 4);
+        *ser_length = elem_count;
+
+        uint32_t alignment = type->of->align;
+        align_arr_to(&ctx->data, alignment, 0x2b);
+        uint32_t ser_offset = arraddnindex(ctx->data, buf_size);
+        memcpy(ctx->data + ser_offset, ptr, buf_size);
+
+        buf.origin = ptr;
+        buf.ser_offset = ser_offset;
+        buf.size = buf_size;
+        arrput(ctx->buffers, buf);
+
+        dptr.offset_value = ser_offset,
+        arrput(ctx->deferred_ptrs, dptr);
+
+        for (int elem_i=0; elem_i < elem_count; elem_i++) {
+            uint32_t elem_offset = ser_offset + (elem_i * type->of->size);
+            city__serialize_pointer_data(ctx, elem_offset, type->of, 1);
+        }
+    }break;
+
+    case INTRO_ARRAY: {
+        for (int elem_i=0; elem_i < type->array_size; elem_i++) {
+            uint32_t elem_offset = data_offset + (elem_i * type->of->size);
+            city__serialize_pointer_data(ctx, elem_offset, type->of, 1);
+        }
+    }break;
+
+    default: break;
     }
 }
 
@@ -829,7 +860,14 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
 
     CityBuffer src_buf = {.origin = src, .ser_offset = 0, .size = s_type->size};
     arrput(ctx->buffers, src_buf);
-    city__serialize_pointer_data(ctx, 0, s_type);
+    city__serialize_pointer_data(ctx, 0, s_type, 1);
+
+    for (int i=0; i < arrlen(ctx->deferred_ptrs); i++) {
+        CityDeferredPointer dptr = ctx->deferred_ptrs[i];
+        uintptr_t * o_ptr = (uintptr_t *)((u8 *)ctx->data + dptr.data_location);
+        *o_ptr = dptr.offset_value;
+    }
+    arrfree(ctx->deferred_ptrs);
 
     size_t result_size = header.data_ptr + arrlen(ctx->data);
     uint8_t * result = (uint8_t *)malloc(result_size);

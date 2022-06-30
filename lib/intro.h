@@ -261,6 +261,7 @@ I(attribute gui_ (
 ))
 
 I(apply_to (char *) (cstring))
+I(apply_to (void *) (~city))
 
 #define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
 #define intro_var_ptr(var, T) ((type->of == ITYPE(T))? (T *)var.data : (T *)0)

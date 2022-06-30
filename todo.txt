@@ -22,9 +22,8 @@ attribute:
     parse c++ struct defaults as intro defaults?
 
 city:
-    offsets might not need to be saved for struct members
-    maybe it would be better to save the struct packed anyway?
-    type id's
+    !! way to select which union member to serialize
+    type id's?
 
 config:
     allow config to be appended with another config?
@@ -52,7 +51,6 @@ parse:
 pre:
     include macros in introspection data (optionally)
     errors are fucked (again)
-        location system is just bad, replace it
     don't evaluate location line until it is known the type will be in info
     save location of includes and defines
     parse #line directives
@@ -61,11 +59,12 @@ pre:
     trim big newline gaps
 
 gen:
+    allow multiple outputs at once ex. header + city
     (these 3 points all kind of go together)
-    !! clang doesn't like flexible array initialization in c++
-        might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
-    !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
-    c header: use write protected buffer, load intro context from binary
+        !! clang doesn't like flexible array initialization in c++
+            might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
+        !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
+        c header: use write protected buffer, load intro context from binary
 
     option to create typedefs for structs and enums
     typeof with _Generic?
@@ -88,6 +87,7 @@ examples:
 doc:
 
 misc:
+    lexer stage, parse tokens at pre and parse stage
     idea: some kind of plugin system
         for when you want to do metaprogramming, it seems more sensible to run your metaprogram along with intro \
           instead of compiling another program.
@@ -95,4 +95,3 @@ misc:
         could be used to add checking to attributes, and maybe other kinds of enforcement
     memory cleanup
     parse program options and pass only relevant ones to sub-processes
-    preprocessor should output tokens instead of text

@@ -58,5 +58,20 @@ main() {
     CHECK_OFFSET(UnionTest, b);
     CHECK_OFFSET(UnionTest, c);
 
+    CHECK_SIZE(IntroType);
+    CHECK_OFFSET(IntroType, category);
+    CHECK_OFFSET(IntroType, flags);
+    CHECK_OFFSET(IntroType, __data);
+    CHECK_OFFSET(IntroType, i_struct);
+    CHECK_OFFSET(IntroType, i_enum);
+    CHECK_OFFSET(IntroType, array_size);
+    CHECK_OFFSET(IntroType, of);
+    CHECK_OFFSET(IntroType, parent);
+    CHECK_OFFSET(IntroType, name);
+    CHECK_OFFSET(IntroType, attr);
+    CHECK_OFFSET(IntroType, size);
+    CHECK_OFFSET(IntroType, align);
+    CHECK_OFFSET(IntroType, location);
+
     return 0;
 }
