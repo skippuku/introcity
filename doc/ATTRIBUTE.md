@@ -16,7 +16,7 @@ I(attribute namespace_ (
 ))
 ```
 
-Builtin attributes are defined in the same way as custom attributes. You can see how they are defined in [lib/intro.h](lib/intro.h).   
+Builtin attributes are defined in the same way as custom attributes. You can see how they are defined in [lib/intro.h](../lib/intro.h).   
   
 See the [types](#types) section for information on available attribute types.  
 
@@ -46,7 +46,7 @@ typedef float Vector2 [2] I(vector, color {0,255,255,255});
 
 Attributes can be referenced without their namespace if there are no name conflicts.  
   
-Attributes can also be applied to a previously defined type using `apply_to`. For example the following is used in [lib/intro.h](lib/intro.h):
+Attributes can also be applied to a previously defined type using `apply_to`. For example the following is used in [lib/intro.h](../lib/intro.h):
 ```C
 I(apply_to (char *) (cstring))
 ```
@@ -54,7 +54,7 @@ The type must be contained in parenthesis like a cast. Following the type is a l
 
 ## Retrieving attributes
 
-For information on how to retrieve attribute information in your program, see [LIB.md](doc/LIB.md).
+For information on how to retrieve attribute information in your program, see [LIB.md](LIB.md).
 
 # Builtin Attributes
 These are the attributes provided by *intro*.
@@ -147,7 +147,7 @@ typedef struct {
 
 ## Namespace: gui_
 
-Attributes in the `gui_` namespace are used by [intro\_imgui\_edit](lib/intro_imgui.cpp).
+Attributes in the `gui_` namespace are used by [intro\_imgui\_edit](../lib/intro_imgui.cpp).
 
 ### note
 **type:** [string](#string)   
