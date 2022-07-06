@@ -33,7 +33,7 @@ main(int argc, char * argv []) {
     }
 
     ParseInfo parse_info = {0};
-    int error = parse_preprocessed_text(&pre_info, &parse_info);
+    int error = parse_preprocessed_tokens(&pre_info, &parse_info);
     if (error) {
         fprintf(stderr, "parse failed.\n");
         return 2;

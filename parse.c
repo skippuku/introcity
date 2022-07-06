@@ -257,8 +257,8 @@ bool
 maybe_expect_attribute(ParseContext * ctx, TokenIndex * tidx, int32_t member_index, Token * o_tk) {
     bool had_application = false;
     while (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
+        int32_t paren_index = tidx->index;
         Token paren = next_token(tidx);
-        int32_t paren_index = tidx->index - 1;
         if (paren.type != TK_L_PARENTHESIS) {
             parse_error(ctx, paren, "Expected '('.");
             exit(1);
@@ -847,13 +847,12 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 
         if (tk.type == TK_L_PARENTHESIS) {
             paren = tidx->index;
-            tidx->index = find_closing((TokenIndex){.list = tidx->list, .index = paren}) + 1;
+            tidx->index = find_closing((TokenIndex){.list = tidx->list, .index = tidx->index - 1});
             tk = next_token(tidx);
         }
 
         if (tk.type == TK_IDENTIFIER) {
             decl->name_tk = tk;
-            if (tk_equal(&tk, "_onexit_t")) db_break();
             tk = next_token(tidx);
         }
 
@@ -933,7 +932,6 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 
 static int
 parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
-    if (tidx->index > 11370) db_break();
     IntroFunction * func = NULL;
     int ret = 0;
     bool attribute_at_start = false;
@@ -1195,7 +1193,7 @@ add_to_gen_info(ParseContext * ctx, ParseInfo * info, IntroType * type) {
 }
 
 int
-parse_preprocessed_text(PreInfo * pre_info, ParseInfo * o_info) {
+parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
     ParseContext * ctx = calloc(1, sizeof(ParseContext));
     ctx->tk_list = pre_info->result_list;
     ctx->arena = new_arena((1 << 20)); // 1mb buckets

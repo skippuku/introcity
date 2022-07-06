@@ -276,11 +276,14 @@ next_token(TokenIndex * tidx) {
 }
 
 static void
-advance_past(TokenIndex * tidx, char * location) {
+advance_to(TokenIndex * tidx, char * location) {
     Token tk;
     while (1) {
         tk = next_token(tidx);
-        if (tk.start < location) return;
+        if (location <= tk.start) {
+            tidx->index--;
+            return;
+        }
     }
 }
 

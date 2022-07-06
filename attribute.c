@@ -312,11 +312,11 @@ parse_value(ParseContext * ctx, IntroType * type, TokenIndex * tidx, uint32_t * 
         return store_value(ctx, &result, type->size);
     } else if (type->category == INTRO_F32) {
         float result = strtof(tk_at(tidx).start, &end);
-        advance_past(tidx, end);
+        advance_to(tidx, end);
         return store_value(ctx, &result, 4);
     } else if (type->category == INTRO_F64) {
         double result = strtod(tk_at(tidx).start, &end);
-        advance_past(tidx, end);
+        advance_to(tidx, end);
         return store_value(ctx, &result, 8);
     } else if (type->category == INTRO_POINTER) {
         Token tk = next_token(tidx);
@@ -384,8 +384,8 @@ parse_array_value(ParseContext * ctx, const IntroType * type, TokenIndex * tidx,
 
     EXPECT('{');
     while (1) {
-        tk = next_token(tidx);
         int32_t tk_index = tidx->index;
+        tk = next_token(tidx);
         if (tk.type == TK_L_BRACKET) {
             index = parse_constant_expression(ctx, tidx);
             if (index < 0 || index >= type->array_size) {
@@ -640,6 +640,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     case INTRO_AT_FLOAT: {
         tk = next_token(tidx);
         float result = strtof(tk.start, &end);
+        advance_to(tidx, end);
         if (end == tk.start) {
             parse_error(ctx, tk, "Invalid floating point number.");
             return -1;
@@ -734,7 +735,7 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
                 // @copy from above
                 char * end;
                 long result = strtol(tk.start, &end, 0);
-                advance_past(tidx, end);
+                advance_to(tidx, end);
                 if (end == tk.start) {
                     parse_error(ctx, tk, "Invalid integer.");
                     return -1;
