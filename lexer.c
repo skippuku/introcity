@@ -62,6 +62,11 @@ typedef struct Token {
     } type;
 } Token;
 
+typedef struct {
+    Token * list;
+    int32_t index;
+} TokenIndex;
+
 static bool
 is_space(char c) {
     return c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r' || c == ' ';
@@ -260,134 +265,71 @@ end:
     return tk;
 }
 
-// TODO: remove this function, parser will receive tokens
-Token
-next_token(char ** o_s) {
-    Token tk = {0};
-    tk.type = TK_END;
-
-    char * s = *o_s;
-    while (*s != '\0' && is_space(*s)) s++;
-    if (*s == '\0') {
-        tk.start = s - 1;
-        tk.length = 1;
-        return tk;
-    }
-
-    tk.start = s;
-
-    if (is_iden(*s)) {
-        while (*++s != '\0' && is_iden(*s));
-        tk.type = TK_IDENTIFIER;
-        tk.length = s - tk.start;
-        *o_s = s;
-        return tk;
-    }
-
-    if (*s == '\'' || *s == '"') {
-        char started_with = *s;
-        while (*++s != '\0') {
-            if (*s == started_with && !(*(s-1) == '\\' && *(s-2) != '\\')) {
-                tk.type = TK_STRING;
-                tk.length = ++s - tk.start;
-                *o_s = s;
-                return tk;
-            }
-        }
-        if (*s == '\0') return tk;
-    }
-
-    enum TokenFlags {
-        TK_CHECK_DOUBLE = 0x01,
-        TK_CHECK_EQUAL  = 0x02,
-    } flags = 0;
-
-    tk.length = 1;
-    switch(*s) {
-    case '{': tk.type = TK_L_BRACE; break;
-    case '}': tk.type = TK_R_BRACE; break;
-
-    case '[': tk.type = TK_L_BRACKET; break;
-    case ']': tk.type = TK_R_BRACKET; break;
-
-    case '(': tk.type = TK_L_PARENTHESIS; break;
-    case ')': tk.type = TK_R_PARENTHESIS; break;
-
-    case '<': tk.type = TK_L_ANGLE;
-              flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL; break;
-    case '>': tk.type = TK_R_ANGLE;
-              flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL; break;
-
-    case ':': tk.type = TK_COLON; break;
-    case ';': tk.type = TK_SEMICOLON; break;
-    case '*': tk.type = TK_STAR; break;
-    case ',': tk.type = TK_COMMA; break;
-    case '.': tk.type = TK_PERIOD; break;
-    case '#': tk.type = TK_HASH; break;
-    case '-': tk.type = TK_HYPHEN; break;
-    case '+': tk.type = TK_PLUS; break;
-    case '^': tk.type = TK_CARET; break;
-    case '/': tk.type = TK_FORSLASH; break;
-    case '~': tk.type = TK_TILDE; break;
-    case '%': tk.type = TK_MOD; break;
-    case '?': tk.type = TK_QUESTION_MARK; break;
-    case '@': tk.type = TK_AT; break;
-    case '!': tk.type = TK_BANG;
-              flags = TK_CHECK_EQUAL; break;
-
-    case '=': tk.type = TK_EQUAL;
-              flags = TK_CHECK_DOUBLE; break;
-    case '|': tk.type = TK_BAR;
-              flags = TK_CHECK_DOUBLE; break;
-    case '&': tk.type = TK_AND;
-              flags = TK_CHECK_DOUBLE; break;
-
-    case EOF: tk.type = TK_END; break;
-
-    default: tk.type = TK_UNKNOWN; break;
-    }
-
-    if ((flags & TK_CHECK_DOUBLE)) {
-        if (*(s+1) == *s) {
-            tk.type += 1;
-            tk.length += 1;
-            s += 1;
-            flags = 0;
-        }
-    }
-    if ((flags & TK_CHECK_EQUAL)) {
-        if (*(s+1) == '=') {
-            tk.type += 2;
-            tk.length += 1;
-            s += 1;
-        }
-    }
-
-    *o_s = s + 1;
-    return tk;
+static inline Token
+tk_at(const TokenIndex * tidx) {
+    return tidx->list[tidx->index];
 }
 
-char *
-find_closing(char * s) {
+static inline Token
+next_token(TokenIndex * tidx) {
+    return tidx->list[tidx->index++];
+}
+
+static void
+advance_past(TokenIndex * tidx, char * location) {
+    Token tk;
+    while (1) {
+        tk = next_token(tidx);
+        if (tk.start < location) return;
+    }
+}
+
+static void
+back_to(TokenIndex * tidx, char * location) {
+    while (tk_at(tidx).start > location) {
+        tidx->index--;
+    }
+}
+
+Token *
+create_token_list(char * buffer) {
+    char * s = buffer;
+
+    Token * list = NULL;
+    arrsetcap(list, 64);
+
+    while (1) {
+        Token tk = pre_next_token(&s);
+        arrput(list, tk);
+        if (tk.type == TK_END) {
+            break;
+        }
+    }
+
+    return list;
+}
+
+int32_t
+find_closing(TokenIndex idx) {
     int depth = 1;
-    char o = *s, c;
+    char o = *tk_at(&idx).start, c;
     switch(o) {
     case '{': c = '}'; break;
     case '[': c = ']'; break;
     case '(': c = ')'; break;
     case '<': c = '>'; break;
-    default: return NULL;
+    default: return 0;
     }
-    s++;
+    idx.index++;
     Token tk;
-    while ((tk = next_token(&s)).type != TK_END) {
+    while ((tk = next_token(&idx)).type != TK_END) {
         if (*tk.start == o) {
             depth++;
         } else if (*tk.start == c) {
-            if (--depth == 0) return tk.start;
+            if (--depth == 0) return idx.index;
         }
     }
-    return NULL;
+    return 0;
 }
 
 static bool

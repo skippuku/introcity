@@ -8,9 +8,9 @@ enum AttributeToken {
 };
 
 #define EXPECT(x) \
-    tk = next_token(o_s); \
+    tk = next_token(tidx); \
     if (tk.start[0] != x) { \
-        parse_error(ctx, &tk, "Expected " #x "."); \
+        parse_error(ctx, tk, "Expected " #x "."); \
         return -1; \
     }
 
@@ -47,38 +47,38 @@ attribute_parse_init(ParseContext * ctx) {
 }
 
 int
-parse_global_directive(ParseContext * ctx, char ** o_s) {
-    Token tk = next_token(o_s);
+parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
+    Token tk = next_token(tidx);
     if (tk.type != TK_L_PARENTHESIS) {
-        parse_error(ctx, &tk, "Expected '('.");
+        parse_error(ctx, tk, "Expected '('.");
         return -1;
     }
 
-    tk = next_token(o_s);
+    tk = next_token(tidx);
     char temp [1024];
     memcpy(temp, tk.start, tk.length);
     temp[tk.length] = 0;
     int a_tk = shget(ctx->attribute_token_map, temp);
     if (a_tk == ATTR_TK_ATTRIBUTE) {
-        tk = next_token(o_s);
+        tk = next_token(tidx);
         char * namespace = NULL;
         if (tk.type == TK_IDENTIFIER) {
             namespace = copy_and_terminate(ctx->arena, tk.start, tk.length);
-            tk = next_token(o_s);
+            tk = next_token(tidx);
         }
         if (tk.type != TK_L_PARENTHESIS) {
-            parse_error(ctx, &tk, "Expected. '('.");
+            parse_error(ctx, tk, "Expected. '('.");
             return -1;
         }
 
         while (1) {
             AttributeParseInfo info = {0};
 
-            tk = next_token(o_s);
+            tk = next_token(tidx);
             if (tk.type == TK_R_PARENTHESIS) {
                 break;
             } else if (tk.type != TK_IDENTIFIER) {
-                parse_error(ctx, &tk, "Expected identifier for attribute name.");
+                parse_error(ctx, tk, "Expected identifier for attribute name.");
             }
             char namespaced [1024];
             char unspaced [1024];
@@ -87,21 +87,21 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
             strcpy(namespaced, namespace);
             strcat(namespaced, unspaced);
             if (shgeti(ctx->attribute_map, namespaced) >= 0) {
-                parse_error(ctx, &tk, "Attribute name is reserved.");
+                parse_error(ctx, tk, "Attribute name is reserved.");
                 return -1;
             }
-            tk = next_token(o_s);
+            tk = next_token(tidx);
             if (tk.type != TK_COLON) {
-                parse_error(ctx, &tk, "Expected ':'.");
+                parse_error(ctx, tk, "Expected ':'.");
                 return -1;
             }
 
-            tk = next_token(o_s);
+            tk = next_token(tidx);
             memcpy(temp, tk.start, tk.length);
             temp[tk.length] = 0;
             int a_tk = shget(ctx->attribute_token_map, temp);
             if (a_tk >= INTRO_AT_COUNT) {
-                parse_error(ctx, &tk, "Invalid attribute type.");
+                parse_error(ctx, tk, "Invalid attribute type.");
                 return -1;
             }
             info.type = a_tk;
@@ -110,53 +110,53 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
                 info.id = ctx->attribute_id_counter++;
             }
 
-            tk = next_token(o_s);
+            tk = next_token(tidx);
             if (tk.type == TK_L_PARENTHESIS && a_tk == INTRO_AT_VALUE) {
-                tk = next_token(o_s);
+                tk = next_token(tidx);
                 if (tk.type == TK_AT) {
-                    tk = next_token(o_s);
+                    tk = next_token(tidx);
                     if (!tk_equal(&tk, "inherit")) {
-                        parse_error(ctx, &tk, "Invalid trait.");
+                        parse_error(ctx, tk, "Invalid trait.");
                         return -1;
                     }
-                    tk = next_token(o_s);
+                    tk = next_token(tidx);
                     info.type_ptr = NULL;
                 } else {
-                    *o_s = tk.start;
+                    tidx->index--;
                     DeclState decl = {.state = DECL_CAST};
-                    int ret = parse_declaration(ctx, o_s, &decl);
+                    int ret = parse_declaration(ctx, tidx, &decl);
                     if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
                         info.type_ptr = decl.type;
                     } else if (ret == RET_NOT_TYPE) {
-                        parse_error(ctx, &decl.base_tk, "Not a type.");
+                        parse_error(ctx, decl.base_tk, "Not a type.");
                         return -1;
                     } else {
                         return -1;
                     }
-                    tk = next_token(o_s);
+                    tk = next_token(tidx);
                 }
                 if (tk.type != TK_R_PARENTHESIS) {
-                    parse_error(ctx, &tk, "Expected ')'.");
+                    parse_error(ctx, tk, "Expected ')'.");
                     return -1;
                 }
-                tk = next_token(o_s);
+                tk = next_token(tidx);
             }
 
             if (tk.type == TK_AT) {
-                tk = next_token(o_s);
+                tk = next_token(tidx);
                 if (tk_equal(&tk, "global")) {
                     if (info.type != INTRO_AT_FLAG) {
-                        parse_error(ctx, &tk, "Only flag attributes can have the trait global.");
+                        parse_error(ctx, tk, "Only flag attributes can have the trait global.");
                         return -1;
                     }
                     info.global = true;
                 } else if (tk_equal(&tk, "repress")) {
                     info.repress = true;
                 } else {
-                    parse_error(ctx, &tk, "Invalid trait.");
+                    parse_error(ctx, tk, "Invalid trait.");
                     return -1;
                 }
-                tk = next_token(o_s);
+                tk = next_token(tidx);
             }
 
             shput(ctx->attribute_map, namespaced, info);
@@ -173,32 +173,34 @@ parse_global_directive(ParseContext * ctx, char ** o_s) {
             } else if (tk.type == TK_R_PARENTHESIS) {
                 break;
             } else {
-                parse_error(ctx, &tk, "Expected ',' or ')'.");
+                parse_error(ctx, tk, "Expected ',' or ')'.");
                 return -1;
             }
         }
     } else if (a_tk == ATTR_TK_APPLY_TO) {
         EXPECT('(');
         DeclState decl = {.state = DECL_CAST};
-        int ret = parse_declaration(ctx, o_s, &decl);
+        int ret = parse_declaration(ctx, tidx, &decl);
         if (ret < 0) return -1;
         EXPECT(')');
         EXPECT('(');
-        *o_s = find_closing(tk.start) + 1;
+        tidx->index--;
+        int32_t start_directive_index = tidx->index;
+        tidx->index = find_closing(*tidx);
         AttributeDirective directive = {
             .type = decl.type,
-            .location = tk.start,
+            .location = start_directive_index,
             .member_index = MIDX_TYPE,
         };
         arrput(ctx->attribute_directives, directive);
     } else {
-        parse_error(ctx, &tk, "Invalid. Expected 'attribute' or 'apply_to'.");
+        parse_error(ctx, tk, "Invalid. Expected 'attribute' or 'apply_to'.");
         return -1;
     }
 
-    tk = next_token(o_s);
+    tk = next_token(tidx);
     if (tk.type != TK_R_PARENTHESIS) {
-        parse_error(ctx, &tk, "Missing ')'.");
+        parse_error(ctx, tk, "Missing ')'.");
         return -1;
     }
     return 0;
@@ -298,48 +300,52 @@ store_ptr(ParseContext * ctx, void * data, size_t size) {
     return offset;
 }
 
-ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint32_t * o_count);
-ptrdiff_t parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s);
+ptrdiff_t parse_array_value(ParseContext * ctx, const IntroType * type, TokenIndex * tidx, uint32_t * o_count);
+ptrdiff_t parse_struct_value(ParseContext * ctx, const IntroType * type, TokenIndex * tidx);
 
 // TODO: change to parse_expression
 ptrdiff_t
-parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_count) {
+parse_value(ParseContext * ctx, IntroType * type, TokenIndex * tidx, uint32_t * o_count) {
+    char * end;
     if ((type->category >= INTRO_U8 && type->category <= INTRO_S64) || type->category == INTRO_ENUM) {
-        intmax_t result = parse_constant_expression(ctx, o_s);
+        intmax_t result = parse_constant_expression(ctx, tidx);
         return store_value(ctx, &result, type->size);
     } else if (type->category == INTRO_F32) {
-        float result = strtof(*o_s, o_s);
+        float result = strtof(tk_at(tidx).start, &end);
+        advance_past(tidx, end);
         return store_value(ctx, &result, 4);
     } else if (type->category == INTRO_F64) {
-        double result = strtod(*o_s, o_s);
+        double result = strtod(tk_at(tidx).start, &end);
+        advance_past(tidx, end);
         return store_value(ctx, &result, 8);
     } else if (type->category == INTRO_POINTER) {
-        Token tk = next_token(o_s);
+        Token tk = next_token(tidx);
         if (tk.type == TK_STRING) {
             if (type->of->category == INTRO_S8 && 0==strcmp(type->of->name, "char")) {
                 size_t length;
                 char * str = parse_escaped_string(&tk, &length);
                 if (!str) {
-                    parse_error(ctx, &tk, "Invalid string.");
+                    parse_error(ctx, tk, "Invalid string.");
                     return -1;
                 }
                 ptrdiff_t result = store_ptr(ctx, str, length);
                 return result;
             }
         } else {
-            *o_s = tk.start;
-            ptrdiff_t array_value_offset = parse_array_value(ctx, type, o_s, o_count);
+            tidx->index--;
+            ptrdiff_t array_value_offset = parse_array_value(ctx, type, tidx, o_count);
             ptrdiff_t pointer_offset = store_value(ctx, &array_value_offset, sizeof(size_t));
             return pointer_offset;
         }
     } else if (type->category == INTRO_ARRAY) {
         if (type->of->category == INTRO_S8 && 0==strcmp(type->of->name, "char")) { // NOTE: this should probably check attributes instead
-            Token tk = next_token(o_s);
+            Token tk = next_token(tidx);
+            int32_t tk_index = tidx->index;
             if (tk.type == TK_STRING) {
                 size_t str_length;
                 char * str = parse_escaped_string(&tk, &str_length);
                 if (!str) {
-                    parse_error(ctx, &tk, "Invalid string.");
+                    parse_error(ctx, tk, "Invalid string.");
                     return -1;
                 }
                 ptrdiff_t result = arrlen(ctx->value_buffer);
@@ -350,19 +356,19 @@ parse_value(ParseContext * ctx, IntroType * type, char ** o_s, uint32_t * o_coun
 
                 return result;
             }
-            *o_s = tk.start;
+            tidx->index = tk_index;
         }
-        ptrdiff_t result = parse_array_value(ctx, type, o_s, NULL);
+        ptrdiff_t result = parse_array_value(ctx, type, tidx, NULL);
         return result;
     } else if (intro_has_fields(type)) {
-        ptrdiff_t result = parse_struct_value(ctx, type, o_s);
+        ptrdiff_t result = parse_struct_value(ctx, type, tidx);
         return result;
     }
     return -1;
 }
 
 ptrdiff_t
-parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint32_t * o_count) {
+parse_array_value(ParseContext * ctx, const IntroType * type, TokenIndex * tidx, uint32_t * o_count) {
     Token tk;
 
     uint8_t * prev_buf = ctx->value_buffer;
@@ -378,37 +384,38 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint3
 
     EXPECT('{');
     while (1) {
-        tk = next_token(o_s);
+        tk = next_token(tidx);
+        int32_t tk_index = tidx->index;
         if (tk.type == TK_L_BRACKET) {
-            index = parse_constant_expression(ctx, o_s);
+            index = parse_constant_expression(ctx, tidx);
             if (index < 0 || index >= type->array_size) {
-                parse_error(ctx, &tk, "Invalid index.");
+                parse_error(ctx, tk, "Invalid index.");
                 return -1;
             }
             EXPECT(']');
             EXPECT('=');
         } else if (tk.type == TK_COMMA) {
-            parse_error(ctx, &tk, "Invalid symbol.");
+            parse_error(ctx, tk, "Invalid symbol.");
             return -1;
         } else if (tk.type == TK_R_BRACE) {
             break;
         } else {
-            *o_s = tk.start;
+            tidx->index = tk_index;
         }
         if (highest_index < index) highest_index = index;
         arrsetlen(ctx->value_buffer, index * array_element_size);
-        ptrdiff_t parse_ret = parse_value(ctx, type->of, o_s, NULL);
+        ptrdiff_t parse_ret = parse_value(ctx, type->of, tidx, NULL);
         if (parse_ret < 0) {
             return -1;
         }
 
-        tk = next_token(o_s);
+        tk = next_token(tidx);
         if (tk.type == TK_COMMA) {
             index++;
         } else if (tk.type == TK_R_BRACE) {
             break;
         } else {
-            parse_error(ctx, &tk, "Invalid symbol.");
+            parse_error(ctx, tk, "Invalid symbol.");
             return -1;
         }
     }
@@ -433,7 +440,7 @@ parse_array_value(ParseContext * ctx, const IntroType * type, char ** o_s, uint3
 }
 
 ptrdiff_t
-parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
+parse_struct_value(ParseContext * ctx, const IntroType * type, TokenIndex * tidx) {
     Token tk;
     EXPECT('{');
 
@@ -446,11 +453,11 @@ parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
 
     int member_index = 0;
     while (1) {
-        tk = next_token(o_s);
+        tk = next_token(tidx);
         if (tk.type == TK_PERIOD) {
-            tk = next_token(o_s);
+            tk = next_token(tidx);
             if (tk.type != TK_IDENTIFIER) {
-                parse_error(ctx, &tk, "Expected identifier.");
+                parse_error(ctx, tk, "Expected identifier.");
                 return -1;
             }
             bool found_match = false;
@@ -469,30 +476,30 @@ parse_struct_value(ParseContext * ctx, const IntroType * type, char ** o_s) {
                 } else {
                     strcpy(buf, "Invalid member name.");
                 }
-                parse_error(ctx, &tk, buf);
+                parse_error(ctx, tk, buf);
                 return -1;
             }
             EXPECT('=');
         } else if (tk.type == TK_R_BRACE) {
             break;
         } else {
-            *o_s = tk.start;
+            tidx->index--;
         }
 
         IntroMember member = type->i_struct->members[member_index];
         arrsetlen(ctx->value_buffer, member.offset);
-        ptrdiff_t parse_ret = parse_value(ctx, member.type, o_s, NULL);
+        ptrdiff_t parse_ret = parse_value(ctx, member.type, tidx, NULL);
         if (parse_ret < 0) {
             return -1;
         }
 
-        tk = next_token(o_s);
+        tk = next_token(tidx);
         if (tk.type == TK_COMMA) {
             member_index += 1;
         } else if (tk.type == TK_R_BRACE) {
             break;
         } else {
-            parse_error(ctx, &tk, "Expected ',' or '}'.");
+            parse_error(ctx, tk, "Expected ',' or '}'.");
             return -1;
         }
     }
@@ -523,7 +530,7 @@ store_deferred_ptrs(ParseContext * ctx) {
 }
 
 int
-handle_value_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_index, AttributeData * data, Token * p_tk) {
+handle_value_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int member_index, AttributeData * data, Token * p_tk) {
     IntroAttribute attr_info = ctx->p_info->attr.available[data->id];
     IntroType * v_type;
     if (attr_info.type_id == 0) {
@@ -533,9 +540,9 @@ handle_value_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int me
     }
     assert(arrlen(ctx->ptr_stores) == 0);
     uint32_t length_value = 0;
-    ptrdiff_t value_offset = parse_value(ctx, v_type, o_s, &length_value);
+    ptrdiff_t value_offset = parse_value(ctx, v_type, tidx, &length_value);
     if (value_offset < 0) {
-        parse_error(ctx, p_tk, "Error parsing value attribute.");
+        parse_error(ctx, *p_tk, "Error parsing value attribute.");
         return -1;
     }
     if (length_value) {
@@ -553,18 +560,18 @@ handle_value_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int me
 }
 
 int32_t
-parse_attribute_id(ParseContext * ctx, char ** o_s) {
-    Token tk = next_token(o_s);
+parse_attribute_id(ParseContext * ctx, TokenIndex * tidx) {
+    Token tk = next_token(tidx);
     STACK_TERMINATE(term, tk.start, tk.length);
     int map_index = shgeti(ctx->attribute_map, term);
     if (map_index < 0) {
-        parse_error(ctx, &tk, "No such attribute.");
+        parse_error(ctx, tk, "No such attribute.");
         return -1;
     }
 
     AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
     if (attr_info.invalid_without_namespace) {
-        parse_error(ctx, &tk, "Name matches more than one namespace.");
+        parse_error(ctx, tk, "Name matches more than one namespace.");
         return -1;
     }
     uint32_t id = attr_info.final_id;
@@ -572,38 +579,39 @@ parse_attribute_id(ParseContext * ctx, char ** o_s) {
 }
 
 int
-parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_index, AttributeData * o_result) {
+parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int member_index, AttributeData * o_result) {
     IntroStruct * i_struct = type->i_struct;
     AttributeData data = {0};
 
-    Token tk = next_token(o_s);
+    Token tk = next_token(tidx);
     if (tk.type != TK_IDENTIFIER) {
-        parse_error(ctx, &tk, "Expected identifier.");
+        parse_error(ctx, tk, "Expected identifier.");
         return -1;
     }
 
     STACK_TERMINATE(terminated_name, tk.start, tk.length);
     int map_index = shgeti(ctx->attribute_map, terminated_name);
     if (map_index < 0) {
-        parse_error(ctx, &tk, "No such attribute.");
+        parse_error(ctx, tk, "No such attribute.");
         return -1;
     }
 
     AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
     if (attr_info.invalid_without_namespace) {
-        parse_error(ctx, &tk, "Name matches more than one namespace.");
+        parse_error(ctx, tk, "Name matches more than one namespace.");
         return -1;
     }
     data.id = attr_info.final_id;
     IntroAttributeType attribute_type = attr_info.type;
 
+    char * end;
     switch(attribute_type) {
     default: break;
     case INTRO_AT_FLAG: {
         if (data.id == ctx->builtin.i_type) {
             IntroType * type = i_struct->members[member_index].type;
             if (!(type->category == INTRO_POINTER && strcmp(type->of->name, "IntroType") == 0)) {
-                parse_error(ctx, &tk, "Member must be of type 'IntroType *' to have type attribute.");
+                parse_error(ctx, tk, "Member must be of type 'IntroType *' to have type attribute.");
                 char typename [1024];
                 intro_sprint_type_name(typename, type);
                 fprintf(stderr, "member type is %s\n", typename);
@@ -614,39 +622,39 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_in
     } break;
 
     case INTRO_AT_INT: {
-        tk = next_token(o_s);
-        long result = strtol(tk.start, o_s, 0);
-        if (*o_s == tk.start) {
-            parse_error(ctx, &tk, "Invalid integer.");
+        tk = next_token(tidx);
+        long result = strtol(tk.start, &end, 0);
+        if (end == tk.start) {
+            parse_error(ctx, tk, "Invalid integer.");
             return -1;
         }
         data.v.i = (int32_t)result;
         if (data.id == ctx->builtin.i_id) {
             if (!check_id_valid(i_struct, data.v.i)) {
-                parse_error(ctx, &tk, "This ID is reserved.");
+                parse_error(ctx, tk, "This ID is reserved.");
                 return -1;
             }
         }
     } break;
 
     case INTRO_AT_FLOAT: {
-        tk = next_token(o_s);
-        float result = strtof(tk.start, o_s);
-        if (*o_s == tk.start) {
-            parse_error(ctx, &tk, "Invalid floating point number.");
+        tk = next_token(tidx);
+        float result = strtof(tk.start, &end);
+        if (end == tk.start) {
+            parse_error(ctx, tk, "Invalid floating point number.");
             return -1;
         }
         data.v.f = result;
     } break;
 
     case INTRO_AT_STRING: {
-        tk = next_token(o_s);
+        tk = next_token(tidx);
         char * result = NULL;
         if (data.id == ctx->builtin.i_alias && tk.type == TK_IDENTIFIER) {
             result = copy_and_terminate(ctx->arena, tk.start, tk.length);
         } else {
             if (tk.type != TK_STRING) {
-                parse_error(ctx, &tk, "Expected string.");
+                parse_error(ctx, tk, "Expected string.");
                 return -1;
             }
             result = copy_and_terminate(ctx->arena, tk.start+1, tk.length-2);
@@ -660,13 +668,13 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_in
     // TODO: error check: if multiple members use the same member for length, values can't have different lengths
     // NOTE: the previous 2 todo's do not apply if the values are for different attributes
     case INTRO_AT_VALUE: {
-        if (handle_value_attribute(ctx, o_s, type, member_index, &data, &tk)) return -1;
+        if (handle_value_attribute(ctx, tidx, type, member_index, &data, &tk)) return -1;
     } break;
 
     case INTRO_AT_MEMBER: {
-        tk = next_token(o_s);
+        tk = next_token(tidx);
         if (tk.type != TK_IDENTIFIER || is_digit(tk.start[0])) {
-            parse_error(ctx, &tk, "Expected member name.");
+            parse_error(ctx, tk, "Expected member name.");
             return -1;
         }
         bool success = false;
@@ -676,7 +684,7 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_in
                     IntroType * type = i_struct->members[mi].type;
                     uint32_t category_no_size = type->category & 0xf0;
                     if (category_no_size != INTRO_SIGNED && category_no_size != INTRO_UNSIGNED) {
-                        parse_error(ctx, &tk, "Length defining member must be of an integer type.");
+                        parse_error(ctx, tk, "Length defining member must be of an integer type.");
                         return -1;
                     }
                 }
@@ -686,13 +694,13 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_in
             }
         }
         if (!success) {
-            parse_error(ctx, &tk, "No such member.");
+            parse_error(ctx, tk, "No such member.");
             return -1;
         }
     } break;
 
     case INTRO_AT_REMOVE: {
-        int32_t id = parse_attribute_id(ctx, o_s);
+        int32_t id = parse_attribute_id(ctx, tidx);
         if (id < 0) {
             return -1;
         }
@@ -706,46 +714,50 @@ parse_attribute(ParseContext * ctx, char ** o_s, IntroType * type, int member_in
 
 int
 parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
-    char * s = directive->location;
+    TokenIndex _tidx, * tidx = &_tidx;
+    tidx->list = ctx->tk_list;
+    tidx->index = directive->location;
     IntroStruct * i_struct = directive->type->i_struct;
     AttributeData * attributes = NULL;
 
-    Token tk = next_token(&s);
+    Token tk = next_token(tidx);
     if (tk.type != TK_L_PARENTHESIS) {
-        parse_error(ctx, &tk, "Expected '('.");
+        parse_error(ctx, tk, "Expected '('.");
         return -1;
     }
     while (1) {
-        tk = next_token(&s);
+        tk = next_token(tidx);
         AttributeData data;
         if (tk.type == TK_IDENTIFIER) {
             if (is_digit(tk.start[0])) {
                 data.id = ctx->builtin.i_id;
                 // @copy from above
-                long result = strtol(tk.start, &s, 0);
-                if (s == tk.start) {
-                    parse_error(ctx, &tk, "Invalid integer.");
+                char * end;
+                long result = strtol(tk.start, &end, 0);
+                advance_past(tidx, end);
+                if (end == tk.start) {
+                    parse_error(ctx, tk, "Invalid integer.");
                     return -1;
                 }
                 data.v.i = (int32_t)result;
                 if (!check_id_valid(i_struct, data.v.i)) {
-                    parse_error(ctx, &tk, "This ID is reserved.");
+                    parse_error(ctx, tk, "This ID is reserved.");
                     return -1;
                 }
             } else {
-                s = tk.start;
-                int error = parse_attribute(ctx, &s, directive->type, directive->member_index, &data);
+                tidx->index--;
+                int error = parse_attribute(ctx, tidx, directive->type, directive->member_index, &data);
                 if (error) return -1;
             }
             arrput(attributes, data);
         } else if (tk.type == TK_EQUAL) {
             data.id = ctx->builtin.i_default;
-            if (handle_value_attribute(ctx, &s, directive->type, directive->member_index, &data, &tk)) return -1;
+            if (handle_value_attribute(ctx, tidx, directive->type, directive->member_index, &data, &tk)) return -1;
 
             arrput(attributes, data);
         } else if (tk.type == TK_TILDE) {
             data.id = ctx->builtin.i_remove;
-            int32_t remove_id = parse_attribute_id(ctx, &s);
+            int32_t remove_id = parse_attribute_id(ctx, tidx);
             if (remove_id < 0) return -1;
             data.v.i = remove_id;
 
@@ -753,16 +765,16 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
         } else if (tk.type == TK_R_PARENTHESIS) {
             break;
         } else {
-            parse_error(ctx, &tk, "Invalid symbol.");
+            parse_error(ctx, tk, "Invalid symbol.");
             return -1;
         }
 
-        tk = next_token(&s);
+        tk = next_token(tidx);
         if (tk.type == TK_COMMA) {
         } else if (tk.type == TK_R_PARENTHESIS) {
             break;
         } else {
-            parse_error(ctx, &tk, "Expected ',' or ')'.");
+            parse_error(ctx, tk, "Expected ',' or ')'.");
             return -1;
         }
     }

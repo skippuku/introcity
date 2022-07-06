@@ -24,6 +24,7 @@ attribute:
 city:
     !! way to select which union member to serialize
     type id's?
+    alloc function attribute for when you want a buffer to be allocated in a certain way ex. stb_ds
 
 config:
     allow config to be appended with another config?
@@ -33,6 +34,7 @@ config:
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
+    ParseInfo: have everything, strip away unwated stuff at gen
     handle character literals including L'x'
     fix bitfield regression
     handle bit field accessing
@@ -49,6 +51,7 @@ parse:
         operator overloads?
 
 pre:
+    pragma that adds a file to make dependencies
     include macros in introspection data (optionally)
     errors are fucked (again)
     don't evaluate location line until it is known the type will be in info

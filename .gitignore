@@ -12,3 +12,4 @@ intro.cfg
 *.lz4
 .syntax.vim
 tags
+.ctags

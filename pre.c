@@ -38,7 +38,7 @@ typedef struct {
 typedef struct {
     int * macro_index_stack;
     Token * list;
-    char ** o_s;
+    TokenIndex * tidx;
     char * last_macro_name;
     bool in_expression;
 } ExpandContext;
@@ -50,7 +50,7 @@ enum TargetMode {
 };
 
 typedef struct {
-    char * result_buffer;
+    Token * result_list;
     FileInfo * current_file;
     Define * defines;
     const char ** include_paths;
@@ -88,7 +88,7 @@ typedef struct {
 typedef struct {
     PreContext * ctx;
     FileInfo * chunk_file;
-    char * begin_chunk;
+    int32_t begin_chunk;
     NoticeState notice;
 } PasteState;
 
@@ -267,15 +267,19 @@ message_internal(char * start_of_line, const char * filename, int line, char * h
     strput_code_segment(&s, start_of_line, end_of_line, hl_start, hl_end, color);
     fputs(s, stderr);
     arrfree(s);
+    db_break();
 }
 
 void
-parse_msg_internal(LocationContext * lctx, char * buffer, const Token * tk, char * message, int message_type) {
+parse_msg_internal(LocationContext * lctx, Token tk, char * message, int message_type) {
+    db_break();
+#if 0 
     char * start_of_line = NULL;
     char * filename = "?";
+    Token tk = idx->list[idx->index];
     char * hl_start = tk->start;
     int line_num = -1;
-    FileInfo * file = get_line(lctx, buffer, &hl_start, &line_num, &start_of_line, NULL);
+    FileInfo * file = get_line(lctx, idx, &hl_start, &line_num, &start_of_line, NULL);
     filename = file->filename;
     assert(start_of_line != NULL);
     char * hl_end = hl_start + tk->length;
@@ -292,6 +296,7 @@ parse_msg_internal(LocationContext * lctx, char * buffer, const Token * tk, char
             message_internal(start_of_line, filename, line_num, hl_start, hl_end, "In expansion", message_type);
         }
     }
+#endif
 }
 
 static void
@@ -376,15 +381,13 @@ create_stringized(PreContext * ctx, Token * list) {
 }
 
 static void
-ignore_section(PasteState * state, char * begin_ignored, char * end_ignored) {
-    // save chunk location
+ignore_section(PasteState * state, int32_t begin_ignored, int32_t end_ignored) {
     PreContext * ctx = state->ctx;
-
-    if (state->begin_chunk != NULL) {
-        ptrdiff_t signed_file_offset = state->begin_chunk - state->chunk_file->buffer;
+    if (state->begin_chunk != -1) {
+        ptrdiff_t signed_file_offset = state->chunk_file->tk_list[state->begin_chunk].start - state->chunk_file->buffer;
         db_assert(signed_file_offset >= 0);
         FileLoc loc = {
-            .offset      = arrlen(ctx->result_buffer),
+            .offset      = arrlen(ctx->result_list),
             .file_offset = (size_t)signed_file_offset,
             .notice = state->notice,
         };
@@ -395,10 +398,22 @@ ignore_section(PasteState * state, char * begin_ignored, char * end_ignored) {
             arrput(ctx->loc.list, loc);
         }
         // paste chunk
-        int size_chunk = begin_ignored - state->begin_chunk;
-        if (size_chunk > 0) {
-            char * out = arraddnptr(ctx->result_buffer, size_chunk);
-            memcpy(out, state->begin_chunk, size_chunk);
+        int len_chunk = begin_ignored - state->begin_chunk;
+        if (len_chunk > 0) {
+#if 0
+            Token * out = arraddnptr(ctx->result_list, len_chunk);
+            memcpy(out, &state->chunk_file->tk_list[state->begin_chunk], len_chunk * sizeof(*out));
+#else
+            for (int i=0; i < len_chunk; i++) {
+                Token tk = state->chunk_file->tk_list[state->begin_chunk + i];
+                if (tk.type == TK_DISABLED) {
+                    tk.type = TK_IDENTIFIER;
+                }
+                if (tk.type != TK_NEWLINE && tk.type != TK_COMMENT) {
+                    arrput(ctx->result_list, tk);
+                }
+            }
+#endif
         }
     }
     state->begin_chunk = end_ignored;
@@ -424,13 +439,13 @@ internal_macro_next_token(PreContext * ctx, int * o_index) {
         return ctx->expand_ctx.list[*o_index];
     } else {
         Token tk;
-        if (!ctx->expand_ctx.o_s) {
+        if (!ctx->expand_ctx.tidx) {
             tk = (Token){.type = TK_END};
             arrput(ctx->expand_ctx.list, tk);
             return tk;
         }
         do {
-            tk = pre_next_token(ctx->expand_ctx.o_s);
+            tk = next_token(ctx->expand_ctx.tidx);
         } while (tk.type == TK_COMMENT || tk.type == TK_NEWLINE);
         arrput(ctx->expand_ctx.list, tk);
         return tk;
@@ -448,13 +463,13 @@ MacroArgs
 get_macro_arguments(PreContext * ctx, int macro_tk_index) {
     MacroArgs result = {0};
     int i = macro_tk_index;
-    char * prev_s = NULL;
-    if (ctx->expand_ctx.o_s) prev_s = *ctx->expand_ctx.o_s;
+    int32_t prev_index = 0;
+    if (ctx->expand_ctx.tidx) prev_index = ctx->expand_ctx.tidx->index;
     int prev_len_list = arrlen(ctx->expand_ctx.list);
     Token l_paren = internal_macro_next_token(ctx, &i);
     if (l_paren.type == TK_END || *l_paren.start != '(') {
         arrsetlen(ctx->expand_ctx.list, prev_len_list);
-        if (ctx->expand_ctx.o_s) *ctx->expand_ctx.o_s = prev_s;
+        if (ctx->expand_ctx.tidx) ctx->expand_ctx.tidx->index = prev_index;
         return result;
     }
     int paren_level = 1;
@@ -504,7 +519,7 @@ get_macro_arguments(PreContext * ctx, int macro_tk_index) {
                 ctx->expand_ctx = (ExpandContext){
                     .macro_index_stack = ctx->expand_ctx.macro_index_stack,
                     .list = arg_list[arg_i],
-                    .o_s = NULL,
+                    .tidx = ctx->expand_ctx.tidx,
                 };
                 macro_scan(ctx, tk_i);
                 arg_list[arg_i] = ctx->expand_ctx.list;
@@ -807,14 +822,15 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
 }
 
 Token *
-expand_line(PreContext * ctx, char ** o_s, bool is_include) {
+expand_line(PreContext * ctx, TokenIndex * tidx, bool is_include) {
     Token * ptks = NULL;
     arrsetcap(ptks, 16);
     ExpandContext prev_ctx = ctx->expand_ctx;
     while (1) {
-        Token ptk = pre_next_token(o_s);
+        Token ptk = next_token(tidx);
+        int32_t prev_index = tidx->index - 1;
         if (ptk.type == TK_NEWLINE) {
-            *o_s = ptk.start;
+            tidx->index = prev_index;
             ptk.type = TK_END;
             ptk.start -= 1; // highlight last character in errors
             arrput(ptks, ptk);
@@ -822,13 +838,13 @@ expand_line(PreContext * ctx, char ** o_s, bool is_include) {
         } else if (ptk.type == TK_COMMENT) {
             continue;
         } else if (is_include && ptk.type == TK_L_ANGLE) {
-            char * closing = find_closing(ptk.start);
+            int32_t closing = find_closing((TokenIndex){.list = tidx->list, .index = prev_index});
             if (!closing) {
                 preprocess_error(&ptk, "No closing '>'.");
                 exit(1);
             }
-            *o_s = closing + 1;
-            ptk.length = *o_s - ptk.start;
+            tidx->index = closing;
+            ptk.length = tidx->list[tidx->index].start - ptk.start;
             ptk.type = TK_STRING;
             arrput(ptks, ptk);
         } else {
@@ -839,7 +855,7 @@ expand_line(PreContext * ctx, char ** o_s, bool is_include) {
                     .macro_index_stack = NULL,
                     .list = ptks,
                     .in_expression = !is_include,
-                    .o_s = o_s,
+                    .tidx = tidx,
                 };
                 macro_scan(ctx, index);
                 ptks = ctx->expand_ctx.list;
@@ -852,8 +868,8 @@ expand_line(PreContext * ctx, char ** o_s, bool is_include) {
 }
 
 bool
-parse_expression(PreContext * ctx, char ** o_s) {
-    Token * tks = expand_line(ctx, o_s, false);
+parse_expression(PreContext * ctx, TokenIndex * tidx) {
+    Token * tks = expand_line(ctx, tidx, false);
     Token err_tk = {0};
     ExprNode * tree = build_expression_tree(ctx->expr_ctx, tks, arrlen(tks), &err_tk);
     if (!tree && err_tk.start) {
@@ -871,12 +887,12 @@ parse_expression(PreContext * ctx, char ** o_s) {
 }
 
 static void
-pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
+pre_skip(PreContext * ctx, TokenIndex * tidx, bool elif_ok) {
     int depth = 1;
     while (1) {
-        Token tk = pre_next_token(o_s);
+        Token tk = next_token(tidx);
         if (tk.length == 1 && tk.start[0] == '#') {
-            tk = pre_next_token(o_s);
+            tk = next_token(tidx);
             if (tk.type == TK_IDENTIFIER) {
                 if (tk_equal(&tk, "if")
                  || tk_equal(&tk, "ifdef")
@@ -891,7 +907,7 @@ pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
                     }
                 } else if (tk_equal(&tk, "elif")) {
                     if (elif_ok && depth == 1) {
-                        bool expr_result = parse_expression(ctx, o_s);
+                        bool expr_result = parse_expression(ctx, tidx);
                         if (expr_result) {
                             depth = 0;
                         }
@@ -900,17 +916,17 @@ pre_skip(PreContext * ctx, char ** o_s, bool elif_ok) {
             }
         }
         while (tk.type != TK_NEWLINE && tk.type != TK_END) {
-            tk = pre_next_token(o_s);
+            tk = next_token(tidx);
         }
         if (depth == 0 || tk.type == TK_END) {
-            *o_s = tk.start;
+            tidx->index--;
             return;
         }
     }
 }
 
 int
-pre_handle_intro_pragma(PreContext * ctx, char ** o_s, Token * o_tk) {
+pre_handle_intro_pragma(PreContext * ctx, TokenIndex * tidx, Token * o_tk) {
 #define SET_BITS(var, mask, state) (var = state? var | mask : var & ~mask)
     static const struct{const char * key; NoticeState value;} elements [] = {
         {"functions", NOTICE_FUNCTIONS},
@@ -919,10 +935,10 @@ pre_handle_intro_pragma(PreContext * ctx, char ** o_s, Token * o_tk) {
     };
     Token tk;
     while (1) {
-        tk = pre_next_token(o_s);
+        tk = next_token(tidx);
         bool is_disable = false, found_match = false;
         if (tk_equal(&tk, "enable") || (is_disable = tk_equal(&tk, "disable"))) {
-            tk = pre_next_token(o_s);
+            tk = next_token(tidx);
             if (tk.type == TK_IDENTIFIER) {
                 for (int element_i=0; element_i < LENGTH(elements); element_i++) {
                     if (tk_equal(&tk, elements[element_i].key)) {
@@ -938,7 +954,7 @@ pre_handle_intro_pragma(PreContext * ctx, char ** o_s, Token * o_tk) {
                 }
             } else {
                 SET_BITS(ctx->notice, NOTICE_ENABLED, !is_disable);
-                *o_s = tk.start;
+                tidx->index--;
             }
         } else if (tk_equal(&tk, "push")) {
             arrpush(ctx->notice_stack, ctx->notice);
@@ -966,15 +982,17 @@ int preprocess_filename(PreContext * ctx, char * filename);
 int
 preprocess_buffer(PreContext * ctx) {
     FileInfo * file = ctx->current_file;
-    char * file_buffer = file->buffer;
+    file->tk_list = create_token_list(file->buffer);
     char * filename = file->filename;
+
+    TokenIndex _tidx = {0}, * tidx = &_tidx;
+    tidx->list = file->tk_list;
+    tidx->index = 0;
 
     char file_dir [1024];
     char * filename_nodir;
     (void) filename_nodir;
     path_dir(file_dir, filename, &filename_nodir);
-
-    char * s = file_buffer;
 
     arrsetcap(ctx->expand_ctx.list, 64);
     arrsetlen(ctx->expand_ctx.list, 1);
@@ -982,11 +1000,11 @@ preprocess_buffer(PreContext * ctx) {
     PasteState paste_ = {
         .ctx = ctx,
         .chunk_file = ctx->current_file,
-        .begin_chunk = s,
+        .begin_chunk = 0,
     }, *paste = &paste_;
 
     FileLoc loc_push_file = {
-        .offset = arrlen(ctx->result_buffer),
+        .offset = arrlen(ctx->result_list),
         .file_offset = 0,
         .file = file,
         .mode = LOC_FILE,
@@ -995,20 +1013,20 @@ preprocess_buffer(PreContext * ctx) {
     arrput(ctx->loc.list, loc_push_file);
 
     while (1) {
-        ctx->expansion_site = s;
-        char * start_of_line = s;
+        int32_t start_of_line = tidx->index;
+        ctx->expansion_site = tk_at(tidx).start;
         struct {
             bool exists;
             bool is_quote;
             bool is_next;
             Token tk;
         } inc_file = {0};
-        Token tk = pre_next_token(&s);
+        Token tk = next_token(tidx);
         bool def_forced = false;
 
         if (tk.type == TK_HASH) {
-            Token directive = pre_next_token(&s);
-            while (directive.type == TK_COMMENT) directive = pre_next_token(&s);
+            Token directive = next_token(tidx);
+            while (directive.type == TK_COMMENT) directive = next_token(tidx);
             if (directive.type != TK_IDENTIFIER) {
                 goto unknown_directive;
             }
@@ -1016,7 +1034,7 @@ preprocess_buffer(PreContext * ctx) {
             if (is_digit(*directive.start) || tk_equal(&directive, "line")) {
                 // TODO: line directives
             } else if (tk_equal(&directive, "include") || (tk_equal(&directive, "include_next") && (inc_file.is_next = true))) {
-                Token * expanded = expand_line(ctx, &s, true);
+                Token * expanded = expand_line(ctx, tidx, true);
                 Token next = expanded[0];
                 // inclusion is deferred until after the last section gets pasted
                 inc_file.exists = true;
@@ -1029,25 +1047,25 @@ preprocess_buffer(PreContext * ctx) {
                 }
                 arrfree(expanded);
             } else if (tk_equal(&directive, "define") || (tk_equal(&directive, "define_forced") && (def_forced = true))) {
-                char * ms = s;
-                Token macro_name = pre_next_token(&ms);
+                TokenIndex _midx = *tidx, * midx = &_midx;
+                Token macro_name = next_token(midx);
                 if (macro_name.type != TK_IDENTIFIER) {
                     preprocess_error(&macro_name, "Expected identifier.");
                     return -1;
                 }
 
-                if (tk_equal(&macro_name, "I")) {
-                    goto nextline;
-                }
+                //if (tk_equal(&macro_name, "I")) {
+                //    goto nextline;
+                //}
 
                 char ** arg_list = NULL;
-                bool is_func_like = (*ms == '(');
+                bool is_func_like = tk_at(midx).type == TK_L_PARENTHESIS && !tk_at(midx).preceding_space;
                 bool variadic = false;
                 if (is_func_like) {
-                    ms++;
+                    midx->index++;
                     while (1) {
-                        Token tk = pre_next_token(&ms);
-                        while (tk.type == TK_COMMENT) tk = pre_next_token(&ms);
+                        Token tk = next_token(midx);
+                        while (tk.type == TK_COMMENT) tk = next_token(midx);
                         if (tk.type == TK_IDENTIFIER) {
                             char * arg = copy_and_terminate(ctx->arena, tk.start, tk.length);
                             arrput(arg_list, arg);
@@ -1055,14 +1073,14 @@ preprocess_buffer(PreContext * ctx) {
                             break;
                         } else if (memcmp(tk.start, "...", 3) == 0) {
                             variadic = true;
-                            ms += 2;
+                            midx->index += 2;
                         } else {
                             preprocess_error(&tk, "Invalid symbol.");
                             return -1;
                         }
 
-                        tk = pre_next_token(&ms);
-                        while (tk.type == TK_COMMENT) tk = pre_next_token(&ms);
+                        tk = next_token(midx);
+                        while (tk.type == TK_COMMENT) tk = next_token(midx);
                         if (tk.type == TK_R_PARENTHESIS) {
                             break;
                         } else if (tk.type == TK_COMMA) {
@@ -1077,12 +1095,12 @@ preprocess_buffer(PreContext * ctx) {
                     }
                 }
 
+                *tidx = *midx;
                 Token * replace_list = NULL;
-                s = ms;
                 while (1) {
-                    Token tk = pre_next_token(&s);
+                    Token tk = next_token(tidx);
                     if (tk.type == TK_NEWLINE || tk.type == TK_END) {
-                        s = tk.start;
+                        tidx->index--;
                         break;
                     }
                     if (tk.type != TK_COMMENT) {
@@ -1121,7 +1139,7 @@ preprocess_buffer(PreContext * ctx) {
                     *prevdef = def;
                 }
             } else if (tk_equal(&directive, "undef")) {
-                Token def = pre_next_token(&s);
+                Token def = next_token(tidx);
                 STACK_TERMINATE(iden, def.start, def.length);
                 Define * macro = shgetp(ctx->defines, iden);
                 if (macro && macro->is_defined) {
@@ -1132,38 +1150,38 @@ preprocess_buffer(PreContext * ctx) {
                     }
                 }
             } else if (tk_equal(&directive, "if")) {
-                bool expr_result = parse_expression(ctx, &s);
+                bool expr_result = parse_expression(ctx, tidx);
                 if (!expr_result) {
-                    pre_skip(ctx, &s, true);
+                    pre_skip(ctx, tidx, true);
                 }
             } else if (tk_equal(&directive, "ifdef")) {
-                tk = pre_next_token(&s);
+                tk = next_token(tidx);
                 STACK_TERMINATE(name, tk.start, tk.length);
                 int def_index = shgeti(ctx->defines, name);
                 if (def_index < 0) {
-                    pre_skip(ctx, &s, true);
+                    pre_skip(ctx, tidx, true);
                 }
             } else if (tk_equal(&directive, "ifndef")) {
-                tk = pre_next_token(&s);
+                tk = next_token(tidx);
                 STACK_TERMINATE(name, tk.start, tk.length);
                 int def_index = shgeti(ctx->defines, name);
                 if (def_index >= 0) {
-                    pre_skip(ctx, &s, true);
+                    pre_skip(ctx, tidx, true);
                 }
             } else if (tk_equal(&directive, "elif")) {
-                pre_skip(ctx, &s, false);
+                pre_skip(ctx, tidx, false);
             } else if (tk_equal(&directive, "else")) {
-                pre_skip(ctx, &s, false);
+                pre_skip(ctx, tidx, false);
             } else if (tk_equal(&directive, "endif")) {
             } else if (tk_equal(&directive, "error")) {
                 preprocess_error(&directive, "error directive.");
                 return -1;
             } else if (tk_equal(&directive, "pragma")) {
-                tk = pre_next_token(&s);
+                tk = next_token(tidx);
                 if (tk_equal(&tk, "once")) {
                     ctx->current_file->once = true;
                 } else if (tk_equal(&tk, "intro")) {
-                    int ret = pre_handle_intro_pragma(ctx, &s, &tk);
+                    int ret = pre_handle_intro_pragma(ctx, tidx, &tk);
                     if (ret < 0) return ret;
                 } else if (tk_equal(&tk, "pack")) {
                 } else if (tk_equal(&tk, "GCC")) {
@@ -1183,9 +1201,9 @@ preprocess_buffer(PreContext * ctx) {
 
         nextline:
             // find next line
-            while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
+            while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = next_token(tidx);
 
-            if (!ctx->minimal_parse) ignore_section(paste, start_of_line, s);
+            if (!ctx->minimal_parse) ignore_section(paste, start_of_line, tidx->index);
 
             if (inc_file.exists) {
                 STACK_TERMINATE(inc_filename, inc_file.tk.start + 1, inc_file.tk.length - 2);
@@ -1260,9 +1278,9 @@ preprocess_buffer(PreContext * ctx) {
                 if (error < 0) return -1;
             }
         } else if (tk.type == TK_END) {
-            if (!ctx->minimal_parse) ignore_section(paste, s, NULL);
+            if (!ctx->minimal_parse) ignore_section(paste, tidx->index - 1, -1);
             FileLoc pop_file = {
-                .offset = arrlen(ctx->result_buffer),
+                .offset = arrlen(ctx->result_list),
                 .mode = LOC_POP,
                 .notice = ctx->notice,
             };
@@ -1275,20 +1293,21 @@ preprocess_buffer(PreContext * ctx) {
         } else {
             if (ctx->minimal_parse) {
                 // find next line
-                while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = pre_next_token(&s);
+                while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = next_token(tidx);
             } else {
                 if (tk.type == TK_COMMENT) {
-                    ignore_section(paste, tk.start, s);
+                    ignore_section(paste, tidx->index, tidx->index);
                 } else if (tk.type == TK_IDENTIFIER) {
-                    ctx->expand_ctx.o_s = &s;
+                    ctx->expand_ctx.tidx = tidx;
                     ctx->expand_ctx.list[0] = tk;
+                    int32_t start_index = tidx->index - 1;
                     if (macro_scan(ctx, 0)) {
                         const Token * list = ctx->expand_ctx.list;
-                        ignore_section(paste, tk.start, s);
+                        ignore_section(paste, start_index, tidx->index);
 
                         FileLoc loc_push_macro = {
-                            .offset = arrlen(ctx->result_buffer),
-                            .file_offset = tk.start - file_buffer,
+                            .offset = arrlen(ctx->result_list),
+                            .file_offset = tidx->index,
                             .file = file,
                             .macro_name = ctx->expand_ctx.last_macro_name,
                             .mode = LOC_MACRO,
@@ -1307,7 +1326,7 @@ preprocess_buffer(PreContext * ctx) {
                                     ptrdiff_t file_offset = mtk.start - origin->buffer;
                                     if (file_offset != last_file_offset || origin != last_origin) {
                                         FileLoc loc = {
-                                            .offset = arrlen(ctx->result_buffer) + 1*mtk.preceding_space,
+                                            .offset = arrlen(ctx->result_list),
                                             .file_offset = file_offset,
                                             .notice = ctx->notice,
                                         };
@@ -1317,17 +1336,13 @@ preprocess_buffer(PreContext * ctx) {
                                         last_file_offset = file_offset;
                                     }
                                 }
-                                if (mtk.preceding_space) {
-                                    arrput(ctx->result_buffer, ' ');
-                                }
-                                memcpy(arraddnptr(ctx->result_buffer, mtk.length), mtk.start, mtk.length);
+                                if (mtk.type == TK_DISABLED) mtk.type = TK_IDENTIFIER;
+                                arrput(ctx->result_list, mtk);
                             }
-                            // avoid identifiers getting slapped together
-                            if (mtk.type == TK_IDENTIFIER) arrput(ctx->result_buffer, ' ');
                         }
 
                         FileLoc pop_macro = {
-                            .offset = arrlen(ctx->result_buffer),
+                            .offset = arrlen(ctx->result_list),
                             .mode = LOC_POP,
                             .notice = ctx->notice,
                         };
@@ -1377,6 +1392,7 @@ preprocess_filename(PreContext * ctx, char * filename) {
         if (!file_buffer) {
             return RET_FILE_NOT_FOUND;
         }
+
         FileInfo * new_buf = calloc(1, sizeof(*new_buf));
         new_buf->filename = filename;
         new_buf->buffer = file_buffer;
@@ -1508,8 +1524,10 @@ run_preprocessor(int argc, char ** argv) {
                     char * text_cpy = malloc(strlen(text) + 2);
                     strcpy(text_cpy, text);
                     strcat(text_cpy, "\n");
-                    char * s = text_cpy;
-                    pre_handle_intro_pragma(ctx, &s, NULL);
+                    Token * list = create_token_list(text_cpy);
+                    TokenIndex pragma_idx = {.list = list, .index = 0};
+                    pre_handle_intro_pragma(ctx, &pragma_idx, NULL);
+                    arrfree(list);
                     free(text_cpy);
                 } else {
                     fprintf(stderr, "Unknown option: '%s'\n", arg);
@@ -1744,7 +1762,8 @@ run_preprocessor(int argc, char ** argv) {
         info.ret = -1;
         return info;
     }
-    arrput(ctx->result_buffer, 0);
+    Token endtk = {.type = TK_END};
+    arrput(ctx->result_list, endtk);
 
     if (ctx->m_options.enabled) {
         char * ext = strrchr(filepath, '.');
@@ -1810,7 +1829,16 @@ run_preprocessor(int argc, char ** argv) {
         }
     }
     if (preprocess_only) {
-        fwrite(ctx->result_buffer, 1, arrlen(ctx->result_buffer), stdout);
+        char * pretext = NULL;
+        arrsetcap(pretext, 1024);
+        for (int i=0; i < arrlen(ctx->result_list); i++) {
+            Token tk = ctx->result_list[i];
+            if (tk.preceding_space) arrput(pretext, ' ');
+            char * out = arraddnptr(pretext, tk.length);
+            memcpy(out, tk.start, tk.length);
+        }
+        arrput(pretext, 0);
+        fwrite(pretext, 1, arrlen(pretext), stdout);
         exit(0);
     }
 
@@ -1826,6 +1854,6 @@ run_preprocessor(int argc, char ** argv) {
     info.loc = ctx->loc;
     info.loc.index = 0;
     info.loc.count = arrlen(ctx->loc.list);
-    info.result_buffer = ctx->result_buffer;
+    info.result_list = ctx->result_list;
     return info;
 }

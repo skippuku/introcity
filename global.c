@@ -78,6 +78,8 @@
   #define COMPILER_STR "compiler"
 #endif
 
+#include "lexer.c"
+
 #define DEF_BUILTIN(name) {#name, offsetof(IntroBuiltinAttributeIds, name)}
 static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(i_id),
@@ -116,6 +118,7 @@ typedef struct {
 
 typedef struct {
     char * filename;
+    Token * tk_list;
     char * buffer;
     size_t buffer_size;
     time_t mtime;
@@ -179,7 +182,7 @@ enum GenMode {
 };
 
 typedef struct {
-    char * result_buffer;
+    Token * result_list;
     char * output_filename;
     LocationContext loc;
     int ret;
@@ -292,7 +295,7 @@ typedef struct {
     CTypeInfo type_info;
 } Config;
 
-static int parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl);
+static int parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl);
 
 static char *
 strput_callback(const char * buf, void * user, int len) {

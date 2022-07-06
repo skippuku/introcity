@@ -1,5 +1,4 @@
 #include "lib/intro.h"
-#include "lexer.c"
 #include "global.c"
 #include "config.c"
 #include "expr.c"
@@ -28,7 +27,7 @@ main(int argc, char * argv []) {
     }
 
     PreInfo pre_info = run_preprocessor(argc, argv);
-    if (!pre_info.result_buffer || pre_info.ret != 0) {
+    if (!pre_info.result_list || pre_info.ret != 0) {
         fprintf(stderr, "preprocessor failed.\n");
         return 1;
     }

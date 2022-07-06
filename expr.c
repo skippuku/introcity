@@ -133,9 +133,9 @@ build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Toke
                     }
 
                     tk1 = tokens[++tk_i];
-                    char * s = tk1.start;
                     DeclState cast = {.state = DECL_CAST};
-                    int ret = parse_declaration(ectx->ctx, &s, &cast);
+                    TokenIndex eidx = {.list = tokens, .index = tk_i};
+                    int ret = parse_declaration(ectx->ctx, &eidx, &cast);
                     if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
                         node->value = intro_size(cast.type);
                     } else if (ret == RET_NOT_TYPE) {
@@ -150,8 +150,7 @@ build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Toke
 
                     node->op = OP_INT;
 
-                    while (tk1.start < s && ++tk_i < count_tokens) tk1 = tokens[tk_i];
-                    tk_i--;
+                    tk_i = eidx.index;
                     break;
                 }
                 STACK_TERMINATE(terminated, tk.start, tk.length);
