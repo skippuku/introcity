@@ -706,8 +706,8 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 
             case KEYW_LONG: {
                 CHECK_INT((type.category & 0x0f));
+                int32_t tk2_index = tidx->index;
                 Token tk2 = next_token(tidx);
-                int32_t tk2_index = tidx->index - 1;
                 if (tk_equal(&tk2, "long")) {
                     strputf(&type_name, " long");
                     tk = tk2;
@@ -754,7 +754,7 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             }break;
 
             default: {
-                if (add_to_name) back_to(tidx, tk.start);
+                if (add_to_name) tidx->index--;
                 tk = ltk;
                 break_loop = true;
                 add_to_name = false;
@@ -848,6 +848,10 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
         if (tk.type == TK_L_PARENTHESIS) {
             paren = tidx->index;
             tidx->index = find_closing((TokenIndex){.list = tidx->list, .index = tidx->index - 1});
+            if (tidx->index == 0) {
+                parse_error(ctx, tk, "No closing ')'.");
+                return -1;
+            }
             tk = next_token(tidx);
         }
 
@@ -867,9 +871,13 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 
         while (tk.type == TK_L_BRACKET) {
             TokenIndex tempidx = {.list = tidx->list, .index = tidx->index - 1};
-            int32_t closing_bracket = find_closing(tempidx);
+            int32_t closing_bracket = find_closing(tempidx) - 1;
+            if (closing_bracket == 0) {
+                parse_error(ctx, tk, "No closing ')'.");
+                return -1;
+            }
             int32_t num;
-            if (closing_bracket == tidx->index + 1) {
+            if (closing_bracket == tidx->index) {
                 num = 0;
             } else {
                 num = (int32_t)parse_constant_expression(ctx, tidx);
@@ -881,7 +889,6 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             arrput(temp, num);
             tidx->index = closing_bracket + 1;
             tk = next_token(tidx);
-            tidx->index--;
         }
 
         if (tidx->index > end) end = tidx->index;

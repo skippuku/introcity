@@ -287,13 +287,6 @@ advance_to(TokenIndex * tidx, char * location) {
     }
 }
 
-static void
-back_to(TokenIndex * tidx, char * location) {
-    while (tk_at(tidx).start > location) {
-        tidx->index--;
-    }
-}
-
 Token *
 create_token_list(char * buffer) {
     char * s = buffer;
