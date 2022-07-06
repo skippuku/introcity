@@ -71,7 +71,6 @@ main() {
     CHECK_OFFSET(IntroType, attr);
     CHECK_OFFSET(IntroType, size);
     CHECK_OFFSET(IntroType, align);
-    CHECK_OFFSET(IntroType, location);
 
     return 0;
 }

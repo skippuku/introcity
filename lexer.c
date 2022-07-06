@@ -7,59 +7,64 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef enum {
+    TK_UNKNOWN,
+    TK_L_PARENTHESIS,
+    TK_R_PARENTHESIS,
+    TK_L_BRACKET,
+    TK_R_BRACKET,
+    TK_L_BRACE,
+    TK_R_BRACE,
+    TK_L_ANGLE,
+    TK_LEFT_SHIFT = TK_L_ANGLE + 1,
+    TK_LESS_EQUAL = TK_L_ANGLE + 2,
+    TK_R_ANGLE,
+    TK_RIGHT_SHIFT = TK_R_ANGLE + 1,
+    TK_GREATER_EQUAL = TK_R_ANGLE + 2,
+    TK_EQUAL,
+    TK_D_EQUAL = TK_EQUAL + 1,
+    TK_COLON,
+    TK_SEMICOLON,
+    TK_STAR,
+    TK_COMMA,
+    TK_PERIOD,
+    TK_HASH,
+    TK_D_HASH = TK_HASH + 1,
+    TK_HYPHEN,
+    TK_FORSLASH,
+    TK_BACKSLASH,
+    TK_BAR,
+    TK_D_BAR = TK_BAR + 1,
+    TK_AND,
+    TK_D_AND = TK_AND + 1,
+    TK_PLUS,
+    TK_CARET,
+    TK_BANG,
+    TK_NOT_EQUAL = TK_BANG + 2,
+    TK_MOD,
+    TK_TILDE,
+    TK_QUESTION_MARK,
+    TK_AT,
+
+    TK_IDENTIFIER,
+    TK_STRING,
+
+    // preprocessor only
+    TK_COMMENT,
+    TK_NEWLINE,
+    TK_DISABLED,
+    TK_PLACEHOLDER,
+    TK_END,
+
+    TK_COUNT
+} TokenCode;
+
 typedef struct Token {
     char * start;
+    TokenCode type;
+    int32_t index;
     int16_t length;
     bool preceding_space;
-    enum {
-        TK_UNKNOWN,
-        TK_L_PARENTHESIS,
-        TK_R_PARENTHESIS,
-        TK_L_BRACKET,
-        TK_R_BRACKET,
-        TK_L_BRACE,
-        TK_R_BRACE,
-        TK_L_ANGLE,
-        TK_LEFT_SHIFT = TK_L_ANGLE + 1,
-        TK_LESS_EQUAL = TK_L_ANGLE + 2,
-        TK_R_ANGLE,
-        TK_RIGHT_SHIFT = TK_R_ANGLE + 1,
-        TK_GREATER_EQUAL = TK_R_ANGLE + 2,
-        TK_EQUAL,
-        TK_D_EQUAL = TK_EQUAL + 1,
-        TK_COLON,
-        TK_SEMICOLON,
-        TK_STAR,
-        TK_COMMA,
-        TK_PERIOD,
-        TK_HASH,
-        TK_D_HASH = TK_HASH + 1,
-        TK_HYPHEN,
-        TK_FORSLASH,
-        TK_BACKSLASH,
-        TK_BAR,
-        TK_D_BAR = TK_BAR + 1,
-        TK_AND,
-        TK_D_AND = TK_AND + 1,
-        TK_PLUS,
-        TK_CARET,
-        TK_BANG,
-        TK_NOT_EQUAL = TK_BANG + 2,
-        TK_MOD,
-        TK_TILDE,
-        TK_QUESTION_MARK,
-        TK_AT,
-
-        TK_IDENTIFIER,
-        TK_STRING,
-        TK_COMMENT, // preprocessor only
-        TK_NEWLINE, // preprocessor only
-        TK_DISABLED, // preprocessor only
-        TK_PLACEHOLDER, // preprocessor only
-        TK_END,
-
-        TK_COUNT
-    } type;
 } Token;
 
 typedef struct {
@@ -272,7 +277,10 @@ tk_at(const TokenIndex * tidx) {
 
 static inline Token
 next_token(TokenIndex * tidx) {
-    return tidx->list[tidx->index++];
+    Token tk = tidx->list[tidx->index];
+    tk.index = tidx->index;
+    tidx->index++;
+    return tk;
 }
 
 static void

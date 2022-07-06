@@ -82,8 +82,7 @@ typedef enum {
 
 typedef struct IntroLocation {
     const char * path;
-    int32_t line; // NOTE: might be a better idea to just save the buffer offset
-    int32_t column;
+    uint32_t offset;
 } IntroLocation;
 
 typedef enum IntroFlags {
@@ -115,7 +114,6 @@ struct IntroType {
     uint32_t attr;
     uint32_t size;
     uint8_t align;
-    IntroLocation location; // TODO: this should go somewhere else
 };
 
 typedef struct IntroMember {

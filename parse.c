@@ -96,6 +96,7 @@ struct ParseContext {
     struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
     struct {char * key; IntroFunction * value;} * function_map;
     struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
+    struct{ IntroType * key; IntroLocation value; } * location_map;
 
     struct{ char * key; AttributeParseInfo value; } * attribute_map;
     struct{ char * key; int value; } * attribute_token_map;
@@ -111,12 +112,12 @@ struct ParseContext {
 
 static void
 parse_error(ParseContext * ctx, Token tk, char * message) { // TODO
-    parse_msg_internal(&ctx->loc, tk, message, 0);
+    parse_msg_internal(&ctx->loc, tk.index, message, 0);
 }
 
 static void UNUSED
 parse_warning(ParseContext * ctx, Token tk, char * message) {
-    parse_msg_internal(&ctx->loc, tk, message, 1);
+    parse_msg_internal(&ctx->loc, tk.index, message, 1);
 }
 
 static intmax_t parse_constant_expression(ParseContext * ctx, TokenIndex * tidx);
@@ -186,26 +187,19 @@ store_arg_type_list(ParseContext * ctx, IntroType ** list) {
 }
 
 static IntroType *
-store_type(ParseContext * ctx, IntroType type, char * pos) {
+store_type(ParseContext * ctx, IntroType type, int32_t tk_index) {
     IntroType * stored = NULL;
     bool replaced = false;
 
-    if (pos) {
-#if 0
-        IntroLocation loc = {0};
+    IntroLocation loc = {0};
+    if (tk_index >= 0) {
         NoticeState notice;
-        char * start_of_line;
-        FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line, &notice);
+        FileInfo * file = get_location_info(&ctx->loc, tk_index, &notice);
         if ((notice & NOTICE_ENABLED)) {
             type.flags |= INTRO_EXPLICITLY_GENERATED;
         }
         loc.path = file->filename;
-        loc.column = pos - start_of_line;
-        db_assert(loc.line >= 0);
-        db_assert(loc.column >= 0);
-        type.location = loc;
-#endif
-            type.flags |= INTRO_EXPLICITLY_GENERATED;
+        loc.offset = ctx->tk_list[tk_index].start - file->buffer;
     }
 
     if (type.name) {
@@ -241,13 +235,17 @@ store_type(ParseContext * ctx, IntroType type, char * pos) {
             for (int i=0; i < stbds_header(typedef_deps)->length; i++) {
                 IntroType * t = typedef_deps[i];
                 t->category = type.category;
-                t->i_struct = type.i_struct; // covers i_enum
+                t->__data = type.__data;
                 t->align = type.align;
                 t->size = type.size;
             }
             arrfree(typedef_deps);
             (void) hmdel(ctx->incomplete_typedefs, stored);
         }
+    }
+
+    if (loc.path != NULL) {
+        hmput(ctx->location_map, stored, loc);
     }
 
     return stored;
@@ -364,7 +362,7 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
     } else {
         return -1;
     }
-    char * position = tk.start;
+    Token pos_tk = tk;
 
     char * complex_type_name = NULL;
     tk = next_token(tidx);
@@ -379,7 +377,7 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
         if (!stored) {
             IntroType temp_type = {0};
             temp_type.name = complex_type_name;
-            store_type(ctx, temp_type, NULL);
+            store_type(ctx, temp_type, -1);
         }
     }
 
@@ -481,7 +479,7 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
         type.size = total_size;
         type.align = total_align;
         
-        stored = store_type(ctx, type, position);
+        stored = store_type(ctx, type, pos_tk.index);
         arrfree(complex_type_name);
     }
 
@@ -501,7 +499,7 @@ static int
 parse_enum(ParseContext * ctx, TokenIndex * tidx) {
     IntroEnum enum_ = {0};
 
-    char * position = tk_at(tidx).start;
+    int32_t pos_index = tidx->index;
     char * complex_type_name = NULL;
     Token tk = next_token(tidx), name_tk = {0};
     if (tk.type == TK_IDENTIFIER) {
@@ -513,7 +511,7 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
             if (shgeti(ctx->type_map, complex_type_name) < 0) {
                 IntroType temp_type = {0};
                 temp_type.name = complex_type_name;
-                store_type(ctx, temp_type, NULL);
+                store_type(ctx, temp_type, -1);
             }
             tk = next;
         } else {
@@ -599,7 +597,7 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
         type.size = 4; // TODO: this could be other things in C++
         type.align = type.size;
 
-        store_type(ctx, type, position);
+        store_type(ctx, type, pos_index);
         arrfree(complex_type_name);
     }
 
@@ -805,7 +803,7 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     } else {
         if (type.category || is_typedef) {
             type.name = type_name;
-            IntroType * stored = store_type(ctx, type, NULL);
+            IntroType * stored = store_type(ctx, type, -1);
             arrfree(type_name);
             decl->base = stored;
         } else {
@@ -927,7 +925,7 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             new_type.size = last_type->size * new_type.array_size;
             new_type.align = last_type->align;
         }
-        last_type = store_type(ctx, new_type, NULL);
+        last_type = store_type(ctx, new_type, -1);
     }
     arrfree(indirection);
     arrfree(func_args_stack);
@@ -999,16 +997,18 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
                                   && og_prev->__data == og_this->__data;
             if (!effectively_equal) {
                 parse_error(ctx, decl->name_tk, "Redefinition does not match previous definition.");
+#if 0
                 if (prev->location.path) {
                     location_note(&ctx->loc, prev->location, "Previous definition here.");
                 }
+#endif
                 return -1;
             }
         } else {
             IntroType new_type = *decl->type;
             new_type.name = name;
             new_type.parent = decl->type;
-            IntroType * stored = store_type(ctx, new_type, decl->name_tk.start);
+            IntroType * stored = store_type(ctx, new_type, decl->name_tk.index);
             if (decl->type->category == INTRO_UNKNOWN) {
                 IntroType ** list = hmget(ctx->incomplete_typedefs, decl->type);
                 arrput(list, stored);
@@ -1026,9 +1026,11 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             if (prev) {
                 if (!funcs_are_equal(decl->type, prev->type)) {
                     parse_error(ctx, decl->name_tk, "Function declaration does not match previous.");
+#if 0
                     if (prev->location.path) {
                         location_note(&ctx->loc, prev->location, "Previous definition here.");
                     }
+#endif
                     return -1;
                 } else {
                     //if (prev->has_body) {
@@ -1041,21 +1043,15 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
                 func->name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
                 func->type = decl->type;
                 {
-#if 0
                     IntroLocation loc = {0};
-                    char * pos = decl->name_tk.start;
-                    char * start_of_line;
                     NoticeState notice;
-                    FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line, &notice);
+                    FileInfo * file = get_location_info(&ctx->loc, decl->name_tk.index, &notice);
                     if ((notice & NOTICE_ENABLED) && (notice & NOTICE_FUNCTIONS)) {
                         func->flags |= INTRO_EXPLICITLY_GENERATED;
                     }
                     loc.path = file->filename;
-                    loc.column = pos - start_of_line;
-                    assert(loc.line >= 0);
-                    assert(loc.column >= 0);
+                    loc.offset = decl->name_tk.start - file->buffer;
                     func->location = loc;
-#endif
                 }
                 shput(ctx->function_map, func->name, func);
             }
@@ -1209,12 +1205,13 @@ parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
     ctx->expr_ctx->mode = MODE_PARSE;
     ctx->expr_ctx->ctx = ctx;
     ctx->loc = pre_info->loc;
+    ctx->loc.tk_list = pre_info->result_list;
 
     sh_new_arena(ctx->type_map);
     sh_new_arena(ctx->enum_name_set);
 
     for (int i=0; i < LENGTH(known_types); i++) {
-        store_type(ctx, known_types[i], NULL);
+        store_type(ctx, known_types[i], -1);
         shputs(ctx->ignore_typedefs, (NameSet){known_types[i].name});
     }
 

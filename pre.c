@@ -115,15 +115,6 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
 
 static inline int
 count_newlines_unaligned(char * start, int count) {
-#if 1
-    __m128i mask;
-    memset(&mask, 1, count);
-    __m128i line = _mm_loadu_si128((void *)start);
-    line = _mm_and_si128(mask, line);
-    __m128i vsum = _mm_sad_epu8(line, _mm_setzero_si128());
-    int isum = _mm_cvtsi128_si32(vsum) + _mm_extract_epi16(vsum, 4);
-    return isum;
-#else
     int result = 0;
     char * s = start;
     while (s < start + count) {
@@ -131,7 +122,6 @@ count_newlines_unaligned(char * start, int count) {
         s++;
     }
     return result;
-#endif
 }
 
 static int
@@ -162,31 +152,19 @@ count_newlines_in_range(char * start, char * end, char ** o_last_line) {
     *o_last_line = end;
     return result;
 #else
-    int result = 1;
-    char * s = start;
-    *o_last_line = start;
-    while (s < end) {
-        if (*s++ == '\n') {
-            *o_last_line = s;
-            result += 1;
-        }
-    }
-    return result;
+    return 1 + count_newlines_unaligned(start, end - start);
 #endif
 }
 
 FileInfo *
-get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_line, char ** o_start_of_line, NoticeState * o_notice) {
-    FileLoc * pos_loc;
+get_location_info(LocationContext * lctx, int32_t tk_index, NoticeState * o_notice) {
     int loc_index = -1;
     int max = (lctx->count)? lctx->count : arrlen(lctx->list);
     for (int i=lctx->index; i < max; i++) {
         FileLoc loc = lctx->list[i];
-        ptrdiff_t offset = *o_pos - buffer_begin;
-        if (offset < loc.offset) {
+        if (tk_index < loc.offset) {
             lctx->index = i;
             loc_index = i-1;
-            pos_loc = &lctx->list[loc_index];
             break;
         } else {
             lctx->notice = loc.notice;
@@ -213,24 +191,7 @@ get_line(LocationContext * lctx, char * buffer_begin, char ** o_pos, int * o_lin
         fprintf(stderr, "Internal error: failed to find file for error report.");
         exit(-1);
     }
-    *o_pos = file_buffer + (pos_loc->file_offset + ((*o_pos - buffer_begin) - pos_loc->offset));
-    assert(*o_pos < file_buffer + lctx->file->buffer_size);
 
-    char * start_search;
-    int line_num;
-    if (lctx->pos < *o_pos && lctx->pos >= file_buffer && lctx->pos < file_buffer + lctx->file->buffer_size) {
-        start_search = lctx->pos;
-        line_num = lctx->line_num;
-    } else {
-        start_search = file_buffer;
-        line_num = 0;
-    }
-    line_num += count_newlines_in_range(start_search, *o_pos, o_start_of_line);
-
-    lctx->line_num = *o_line;
-    lctx->pos = *o_pos;
-
-    *o_line = line_num;
     if (o_notice) *o_notice = lctx->notice;
     return lctx->file;
 }
@@ -266,25 +227,24 @@ message_internal(char * start_of_line, const char * filename, int line, char * h
     strputf(&s, "%s%s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n", color, message_type_string, filename, line, message);
     strput_code_segment(&s, start_of_line, end_of_line, hl_start, hl_end, color);
     fputs(s, stderr);
-    arrfree(s);
     db_break();
+    arrfree(s);
 }
 
 void
-parse_msg_internal(LocationContext * lctx, Token tk, char * message, int message_type) {
-    db_break();
-#if 0 
+parse_msg_internal(LocationContext * lctx, int32_t tk_index, char * message, int message_type) {
+    Token tk = lctx->tk_list[tk_index];
     char * start_of_line = NULL;
-    char * filename = "?";
-    Token tk = idx->list[idx->index];
-    char * hl_start = tk->start;
-    int line_num = -1;
-    FileInfo * file = get_line(lctx, idx, &hl_start, &line_num, &start_of_line, NULL);
-    filename = file->filename;
+
+    FileInfo * file = get_location_info(lctx, tk_index, NULL);
+    int line_num = count_newlines_in_range(file->buffer, tk.start, &start_of_line);
+    char * filename = file->filename;
     assert(start_of_line != NULL);
-    char * hl_end = hl_start + tk->length;
+
+    char * hl_start = tk.start;
+    char * hl_end = hl_start + tk.length;
     message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, message_type);
-    fprintf(stderr, "errenous token: %.*s\n", tk->length, tk->start);
+    fprintf(stderr, "errenous token: %.*s\n", tk.length, tk.start);
     for (int i=arrlen(lctx->stack) - 1; i >= 0; i--) {
         FileLoc l = lctx->list[lctx->stack[i]];
         if (l.mode == LOC_FILE) {
@@ -296,7 +256,7 @@ parse_msg_internal(LocationContext * lctx, Token tk, char * message, int message
             message_internal(start_of_line, filename, line_num, hl_start, hl_end, "In expansion", message_type);
         }
     }
-#endif
+    db_break();
 }
 
 static void
@@ -315,6 +275,7 @@ preprocess_message_internal(LocationContext * lctx, const Token * tk, char * mes
 #define preprocess_error(tk, message)   preprocess_message_internal(&ctx->loc, tk, message, 0)
 #define preprocess_warning(tk, message) preprocess_message_internal(&ctx->loc, tk, message, 1)
 
+#if 0
 void
 location_note(LocationContext * lctx, IntroLocation location, const char * msg) {
     FileInfo * file = NULL;
@@ -346,6 +307,7 @@ location_note(LocationContext * lctx, IntroLocation location, const char * msg) 
     Token tk = pre_next_token(&s);
     message_internal(start_of_line, location.path, line, tk.start, tk.start + tk.length, msg, 1);
 }
+#endif
 
 static Token
 create_stringized(PreContext * ctx, Token * list) {
@@ -980,9 +942,8 @@ pre_handle_intro_pragma(PreContext * ctx, TokenIndex * tidx, Token * o_tk) {
 int preprocess_filename(PreContext * ctx, char * filename);
 
 int
-preprocess_buffer(PreContext * ctx) {
+preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
     FileInfo * file = ctx->current_file;
-    file->tk_list = create_token_list(file->buffer);
     char * filename = file->filename;
 
     TokenIndex _tidx = {0}, * tidx = &_tidx;
@@ -1396,6 +1357,7 @@ preprocess_filename(PreContext * ctx, char * filename) {
         FileInfo * new_buf = calloc(1, sizeof(*new_buf));
         new_buf->filename = filename;
         new_buf->buffer = file_buffer;
+        new_buf->tk_list = create_token_list(file_buffer);
         new_buf->buffer_size = file_size;
         new_buf->mtime = mtime;
         ctx->current_file = new_buf;
@@ -1689,6 +1651,7 @@ run_preprocessor(int argc, char ** argv) {
             if (cfg.defines) {
                 FileInfo * config_file = calloc(1, sizeof(*config_file));
                 config_file->buffer = cfg.defines;
+                config_file->tk_list = create_token_list(cfg.defines);
                 config_file->filename = copy_and_terminate(ctx->arena, path, strlen(path));
                 arrput(ctx->loc.file_buffers, config_file);
                 ctx->current_file = config_file;
@@ -1717,6 +1680,7 @@ run_preprocessor(int argc, char ** argv) {
         FileInfo * intro_defs_file = calloc(1, sizeof(*intro_defs_file));
         intro_defs_file->buffer_size = strlen(intro_defs);
         intro_defs_file->buffer = intro_defs;
+        intro_defs_file->tk_list = create_token_list(intro_defs);
         intro_defs_file->filename = "__INTRO_DEFS__";
         arrput(ctx->loc.file_buffers, intro_defs_file);
         ctx->current_file = intro_defs_file;

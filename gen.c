@@ -100,9 +100,9 @@ generate_c_header(const char * output_filename, ParseInfo * info) {
     for (int func_i=0; func_i < info->count_functions; func_i++) {
         IntroFunction * func = info->functions[func_i];
         int return_type_index = hmget(info->index_by_ptr_map, func->type);
-        strputf(&s, "IntroFunction __intro_fn_%04x = {\"%s\", &__intro_types[%i], {\"%s\", %u, %u}, %i, %u, {\n",
+        strputf(&s, "IntroFunction __intro_fn_%04x = {\"%s\", &__intro_types[%i], {\"%s\", %u}, %i, %u, {\n",
                 func_i, func->name, return_type_index,
-                func->location.path, func->location.line, func->location.column,
+                func->location.path, func->location.offset,
                 func->flags, func->has_body);
         for (int name_i=0; name_i < func->type->args->count; name_i++) {
             const char * name = func->arg_names[name_i];
@@ -166,15 +166,7 @@ generate_c_header(const char * output_filename, ParseInfo * info) {
             strputf(&s, "0, ");
         }
 
-        strputf(&s, "%u, %u, %u", t->attr, t->size, t->align);
-
-        if (t->location.path) {
-            strputf(&s, ", {\"%s\", %u, %u}", t->location.path, t->location.line, t->location.column);
-        } else {
-            strputf(&s, ", {}");
-        }
-
-        strputf(&s, "},\n");
+        strputf(&s, "%u, %u, %u},\n", t->attr, t->size, t->align);
     }
     strputf(&s, "};\n\n");
 

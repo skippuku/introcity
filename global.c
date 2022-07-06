@@ -158,12 +158,11 @@ typedef struct {
 typedef struct {
     FileInfo ** file_buffers;
     FileLoc * list;
+    Token * tk_list;
     int64_t count;
     int64_t index;
     FileInfo * file;
     int * stack;
-    char * pos;
-    int line_num;
     NoticeState notice;
 } LocationContext;
 
@@ -171,8 +170,6 @@ void
 reset_location_context(LocationContext * lctx) {
     lctx->index = 0;
     arrsetlen(lctx->stack, 0);
-    lctx->line_num = 0;
-    lctx->pos = NULL;
 }
 
 enum GenMode {
