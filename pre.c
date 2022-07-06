@@ -83,6 +83,7 @@ typedef struct {
     int sys_header_last;
     bool is_sys_header;
     bool minimal_parse;
+    bool preprocess_only;
 } PreContext;
 
 typedef struct {
@@ -362,20 +363,26 @@ ignore_section(PasteState * state, int32_t begin_ignored, int32_t end_ignored) {
         // paste chunk
         int len_chunk = begin_ignored - state->begin_chunk;
         if (len_chunk > 0) {
-#if 0
-            Token * out = arraddnptr(ctx->result_list, len_chunk);
-            memcpy(out, &state->chunk_file->tk_list[state->begin_chunk], len_chunk * sizeof(*out));
-#else
-            for (int i=0; i < len_chunk; i++) {
-                Token tk = state->chunk_file->tk_list[state->begin_chunk + i];
-                if (tk.type == TK_DISABLED) {
-                    tk.type = TK_IDENTIFIER;
+            if (!state->ctx->preprocess_only) {
+                for (int i=0; i < len_chunk; i++) {
+                    Token tk = state->chunk_file->tk_list[state->begin_chunk + i];
+                    if (tk.type != TK_NEWLINE && tk.type != TK_COMMENT) {
+                        arrput(ctx->result_list, tk);
+                    }
                 }
-                if (tk.type != TK_NEWLINE && tk.type != TK_COMMENT) {
-                    arrput(ctx->result_list, tk);
+            } else {
+                Token last_tk = {0};
+                for (int i=0; i < len_chunk; i++) {
+                    Token tk = state->chunk_file->tk_list[state->begin_chunk + i];
+                    if (tk.type != TK_COMMENT) {
+                        if (tk.type == TK_IDENTIFIER && last_tk.type == TK_IDENTIFIER) {
+                            tk.preceding_space = true;
+                        }
+                        arrput(ctx->result_list, tk);
+                        last_tk = tk;
+                    }
                 }
             }
-#endif
         }
     }
     state->begin_chunk = end_ignored;
@@ -1282,6 +1289,7 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                             Token mtk;
                             for (int i=0; i < arrlen(list); i++) {
                                 mtk = list[i];
+                                if (mtk.type == TK_PLACEHOLDER) continue;
                                 FileInfo * origin = find_origin(&ctx->loc, ctx->loc.file, mtk.start);
                                 if (origin) {
                                     ptrdiff_t file_offset = mtk.start - origin->buffer;
@@ -1453,7 +1461,7 @@ run_preprocessor(int argc, char ** argv) {
         shputs(ctx->defines, special);
     }
 
-    bool preprocess_only = false;
+    ctx->preprocess_only = false;
     bool no_sys = false;
     char * filepath = NULL;
     char * cfg_file = NULL;
@@ -1523,7 +1531,7 @@ run_preprocessor(int argc, char ** argv) {
             }break;
 
             case 'E': {
-                preprocess_only = true;
+                ctx->preprocess_only = true;
             }break;
 
             case 'o': {
@@ -1668,7 +1676,7 @@ run_preprocessor(int argc, char ** argv) {
 
         bool temp_minimal_parse = false;
         if (ctx->m_options.enabled && !ctx->m_options.D) {
-            preprocess_only = true;
+            ctx->preprocess_only = true;
             temp_minimal_parse = true;
             Define def = {
                 .key = "__INTRO_MINIMAL__",
@@ -1777,7 +1785,7 @@ run_preprocessor(int argc, char ** argv) {
             strputf(&rule, "%.*s", (int)arrlen(dummy_rules), dummy_rules);
         }
 
-        if (preprocess_only && !ctx->m_options.filename) {
+        if (ctx->preprocess_only && !ctx->m_options.filename) {
             fputs(rule, stdout);
             exit(0);
         }
@@ -1792,7 +1800,7 @@ run_preprocessor(int argc, char ** argv) {
             exit(1);
         }
     }
-    if (preprocess_only) {
+    if (ctx->preprocess_only) {
         char * pretext = NULL;
         arrsetcap(pretext, 1024);
         for (int i=0; i < arrlen(ctx->result_list); i++) {

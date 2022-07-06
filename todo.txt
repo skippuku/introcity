@@ -23,6 +23,7 @@ attribute:
 
 city:
     !! way to select which union member to serialize
+    test/city.c fails occasionally and i don't know why
     type id's?
     alloc function attribute for when you want a buffer to be allocated in a certain way ex. stb_ds
 
@@ -51,6 +52,7 @@ parse:
         operator overloads?
 
 pre:
+    fix -E spacing
     pragma that adds a file to make dependencies
     include macros in introspection data (optionally)
     errors are fucked (again)
@@ -90,7 +92,6 @@ examples:
 doc:
 
 misc:
-    lexer stage, parse tokens at pre and parse stage
     idea: some kind of plugin system
         for when you want to do metaprogramming, it seems more sensible to run your metaprogram along with intro \
           instead of compiling another program.

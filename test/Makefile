@@ -1,5 +1,5 @@
 INTROLIB := ../build/debug/introlib.o
-INTRO_PARSE := ../build/release/intro
+INTRO_PARSE := ../build/debug/intro
 CPPFLAGS += -I../lib
 CFLAGS = -g -MMD -MT '$@'
 SRC := $(wildcard *.c)
@@ -21,7 +21,7 @@ run: $(TESTS) $(INTRO_PARSE)
 	$(INTRO_PARSE) --cfg $(ICFG) ../intro.c -o intro.c.intro
 
 $(INTRO_PARSE): FORCE
-	@$(MAKE) -C .. release
+	@$(MAKE) -C .. debug
 
 $(INTROLIB): FORCE
 	@$(MAKE) -C .. debug
