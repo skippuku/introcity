@@ -90,7 +90,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
             case INTRO_FUNCTION: {
                 hmput(complex_type_map, t->__data, type_index);
                 strputf(&ct, "IntroType * __intro_%x [%u] = {", type_index, t->count);
-                for (int arg_i=0; arg_i < t->count; arg_i++) {
+                for (int arg_i=0; arg_i < arrlen(t->arg_types); arg_i++) {
                     IntroType * arg_type = t->arg_types[arg_i];
                     int arg_type_index = hmget(info->index_by_ptr_map, arg_type);
                     strputf(&ct, "&__intro_t[%i],", arg_type_index);
@@ -145,27 +145,13 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     }
     strputf(&s, "};\n\n");
 
-    // function info
-    name_index = 0;
-    strputf(&s, "IntroFunction __intro_fn [%u] = {\n", info->count_functions);
-    for (int func_i=0; func_i < info->count_functions; func_i++) {
-        IntroFunction * func = info->functions[func_i];
-        int return_type_index = hmget(info->index_by_ptr_map, func->type);
-        strputf(&s, "{\"%s\", &__intro_t[%i], {\"%s\", %u}, &__intro_argnm[%i], %u, %u},\n",
-                    func->name, return_type_index,
-                    func->location.path, func->location.offset,
-                    name_index, func->count_args, func->flags);
-        name_index += func->count_args;
-    }
-    strputf(&s, "};\n\n");
-
     // type list
     strputf(&s, "IntroType __intro_t [%u] = {\n", info->count_types);
     for (int type_index = 0; type_index < info->count_types; type_index++) {
         const IntroType * t = info->types[type_index];
 
         strputf(&s, "{{");
-        int saved_index = hmget(complex_type_map, t->members);
+        int saved_index = hmget(complex_type_map, t->__data);
         if (saved_index >= 0) {
             switch(t->category) {
             case INTRO_STRUCT:
@@ -185,17 +171,13 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
                 assert(0);
             }break;
             }
+        } else if (t->of) {
+            int type_index = hmget(info->index_by_ptr_map, t->of);
+            strputf(&s, "&__intro_t[%i]", type_index);
         } else {
             strputf(&s, "0");
         }
         strputf(&s, "}, ");
-
-        if (t->of) {
-            int32_t of_index = hmget(info->index_by_ptr_map, t->of);
-            strputf(&s, "&__intro_t[%i], ", of_index);
-        } else {
-            strputf(&s, "0, ");
-        }
 
         if (t->parent) {
             int32_t parent_index = hmget(info->index_by_ptr_map, t->parent);
@@ -211,6 +193,22 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
         }
 
         strputf(&s, "%u, %u, %u, 0x%02x, %u, 0x%02x},\n", t->count, t->attr, t->size, t->flags, t->align, t->category);
+    }
+    strputf(&s, "};\n\n");
+
+    // function info
+    name_index = 0;
+    strputf(&s, "IntroFunction __intro_fn [%u] = {\n", info->count_functions);
+    for (int func_i=0; func_i < info->count_functions; func_i++) {
+        IntroFunction * func = info->functions[func_i];
+        int type_index = hmget(info->index_by_ptr_map, func->type);
+        int return_type_index = hmget(info->index_by_ptr_map, func->return_type);
+        int saved_index = hmget(complex_type_map, func->type->__data);
+        strputf(&s, "{\"%s\", &__intro_t[%i], &__intro_t[%i], &__intro_argnm[%i], __intro_%x, {\"%s\", %u}, %u, %u},\n",
+                    func->name, type_index, return_type_index, name_index, saved_index,
+                    func->location.path, func->location.offset,
+                    func->count_args, func->flags);
+        name_index += func->count_args;
     }
     strputf(&s, "};\n\n");
 

@@ -114,11 +114,11 @@ typedef struct IntroEnumValue {
 struct IntroType {
     union {
         void * __data I(~gui_show);
+        IntroType * of;
         IntroMember * members;
         IntroEnumValue * values;
         IntroType ** arg_types;
     } INTRO_ANON_UNION_NAME;
-    IntroType * of; // TODO: move into union
     IntroType * parent;
     const char * name;
     uint32_t count;
@@ -132,8 +132,10 @@ struct IntroType {
 typedef struct IntroFunction {
     const char * name;
     IntroType * type;
+    IntroType * return_type;
+    const char ** arg_names I(length count_args);
+    IntroType ** arg_types  I(length count_args);
     IntroLocation location;
-    const char ** arg_names;
     uint32_t count_args;
     uint16_t flags;
 } IntroFunction;
@@ -291,6 +293,11 @@ intro_origin(const IntroType * type) {
         type = type->parent;
     }
     return type;
+}
+
+INTRO_API_INLINE bool
+intro_has_of(const IntroType * type) {
+    return type->category == INTRO_ARRAY || type->category == INTRO_POINTER;
 }
 
 #define intro_has_attribute(m, a) intro_has_attribute_x(INTRO_CTX, m->attr, IATTR_##a)

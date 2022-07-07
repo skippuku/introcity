@@ -3,20 +3,20 @@
 #include "global.c"
 
 static const IntroType known_types [] = {
-    {{}, 0, 0, "void",     0, 0, 0, 0, 0, INTRO_UNKNOWN},
-    {{}, 0, 0, "uint8_t",  0, 0, 1, 0, 1, INTRO_U8},
-    {{}, 0, 0, "uint16_t", 0, 0, 2, 0, 2, INTRO_U16},
-    {{}, 0, 0, "uint32_t", 0, 0, 4, 0, 4, INTRO_U32},
-    {{}, 0, 0, "uint64_t", 0, 0, 8, 0, 8, INTRO_U64},
-    {{}, 0, 0, "int8_t",   0, 0, 1, 0, 1, INTRO_S8},
-    {{}, 0, 0, "int16_t",  0, 0, 2, 0, 2, INTRO_S16},
-    {{}, 0, 0, "int32_t",  0, 0, 4, 0, 4, INTRO_S32},
-    {{}, 0, 0, "int64_t",  0, 0, 8, 0, 8, INTRO_S64},
-    {{}, 0, 0, "float",    0, 0, 4, 0, 4, INTRO_F32},
-    {{}, 0, 0, "double",   0, 0, 8, 0, 8, INTRO_F64},
-    {{}, 0, 0, "bool",     0, 0, 1, 0, 1, INTRO_U8},
-    {{}, 0, 0, "va_list",  0, 0, 0, 0, 0, INTRO_VA_LIST},
-    {{}, 0, 0, "__builtin_va_list", 0, 0, 0, 0, 0, INTRO_VA_LIST},
+    {{}, 0, "void",     0, 0, 0, 0, 0, INTRO_UNKNOWN},
+    {{}, 0, "uint8_t",  0, 0, 1, 0, 1, INTRO_U8},
+    {{}, 0, "uint16_t", 0, 0, 2, 0, 2, INTRO_U16},
+    {{}, 0, "uint32_t", 0, 0, 4, 0, 4, INTRO_U32},
+    {{}, 0, "uint64_t", 0, 0, 8, 0, 8, INTRO_U64},
+    {{}, 0, "int8_t",   0, 0, 1, 0, 1, INTRO_S8},
+    {{}, 0, "int16_t",  0, 0, 2, 0, 2, INTRO_S16},
+    {{}, 0, "int32_t",  0, 0, 4, 0, 4, INTRO_S32},
+    {{}, 0, "int64_t",  0, 0, 8, 0, 8, INTRO_S64},
+    {{}, 0, "float",    0, 0, 4, 0, 4, INTRO_F32},
+    {{}, 0, "double",   0, 0, 8, 0, 8, INTRO_F64},
+    {{}, 0, "bool",     0, 0, 1, 0, 1, INTRO_U8},
+    {{}, 0, "va_list",  0, 0, 0, 0, 0, INTRO_VA_LIST},
+    {{}, 0, "__builtin_va_list", 0, 0, 0, 0, 0, INTRO_VA_LIST},
 };
 
 typedef struct {
@@ -140,12 +140,11 @@ register_enum_name(ParseContext * ctx, Token tk) {
 
 static bool
 funcs_are_equal(const IntroType * a, const IntroType * b) {
-    if (intro_origin(a->of) != intro_origin(b->of)) return false;
     if (a->count != b->count) return false;
     for (int i=0; i < a->count; i++) {
         const IntroType * a_arg = intro_origin(a->arg_types[i]);
         const IntroType * b_arg = intro_origin(b->arg_types[i]);
-        while (a_arg->of) {
+        while (intro_has_of(a_arg)) {
             if (a_arg->category == b_arg->category) {
                 a_arg = a_arg->of;
                 b_arg = b_arg->of;
@@ -904,9 +903,10 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             new_type.align = 8;
         } else if (it == FUNCTION) {
             IntroType ** arg_types = arrpop(func_args_stack);
+            if (last_type == NULL) last_type = ctx->type_set[0].value;
+            arrins(arg_types, 0, last_type); // first type is return, rest are args
             IntroType ** stored_args = store_arg_type_list(ctx, arg_types);
 
-            new_type.of = (IntroType *)intro_origin(last_type); // return type
             new_type.category = INTRO_FUNCTION;
             new_type.arg_types = stored_args;
             new_type.count = arrlen(stored_args);
@@ -1032,9 +1032,11 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             } else {
                 func = arena_alloc(ctx->arena, sizeof(*func));
                 func->arg_names = arena_alloc(ctx->arena, count_args * sizeof(func->arg_names[0]));
-                func->count_args = decl->type->count;
+                func->count_args = decl->type->count - 1;
                 func->name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
                 func->type = decl->type;
+                func->return_type = func->type->arg_types[0];
+                func->arg_types = &func->type->arg_types[1];
                 {
                     IntroLocation loc = {0};
                     NoticeState notice;
@@ -1171,7 +1173,7 @@ add_to_gen_info(ParseContext * ctx, ParseInfo * info, IntroType * type) {
         if (type->parent) {
             add_to_gen_info(ctx, info, type->parent);
         }
-        if (type->of) {
+        if (intro_has_of(type)) {
             add_to_gen_info(ctx, info, type->of);
         }
         if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {

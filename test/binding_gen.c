@@ -157,13 +157,13 @@ main() {
         for (int arg_i=0; arg_i < func.count_args; arg_i++) {
             if (arg_i > 0) fprintf(out, ", ");
             const char * name = func.arg_names[arg_i];
-            const IntroType * type = func.type->arg_types[arg_i];
+            const IntroType * type = func.arg_types[arg_i];
             fprintf(out, "%s: ", name);
             fprint_odin_type(out, type, 1, 0);
         }
-        if (func.type->of && func.type->of->category != INTRO_UNKNOWN) {
+        if (func.return_type && func.return_type->category != INTRO_UNKNOWN) {
             fprintf(out, ") -> ");
-            fprint_odin_type(out, func.type->of, 1, 0);
+            fprint_odin_type(out, func.return_type, 1, 0);
             fprintf(out, " ---\n");
         } else {
             fprintf(out, ") ---\n");
