@@ -19,15 +19,15 @@ make_identifier_safe_name(const char * name) {
 }
 
 int
-generate_c_header(const char * output_filename, ParseInfo * info) {
+generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     char * s = NULL;
 
     char * header_def = NULL;
-    arrsetcap(header_def, strlen(output_filename) + 2);
+    arrsetcap(header_def, strlen(pre_info->output_filename) + 2);
     arrsetlen(header_def, 1);
     header_def[0] = '_';
-    for (int i=0; i < strlen(output_filename); i++) {
-        char c = output_filename[i];
+    for (int i=0; i < strlen(pre_info->output_filename); i++) {
+        char c = pre_info->output_filename[i];
         if (is_iden(c)) {
             arrput(header_def, c);
         } else {
@@ -228,13 +228,48 @@ generate_c_header(const char * output_filename, ParseInfo * info) {
     }
     strputf(&s, "};\n\n");
 
+    // Macros
+    for (int macro_i=0; macro_i < arrlen(pre_info->macros); macro_i++) {
+        IntroMacro macro = pre_info->macros[macro_i];
+        if (macro.parameters) {
+            strputf(&s, "const char * __intro_mparam%x [] = {", macro_i);
+            for (int i=0; i < macro.count_parameters; i++) {
+                strputf(&s, "\"%s\",", macro.parameters[i]);
+            }
+            strputf(&s, "};\n");
+        }
+    }
+    strputf(&s, "\n");
+
+    strputf(&s, "IntroMacro __intro_macros [] = {\n");
+    for (int macro_i=0; macro_i < arrlen(pre_info->macros); macro_i++) {
+        IntroMacro macro = pre_info->macros[macro_i];
+        strputf(&s, "{\"%s\", ", macro.name);
+        if (macro.parameters) {
+            strputf(&s, "__intro_mparam%x, ", macro_i);
+        } else {
+            strputf(&s, "0, ");
+        }
+
+        strputf(&s, "%s, {\"%s\", %u}, %u},\n", macro.replace, macro.location.path, macro.location.offset, macro.count_parameters);
+    }
+    strputf(&s, "};\n\n");
+
     // context
-    
     strputf(&s, "IntroContext __intro_ctx = {\n");
     strputf(&s, "__intro_types,\n");
     strputf(&s, "__intro_strings,\n");
     strputf(&s, "__intro_values,\n");
     strputf(&s, "__intro_fns,\n");
+    strputf(&s, "__intro_macros,\n");
+
+    strputf(&s, "%u,", info->count_types);
+    strputf(&s, "%i,", (int)arrlenu(info->string_set));
+    strputf(&s, "%i,", (int)arrlenu(info->value_buffer));
+    strputf(&s, "%u,", info->count_functions);
+    strputf(&s, "%u,", (uint32_t)arrlen(pre_info->macros));
+    strputf(&s, "\n");
+
     strputf(&s, "{(IntroAttribute *)__intro_attr_t, ");
     strputf(&s, "(IntroAttributeSpec *)__intro_attr_data, ");
     strputf(&s, "%u, ", info->attr.count_available);
@@ -243,17 +278,13 @@ generate_c_header(const char * output_filename, ParseInfo * info) {
         strputf(&s, "IATTR_%s,", g_builtin_attributes[i].key);
     }
     strputf(&s, "}},\n");
-    strputf(&s, "%u,", info->count_types);
-    strputf(&s, "%i,", (int)arrlenu(info->string_set));
-    strputf(&s, "%i,", (int)arrlenu(info->value_buffer));
-    strputf(&s, "%u,\n", info->count_functions);
-    strputf(&s, "};\n");
 
+    strputf(&s, "};\n");
     strputf(&s, "#endif\n");
 
     hmfree(complex_type_map);
 
-    int error = intro_dump_file(output_filename, s, strlen(s));
+    int error = intro_dump_file(pre_info->output_filename, s, strlen(s));
     arrfree(s);
 
     if (error) return RET_FAILED_FILE_WRITE;
@@ -261,7 +292,7 @@ generate_c_header(const char * output_filename, ParseInfo * info) {
 }
 
 int
-generate_context_city(char * filename, ParseInfo * info) {
+generate_context_city(PreInfo * pre_info, ParseInfo * info) {
     IntroContext ser = {0};
 
     ser.types = malloc(info->count_types * sizeof(IntroType));
@@ -282,7 +313,10 @@ generate_context_city(char * filename, ParseInfo * info) {
 
     ser.attr = info->attr;
 
-    int ret = intro_create_city_file(filename, &ser, ITYPE(IntroContext));
+    ser.macros = pre_info->macros;
+    ser.count_macros = arrlen(pre_info->macros);
+
+    int ret = intro_create_city_file(pre_info->output_filename, &ser, ITYPE(IntroContext));
 
     free(ser.types);
 
@@ -290,7 +324,7 @@ generate_context_city(char * filename, ParseInfo * info) {
 }
 
 int
-generate_vim_syntax(char * filename, ParseInfo * info) {
+generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
     char * buf = NULL;
     char ** s = &buf;
 
@@ -324,7 +358,7 @@ generate_vim_syntax(char * filename, ParseInfo * info) {
     }
     strputf(s, "\n");
 
-    intro_dump_file(filename, buf, arrlen(buf));
+    intro_dump_file(pre_info->output_filename, buf, arrlen(buf));
 
     return 0;
 }

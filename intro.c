@@ -41,9 +41,9 @@ main(int argc, char * argv []) {
 
     switch(pre_info.gen_mode) {
     default:
-    case GEN_HEADER:     return generate_c_header(pre_info.output_filename, &parse_info);
-    case GEN_CITY:       return generate_context_city(pre_info.output_filename, &parse_info);
-    case GEN_VIM_SYNTAX: return generate_vim_syntax(pre_info.output_filename, &parse_info);
+    case GEN_HEADER:     return generate_c_header(&pre_info, &parse_info);
+    case GEN_CITY:       return generate_context_city(&pre_info, &parse_info);
+    case GEN_VIM_SYNTAX: return generate_vim_syntax(&pre_info, &parse_info);
     }
 
     return 0;

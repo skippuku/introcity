@@ -181,6 +181,7 @@ enum GenMode {
 typedef struct {
     Token * result_list;
     char * output_filename;
+    IntroMacro * macros;
     LocationContext loc;
     int ret;
     enum GenMode gen_mode;

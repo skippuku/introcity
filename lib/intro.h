@@ -213,17 +213,28 @@ typedef struct IntroAttributeContext {
     IntroBuiltinAttributeIds builtin;
 } IntroAttributeContext;
 
+typedef struct IntroMacro {
+    const char * name;
+    const char ** parameters I(length count_parameters);
+    const char * replace;
+    IntroLocation location;
+    uint32_t count_parameters;
+} IntroMacro;
+
 typedef struct IntroContext {
     IntroType * types     I(length count_types);
     const char ** strings I(length count_strings);
     uint8_t * values      I(length size_values);
     IntroFunction ** functions I(length count_functions);
-    IntroAttributeContext attr; 
+    IntroMacro * macros   I(length count_macros);
 
     uint32_t count_types;
     uint32_t count_strings;
     uint32_t size_values;
     uint32_t count_functions;
+    uint32_t count_macros;
+
+    IntroAttributeContext attr; 
 } IntroContext;
 
 typedef struct IntroVariant {

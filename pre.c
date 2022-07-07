@@ -27,6 +27,10 @@ typedef struct {
     char * key;
     Token * replace_list;
     char ** arg_list;
+
+    FileInfo * file;
+    size_t file_offset;
+
     int32_t arg_count;
     SpecialMacro special;
     bool is_defined;
@@ -1022,10 +1026,6 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                     return -1;
                 }
 
-                //if (tk_equal(&macro_name, "I")) {
-                //    goto nextline;
-                //}
-
                 char ** arg_list = NULL;
                 bool is_func_like = tk_at(midx).type == TK_L_PARENTHESIS && !tk_at(midx).preceding_space;
                 bool variadic = false;
@@ -1089,6 +1089,15 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                     def.func_like = true;
                     def.variadic = variadic;
                 }
+
+                bool gen = (ctx->notice & NOTICE_ENABLED)
+                        && (ctx->notice & NOTICE_MACROS)
+                        && !(ctx->is_sys_header && !(ctx->notice & NOTICE_SYS_HEADERS));
+                if (gen) {
+                    def.file = ctx->current_file;
+                    def.file_offset = macro_name.start - ctx->current_file->buffer;
+                }
+
                 Define * prevdef = shgetp_null(ctx->defines, def.key);
                 if (prevdef && prevdef->is_defined) {
                     if (prevdef->forced) {
@@ -1633,6 +1642,7 @@ run_preprocessor(int argc, char ** argv) {
 
     if (!no_sys) {
         ctx->minimal_parse = false;
+        ctx->is_sys_header = true;
 
         char path [4096];
         if (!cfg_file) {
@@ -1699,6 +1709,7 @@ run_preprocessor(int argc, char ** argv) {
         }
 
         ctx->minimal_parse = temp_minimal_parse;
+        ctx->is_sys_header = false;
     }
 
     for (int i=0; i < arrlen(deferred_defines); i++) {
@@ -1822,6 +1833,27 @@ run_preprocessor(int argc, char ** argv) {
     }
     shfree(ctx->defines);
 #endif
+
+    for (int def_i=0; def_i < shlen(ctx->defines); def_i++) {
+        Define def = ctx->defines[def_i];
+        if (def.file) {
+            char * replace_text;
+            if (def.replace_list) {
+                replace_text = create_stringized(ctx, def.replace_list).start;
+            } else {
+                replace_text = "\"\"";
+            }
+            IntroMacro macro = {
+                .name = def.key,
+                .parameters = (const char **)def.arg_list,
+                .count_parameters = def.arg_count,
+                // TODO: string is stored here escaped, which does not work for --gen-city
+                .replace = replace_text,
+                .location = {.path = def.file->filename, .offset = def.file_offset},
+            };
+            arrput(info.macros, macro);
+        }
+    }
 
     info.loc = ctx->loc;
     info.loc.index = 0;

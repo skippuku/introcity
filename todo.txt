@@ -35,6 +35,7 @@ config:
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
+    Not a fan of how function information works
     ParseInfo: have everything, strip away unwated stuff at gen
     handle character literals including L'x'
     fix bitfield regression
@@ -64,6 +65,8 @@ pre:
     trim big newline gaps
 
 gen:
+    idea: use type infomation to generate the header
+    idea: stop using type information to generate anything
     allow multiple outputs at once ex. header + city
     (these 3 points all kind of go together)
         !! clang doesn't like flexible array initialization in c++
@@ -92,6 +95,9 @@ examples:
 doc:
 
 misc:
+    performance metrics
+        count lines, tokens, types
+        stage timings
     idea: some kind of plugin system
         for when you want to do metaprogramming, it seems more sensible to run your metaprogram along with intro \
           instead of compiling another program.

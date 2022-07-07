@@ -1,9 +1,9 @@
-/* Generated with intro 0.1-20-g1ae5fa4-dirty */
+/* Generated with intro 0.1-22-gbc79238-dirty */
 
 #ifndef _lib_intro_h_intro
 #define _lib_intro_h_intro
 
-extern IntroType __intro_types [76];
+extern IntroType __intro_types [79];
 
 IntroEnum __intro_0011 = {19, 0, 0, {
 {"INTRO_UNKNOWN", 0},
@@ -34,7 +34,7 @@ IntroEnum __intro_0013 = {3, 0, 0, {
 }};
 
 IntroStruct __intro_0015 = {2, 0, {
-{"path", &__intro_types[22], 0, 22},
+{"path", &__intro_types[22], 0, 26},
 {"offset", &__intro_types[3], 8, 0},
 }};
 
@@ -56,7 +56,7 @@ IntroStruct __intro_001b = {13, 0, {
 {"args", &__intro_types[43], 8, 0},
 {"of", &__intro_types[36], 16, 0},
 {"parent", &__intro_types[36], 24, 0},
-{"name", &__intro_types[22], 32, 22},
+{"name", &__intro_types[22], 32, 26},
 {"attr", &__intro_types[3], 40, 0},
 {"size", &__intro_types[3], 44, 0},
 {"align", &__intro_types[1], 48, 0},
@@ -69,7 +69,7 @@ IntroStruct __intro_001f = {3, 0, {
 }};
 
 IntroStruct __intro_0022 = {4, 0, {
-{"name", &__intro_types[22], 0, 22},
+{"name", &__intro_types[22], 0, 26},
 {"type", &__intro_types[36], 8, 0},
 {"offset", &__intro_types[3], 16, 0},
 {"attr", &__intro_types[3], 20, 0},
@@ -83,7 +83,7 @@ IntroStruct __intro_0026 = {4, 0, {
 }};
 
 IntroStruct __intro_0029 = {2, 0, {
-{"name", &__intro_types[22], 0, 22},
+{"name", &__intro_types[22], 0, 26},
 {"value", &__intro_types[7], 8, 0},
 }};
 
@@ -93,7 +93,7 @@ IntroStruct __intro_002c = {2, 0, {
 }};
 
 IntroStruct __intro_002f = {5, 1, {
-{"__data", &__intro_types[29], 0, 23},
+{"__data", &__intro_types[29], 0, 27},
 {"array_size", &__intro_types[3], 0, 0},
 {"i_struct", &__intro_types[30], 0, 0},
 {"i_enum", &__intro_types[37], 0, 0},
@@ -101,7 +101,7 @@ IntroStruct __intro_002f = {5, 1, {
 }};
 
 IntroStruct __intro_0030 = {6, 0, {
-{"name", &__intro_types[22], 0, 22},
+{"name", &__intro_types[22], 0, 26},
 {"type", &__intro_types[36], 8, 0},
 {"location", &__intro_types[24], 16, 0},
 {"flags", &__intro_types[3], 32, 0},
@@ -123,7 +123,7 @@ IntroEnum __intro_0033 = {10, 0, 1, {
 }};
 
 IntroStruct __intro_0035 = {3, 0, {
-{"name", &__intro_types[22], 0, 22},
+{"name", &__intro_types[22], 0, 26},
 {"attr_type", &__intro_types[54], 8, 0},
 {"type_id", &__intro_types[3], 12, 0},
 }};
@@ -165,31 +165,41 @@ IntroStruct __intro_003e = {5, 0, {
 {"builtin", &__intro_types[61], 22, 0},
 }};
 
-IntroStruct __intro_0042 = {9, 0, {
-{"types", &__intro_types[36], 0, 14},
-{"strings", &__intro_types[67], 8, 16},
-{"values", &__intro_types[68], 16, 18},
-{"functions", &__intro_types[69], 24, 20},
-{"attr", &__intro_types[65], 32, 0},
-{"count_types", &__intro_types[3], 80, 0},
-{"count_strings", &__intro_types[3], 84, 0},
-{"size_values", &__intro_types[3], 88, 0},
-{"count_functions", &__intro_types[3], 92, 0},
+IntroStruct __intro_0042 = {5, 0, {
+{"name", &__intro_types[22], 0, 26},
+{"parameters", &__intro_types[67], 8, 14},
+{"replace", &__intro_types[22], 16, 26},
+{"location", &__intro_types[24], 24, 0},
+{"count_parameters", &__intro_types[3], 40, 0},
 }};
 
-IntroStruct __intro_0048 = {2, 0, {
-{"data", &__intro_types[29], 0, 23},
+IntroStruct __intro_0045 = {11, 0, {
+{"types", &__intro_types[36], 0, 16},
+{"strings", &__intro_types[67], 8, 18},
+{"values", &__intro_types[70], 16, 20},
+{"functions", &__intro_types[71], 24, 22},
+{"macros", &__intro_types[73], 32, 24},
+{"count_types", &__intro_types[3], 40, 0},
+{"count_strings", &__intro_types[3], 44, 0},
+{"size_values", &__intro_types[3], 48, 0},
+{"count_functions", &__intro_types[3], 52, 0},
+{"count_macros", &__intro_types[3], 56, 0},
+{"attr", &__intro_types[65], 64, 0},
+}};
+
+IntroStruct __intro_004b = {2, 0, {
+{"data", &__intro_types[29], 0, 27},
 {"type", &__intro_types[36], 8, 0},
 }};
 
-IntroStruct __intro_004a = {1, 0, {
+IntroStruct __intro_004d = {1, 0, {
 {"indent", &__intro_types[54], 0, 0},
 }};
 
 IntroFunction * __intro_fns [0] = {
 };
 
-IntroType __intro_types [76] = {
+IntroType __intro_types [79] = {
 {0x00, 0, {0}, 0, 0, "void", 0, 0, 0},
 {0x11, 0, {0}, 0, 0, "uint8_t", 0, 1, 1},
 {0x12, 0, {0}, 0, 0, "uint16_t", 0, 2, 2},
@@ -212,14 +222,14 @@ IntroType __intro_types [76] = {
 {0x60, 8, {&__intro_0013}, 0, 0, 0, 0, 4, 4},
 {0x60, 8, {&__intro_0013}, 0, &__intro_types[19], "IntroCategoryFlags", 0, 4, 4},
 {0x70, 8, {&__intro_0015}, 0, 0, "struct IntroLocation", 0, 16, 8},
-{0x50, 0, {0}, &__intro_types[23], 0, 0, 22, 8, 8},
+{0x50, 0, {0}, &__intro_types[23], 0, 0, 26, 8, 8},
 {0x21, 0, {0}, 0, &__intro_types[5], "char", 0, 1, 1},
 {0x70, 8, {&__intro_0015}, 0, &__intro_types[21], "IntroLocation", 0, 16, 8},
 {0x60, 8, {&__intro_0019}, 0, 0, "enum IntroFlags", 0, 4, 4},
 {0x60, 8, {&__intro_0019}, 0, &__intro_types[25], "IntroFlags", 0, 4, 4},
 {0x70, 8, {&__intro_001b}, 0, &__intro_types[28], "IntroType", 2, 56, 8},
 {0x70, 8, {&__intro_001b}, 0, 0, "struct IntroType", 0, 56, 8},
-{0x50, 0, {0}, &__intro_types[0], 0, 0, 23, 8, 8},
+{0x50, 0, {0}, &__intro_types[0], 0, 0, 27, 8, 8},
 {0x50, 0, {0}, &__intro_types[31], 0, 0, 0, 8, 8},
 {0x70, 8, {&__intro_001f}, 0, &__intro_types[32], "IntroStruct", 0, 8, 8},
 {0x70, 8, {&__intro_001f}, 0, 0, "struct IntroStruct", 0, 8, 8},
@@ -256,16 +266,19 @@ IntroType __intro_types [76] = {
 {0x50, 0, {0}, &__intro_types[55], 0, 0, 0, 8, 8},
 {0x50, 0, {0}, &__intro_types[59], 0, 0, 0, 8, 8},
 {0x70, 8, {&__intro_003e}, 0, &__intro_types[62], "IntroAttributeContext", 0, 48, 8},
-{0x70, 8, {&__intro_0042}, 0, 0, "struct IntroContext", 0, 96, 8},
+{0x70, 8, {&__intro_0042}, 0, 0, "struct IntroMacro", 0, 48, 8},
 {0x50, 0, {0}, &__intro_types[22], 0, 0, 0, 8, 8},
+{0x70, 8, {&__intro_0042}, 0, &__intro_types[66], "IntroMacro", 0, 48, 8},
+{0x70, 8, {&__intro_0045}, 0, 0, "struct IntroContext", 0, 112, 8},
 {0x50, 0, {0}, &__intro_types[1], 0, 0, 0, 8, 8},
-{0x50, 0, {0}, &__intro_types[70], 0, 0, 0, 8, 8},
+{0x50, 0, {0}, &__intro_types[72], 0, 0, 0, 8, 8},
 {0x50, 0, {0}, &__intro_types[50], 0, 0, 0, 8, 8},
-{0x70, 8, {&__intro_0042}, 0, &__intro_types[66], "IntroContext", 0, 96, 8},
-{0x70, 8, {&__intro_0048}, 0, 0, "struct IntroVariant", 0, 16, 8},
-{0x70, 8, {&__intro_0048}, 0, &__intro_types[72], "IntroVariant", 0, 16, 8},
-{0x70, 8, {&__intro_004a}, 0, 0, 0, 0, 4, 4},
-{0x70, 8, {&__intro_004a}, 0, &__intro_types[74], "IntroPrintOptions", 0, 4, 4},
+{0x50, 0, {0}, &__intro_types[68], 0, 0, 0, 8, 8},
+{0x70, 8, {&__intro_0045}, 0, &__intro_types[69], "IntroContext", 0, 112, 8},
+{0x70, 8, {&__intro_004b}, 0, 0, "struct IntroVariant", 0, 16, 8},
+{0x70, 8, {&__intro_004b}, 0, &__intro_types[75], "IntroVariant", 0, 16, 8},
+{0x70, 8, {&__intro_004d}, 0, 0, 0, 0, 4, 4},
+{0x70, 8, {&__intro_004d}, 0, &__intro_types[77], "IntroPrintOptions", 0, 4, 4},
 };
 
 const IntroAttribute __intro_attr_t [] = {
@@ -336,6 +349,8 @@ const unsigned char __intro_attr_data [] = {
 0x08,0x20,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x08,0x20,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+0x04,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+0x08,0x20,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x05,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x08,0x20,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
@@ -343,6 +358,8 @@ const unsigned char __intro_attr_data [] = {
 0x07,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x08,0x20,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x08,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+0x08,0x20,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+0x09,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x00,0x60,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 0x00,0x00,0x06,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 };
@@ -400,11 +417,17 @@ ITYPE_struct_IntroBuiltinAttributeIds = 60,
 ITYPE_IntroBuiltinAttributeIds = 61,
 ITYPE_struct_IntroAttributeContext = 62,
 ITYPE_IntroAttributeContext = 65,
-ITYPE_struct_IntroContext = 66,
-ITYPE_IntroContext = 71,
-ITYPE_struct_IntroVariant = 72,
-ITYPE_IntroVariant = 73,
-ITYPE_IntroPrintOptions = 75,
+ITYPE_struct_IntroMacro = 66,
+ITYPE_IntroMacro = 68,
+ITYPE_struct_IntroContext = 69,
+ITYPE_IntroContext = 74,
+ITYPE_struct_IntroVariant = 75,
+ITYPE_IntroVariant = 76,
+ITYPE_IntroPrintOptions = 78,
+};
+
+
+IntroMacro __intro_macros [] = {
 };
 
 IntroContext __intro_ctx = {
@@ -412,7 +435,8 @@ __intro_types,
 __intro_strings,
 __intro_values,
 __intro_fns,
+__intro_macros,
+79,1,0,0,0,
 {(IntroAttribute *)__intro_attr_t, (IntroAttributeSpec *)__intro_attr_data, 21, 13,{IATTR_i_id,IATTR_i_btfld,IATTR_i_default,IATTR_i_length,IATTR_i_alias,IATTR_i_city,IATTR_i_cstring,IATTR_i_type,IATTR_i_remove,IATTR_gui_note,IATTR_gui_name,IATTR_gui_min,IATTR_gui_max,IATTR_gui_format,IATTR_gui_scale,IATTR_gui_vector,IATTR_gui_color,IATTR_gui_show,IATTR_gui_edit,IATTR_gui_edit_color,IATTR_gui_edit_text,}},
-76,1,0,0,
 };
 #endif
