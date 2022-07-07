@@ -831,7 +831,8 @@ void *
 intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_type, size_t *o_size) {
     assert(s_type->category == INTRO_STRUCT);
 
-    CityHeader header = {0};
+    CityHeader header;
+    memset(&header, 0, sizeof(header));
     memcpy(header.magic_number, "ICTY", 4);
     header.version_major = implementation_version_major;
     header.version_minor = implementation_version_minor;
@@ -858,7 +859,11 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     header.count_types = count_types;
     header.data_ptr = sizeof(header) + arrlen(ctx->info) + pad;
 
-    CityBuffer src_buf = {.origin = src, .ser_offset = 0, .size = s_type->size};
+    CityBuffer src_buf;
+    src_buf.origin = (const u8 *)src;
+    src_buf.ser_offset = 0;
+    src_buf.size = s_type->size;
+
     arrput(ctx->buffers, src_buf);
     city__serialize_pointer_data(ctx, 0, s_type, 1);
 
