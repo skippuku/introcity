@@ -3,20 +3,20 @@
 #include "global.c"
 
 static const IntroType known_types [] = {
-    {INTRO_UNKNOWN, 0, {}, 0, 0, "void"},
-    {INTRO_U8, 0, {}, 0, 0,  "uint8_t",  0, 1, 1},
-    {INTRO_U16, 0, {}, 0, 0, "uint16_t", 0, 2, 2},
-    {INTRO_U32, 0, {}, 0, 0, "uint32_t", 0, 4, 4},
-    {INTRO_U64, 0, {}, 0, 0, "uint64_t", 0, 8, 8},
-    {INTRO_S8, 0, {}, 0, 0,  "int8_t",   0, 1, 1},
-    {INTRO_S16, 0, {}, 0, 0, "int16_t",  0, 2, 2},
-    {INTRO_S32, 0, {}, 0, 0, "int32_t",  0, 4, 4},
-    {INTRO_S64, 0, {}, 0, 0, "int64_t",  0, 8, 8},
-    {INTRO_F32, 0, {}, 0, 0, "float",    0, 4, 4},
-    {INTRO_F64, 0, {}, 0, 0, "double",   0, 8, 8},
-    {INTRO_U8, 0, {}, 0, 0,  "bool",     0, 1, 1},
-    {INTRO_VA_LIST, 0, {}, 0, 0, "va_list"},
-    {INTRO_VA_LIST, 0, {}, 0, 0, "__builtin_va_list"},
+    {{}, 0, 0, "void",     0, 0, 0, 0, 0, INTRO_UNKNOWN},
+    {{}, 0, 0, "uint8_t",  0, 0, 1, 0, 1, INTRO_U8},
+    {{}, 0, 0, "uint16_t", 0, 0, 2, 0, 2, INTRO_U16},
+    {{}, 0, 0, "uint32_t", 0, 0, 4, 0, 4, INTRO_U32},
+    {{}, 0, 0, "uint64_t", 0, 0, 8, 0, 8, INTRO_U64},
+    {{}, 0, 0, "int8_t",   0, 0, 1, 0, 1, INTRO_S8},
+    {{}, 0, 0, "int16_t",  0, 0, 2, 0, 2, INTRO_S16},
+    {{}, 0, 0, "int32_t",  0, 0, 4, 0, 4, INTRO_S32},
+    {{}, 0, 0, "int64_t",  0, 0, 8, 0, 8, INTRO_S64},
+    {{}, 0, 0, "float",    0, 0, 4, 0, 4, INTRO_F32},
+    {{}, 0, 0, "double",   0, 0, 8, 0, 8, INTRO_F64},
+    {{}, 0, 0, "bool",     0, 0, 1, 0, 1, INTRO_U8},
+    {{}, 0, 0, "va_list",  0, 0, 0, 0, 0, INTRO_VA_LIST},
+    {{}, 0, 0, "__builtin_va_list", 0, 0, 0, 0, 0, INTRO_VA_LIST},
 };
 
 typedef struct {
@@ -93,10 +93,10 @@ struct ParseContext {
     ExprContext * expr_ctx;
     LocationContext loc;
 
-    struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
+    struct {size_t key; IntroType ** value;} * arg_list_by_hash;
     struct {char * key; IntroFunction * value;} * function_map;
     struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
-    struct{ IntroType * key; IntroLocation value; } * location_map;
+    struct{ void * key; IntroLocation value; } * location_map;
 
     struct{ char * key; AttributeParseInfo value; } * attribute_map;
     struct{ char * key; int value; } * attribute_token_map;
@@ -141,10 +141,10 @@ register_enum_name(ParseContext * ctx, Token tk) {
 static bool
 funcs_are_equal(const IntroType * a, const IntroType * b) {
     if (intro_origin(a->of) != intro_origin(b->of)) return false;
-    if (a->args->count != b->args->count) return false;
-    for (int i=0; i < a->args->count; i++) {
-        const IntroType * a_arg = intro_origin(a->args->types[i]);
-        const IntroType * b_arg = intro_origin(b->args->types[i]);
+    if (a->count != b->count) return false;
+    for (int i=0; i < a->count; i++) {
+        const IntroType * a_arg = intro_origin(a->arg_types[i]);
+        const IntroType * b_arg = intro_origin(b->arg_types[i]);
         while (a_arg->of) {
             if (a_arg->category == b_arg->category) {
                 a_arg = a_arg->of;
@@ -162,25 +162,22 @@ funcs_are_equal(const IntroType * a, const IntroType * b) {
     return true;
 }
 
-static IntroTypePtrList *
+static IntroType **
 store_arg_type_list(ParseContext * ctx, IntroType ** list) {
     static const size_t hash_seed = 0xF58D6349C6431963; // this is just some random number
 
     size_t count_bytes = arrlen(list) * sizeof(list[0]);
     size_t hash = (count_bytes > 0)? stbds_hash_bytes(list, count_bytes, hash_seed) : 0;
-    IntroTypePtrList * stored = hmget(ctx->arg_list_by_hash, hash);
+    IntroType ** stored = hmget(ctx->arg_list_by_hash, hash);
     if (stored) {
         // TODO: actually handle this somehow instead of aborting
         if (count_bytes > 0) {
-            assert(0 == memcmp(stored->types, list, count_bytes));
+            assert(0 == memcmp(stored, list, count_bytes));
         }
+        arrfree(list);
     } else {
-        stored = arena_alloc(ctx->arena, sizeof(*stored) + count_bytes);
-        stored->count = arrlen(list);
-        if (count_bytes > 0) {
-            memcpy(stored->types, list, count_bytes);
-        }
-        hmput(ctx->arg_list_by_hash, hash, stored);
+        hmput(ctx->arg_list_by_hash, hash, list);
+        stored = list;
     }
 
     return stored;
@@ -234,10 +231,9 @@ store_type(ParseContext * ctx, IntroType type, int32_t tk_index) {
         if (typedef_deps) {
             for (int i=0; i < stbds_header(typedef_deps)->length; i++) {
                 IntroType * t = typedef_deps[i];
-                t->category = type.category;
-                t->__data = type.__data;
-                t->align = type.align;
-                t->size = type.size;
+                const char * temp_name = t->name;
+                *t = type;
+                t->name = temp_name;
             }
             arrfree(typedef_deps);
             (void) hmdel(ctx->incomplete_typedefs, stored);
@@ -440,11 +436,10 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
             member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
         } else {
             if (decl.type->category == INTRO_STRUCT || decl.type->category == INTRO_UNION) {
-                IntroStruct * s = decl.type->i_struct;
                 total_size += (decl.type->align - (total_size % decl.type->align)) % decl.type->align;
                 int member_index_offset = arrlen(members);
-                for (int i=0; i < s->count_members; i++) {
-                    IntroMember embed_member = s->members[i];
+                for (int i=0; i < decl.type->count; i++) {
+                    IntroMember embed_member = decl.type->members[i];
                     embed_member.offset = member.offset + embed_member.offset;
                     arrput(members, embed_member);
                 }
@@ -468,24 +463,20 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
 
     total_size += (total_align - (total_size % total_align)) % total_align;
 
-    IntroStruct * result = arena_alloc(ctx->arena, sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
-    result->count_members = arrlen(members);
-    result->is_union = is_union;
-    memcpy(result->members, members, sizeof(IntroMember) * arrlen(members));
+    IntroType * stored;
+    IntroType type = {0};
+    type.members = arena_alloc(ctx->arena, sizeof(members[0]) * arrlen(members));
+    type.count = arrlen(members);
+    memcpy(type.members, members, sizeof(members[0]) * arrlen(members));
     arrfree(members);
 
-    IntroType * stored;
-    {
-        IntroType type = {0};
-        type.name = complex_type_name;
-        type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
-        type.i_struct = result;
-        type.size = total_size;
-        type.align = total_align;
-        
-        stored = store_type(ctx, type, pos_tk.index);
-        arrfree(complex_type_name);
-    }
+    type.name = complex_type_name;
+    type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
+    type.size = total_size;
+    type.align = total_align;
+    
+    stored = store_type(ctx, type, pos_tk.index);
+    arrfree(complex_type_name);
 
     if (arrlen(ctx->attribute_directives) > start_attribute_directives) {
         for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
@@ -501,8 +492,6 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
 
 static int
 parse_enum(ParseContext * ctx, TokenIndex * tidx) {
-    IntroEnum enum_ = {0};
-
     int32_t pos_index = tidx->index;
     char * complex_type_name = NULL;
     Token tk = next_token(tidx), name_tk = {0};
@@ -529,9 +518,9 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
         return -1;
     }
 
-    enum_.is_flags = true;
-    enum_.is_sequential = true;
-    IntroEnumValue * members = NULL;
+    bool is_flags = true;
+    bool is_sequential = true;
+    IntroEnumValue * values = NULL;
     int next_int = 0;
     int mask = 0;
     while (1) {
@@ -555,7 +544,7 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
         } else if (tk.type == TK_EQUAL) {
             v.value = (int)parse_constant_expression(ctx, tidx);
             if (v.value != next_int) {
-                enum_.is_sequential = false;
+                is_sequential = false;
             }
             next_int = (v.value < INT32_MAX)? v.value + 1 : 0;
             set = true;
@@ -567,10 +556,10 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
             return -1;
         }
 
-        if (mask & v.value) enum_.is_flags = false;
+        if (mask & v.value) is_flags = false;
         mask |= v.value;
 
-        arrput(members, v);
+        arrput(values, v);
         shput(ctx->expr_ctx->constant_map, v.name, (intmax_t)v.value);
 
         if (is_last) break;
@@ -586,24 +575,23 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
             }
         }
     }
-    enum_.count_members = arrlen(members);
 
-    IntroEnum * result = arena_alloc(ctx->arena, sizeof(IntroEnum) + sizeof(*members) * arrlen(members));
-    memcpy(result, &enum_, sizeof(IntroEnum));
-    memcpy(result->members, members, sizeof(*members) * arrlen(members));
-    arrfree(members);
+    IntroType type = {0};
+    type.count = arrlen(values);
+    type.values = arena_alloc(ctx->arena, sizeof(values[0]) * arrlen(values));
+    memcpy(type.values, values, sizeof(values[0]) * arrlen(values));
+    arrfree(values);
 
-    {
-        IntroType type = {0};
-        type.name = complex_type_name;
-        type.category = INTRO_ENUM;
-        type.i_enum = result;
-        type.size = 4; // TODO: this could be other things in C++
-        type.align = type.size;
+    if (is_flags) type.flags |= INTRO_IS_FLAGS;
+    if (is_sequential) type.flags |= INTRO_IS_SEQUENTIAL;
 
-        store_type(ctx, type, pos_index);
-        arrfree(complex_type_name);
-    }
+    type.name = complex_type_name;
+    type.category = INTRO_ENUM;
+    type.size = 4; // TODO: this could be other things in C++
+    type.align = type.size;
+
+    store_type(ctx, type, pos_index);
+    arrfree(complex_type_name);
 
     return 0;
 }
@@ -916,17 +904,17 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             new_type.align = 8;
         } else if (it == FUNCTION) {
             IntroType ** arg_types = arrpop(func_args_stack);
-            IntroTypePtrList * stored_args = store_arg_type_list(ctx, arg_types);
-            arrfree(arg_types);
+            IntroType ** stored_args = store_arg_type_list(ctx, arg_types);
 
             new_type.of = (IntroType *)intro_origin(last_type); // return type
             new_type.category = INTRO_FUNCTION;
-            new_type.args = stored_args;
+            new_type.arg_types = stored_args;
+            new_type.count = arrlen(stored_args);
         } else {
             new_type.category = INTRO_ARRAY;
             new_type.of = last_type;
-            new_type.array_size = it;
-            new_type.size = last_type->size * new_type.array_size;
+            new_type.count = it;
+            new_type.size = last_type->size * new_type.count;
             new_type.align = last_type->align;
         }
         last_type = store_type(ctx, new_type, -1);
@@ -1001,11 +989,10 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
                                   && og_prev->__data == og_this->__data;
             if (!effectively_equal) {
                 parse_error(ctx, decl->name_tk, "Redefinition does not match previous definition.");
-#if 0
-                if (prev->location.path) {
-                    location_note(&ctx->loc, prev->location, "Previous definition here.");
+                IntroLocation loc = hmget(ctx->location_map, prev);
+                if (loc.path) {
+                    location_note(&ctx->loc, loc, "Previous definition here.");
                 }
-#endif
                 return -1;
             }
         } else {
@@ -1025,25 +1012,27 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     if (decl->type->category == INTRO_FUNCTION) {
         STACK_TERMINATE(terminated_name, decl->name_tk.start, decl->name_tk.length);
         IntroFunction * prev = shget(ctx->function_map, terminated_name);
-        int32_t count_args = decl->type->args->count;
+        int32_t count_args = decl->type->count;
         if (decl->func_specifies_args) {
             if (prev) {
                 if (!funcs_are_equal(decl->type, prev->type)) {
                     parse_error(ctx, decl->name_tk, "Function declaration does not match previous.");
-#if 0
                     if (prev->location.path) {
                         location_note(&ctx->loc, prev->location, "Previous definition here.");
+                    } else {
+                        fprintf(stderr, "Previous definition has no location information...\n");
                     }
-#endif
                     return -1;
                 } else {
-                    //if (prev->has_body) {
+                    //if ((prev->flags & INTRO_HAS_BODY)) {
                     //    parse_warning(ctx, decl->name_tk, "Function is redeclared after definition.");
                     //}
                     func = prev;
                 }
             } else {
-                func = calloc(1, sizeof(*func) + count_args * sizeof(func->arg_names[0]));
+                func = arena_alloc(ctx->arena, sizeof(*func));
+                func->arg_names = arena_alloc(ctx->arena, count_args * sizeof(func->arg_names[0]));
+                func->count_args = decl->type->count;
                 func->name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
                 func->type = decl->type;
                 {
@@ -1111,7 +1100,7 @@ find_end: ;
                 assert(func != NULL);
                 do_find_closing = true;
                 func_body = true;
-                func->has_body = true;
+                func->flags |= INTRO_HAS_BODY;
             }
             if (do_find_closing) {
                 tidx->index = find_closing((TokenIndex){.list = tidx->list, .index = tidx->index - 1});
@@ -1186,14 +1175,13 @@ add_to_gen_info(ParseContext * ctx, ParseInfo * info, IntroType * type) {
             add_to_gen_info(ctx, info, type->of);
         }
         if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
-            for (int mi=0; mi < type->i_struct->count_members; mi++) {
-                const IntroMember * m = &type->i_struct->members[mi];
+            for (int mi=0; mi < type->count; mi++) {
+                const IntroMember * m = &type->members[mi];
                 add_to_gen_info(ctx, info, m->type);
             }
         } else if (type->category == INTRO_FUNCTION) {
-            for (int arg_i=0; arg_i < type->args->count; arg_i++) {
-                add_to_gen_info(ctx, info, type->args->types[arg_i]);
-                arrput(info->arg_lists, type->args);
+            for (int arg_i=0; arg_i < type->size; arg_i++) {
+                add_to_gen_info(ctx, info, type->arg_types[arg_i]);
             }
         }
     }
@@ -1291,7 +1279,6 @@ parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
 
     o_info->count_types = arrlen(o_info->types);
     o_info->value_buffer = ctx->value_buffer;
-    o_info->count_arg_lists = arrlen(o_info->arg_lists);
     o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
     o_info->string_set = ctx->string_set;

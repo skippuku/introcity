@@ -86,35 +86,18 @@ typedef struct IntroLocation {
 } IntroLocation;
 
 typedef enum IntroFlags {
-    INTRO_NONE = 0,
     INTRO_CONST = 0x01,
     INTRO_STATIC = 0x02,
     INTRO_INLINE = 0x04,
     INTRO_EXPLICITLY_GENERATED = 0x08,
+    INTRO_HAS_BODY = 0x10,
+    INTRO_IS_FLAGS = 0x20,
+
+    // reuse
+    INTRO_IS_SEQUENTIAL = INTRO_HAS_BODY,
 } IntroFlags;
 
 typedef struct IntroType IntroType I(~gui_edit);
-typedef struct IntroStruct IntroStruct;
-typedef struct IntroEnum IntroEnum;
-typedef struct IntroTypePtrList IntroTypePtrList;
-
-struct IntroType {
-    uint32_t category;
-    uint32_t flags I(gui_format "0x%02x");
-    union {
-        void * __data I(~gui_show);
-        uint32_t array_size;
-        IntroStruct * i_struct;
-        IntroEnum * i_enum;
-        IntroTypePtrList * args;
-    } INTRO_ANON_UNION_NAME;
-    IntroType * of;
-    IntroType * parent;
-    const char * name;
-    uint32_t attr;
-    uint32_t size;
-    uint8_t align;
-};
 
 typedef struct IntroMember {
     const char * name;
@@ -123,36 +106,36 @@ typedef struct IntroMember {
     uint32_t attr;
 } IntroMember;
 
-struct IntroStruct {
-    uint32_t count_members;
-    bool is_union;
-    IntroMember members [] I(length count_members);
-};
-
 typedef struct IntroEnumValue {
     const char * name;
     int32_t value;
 } IntroEnumValue;
 
-struct IntroEnum {
-    uint32_t count_members;
-    bool is_flags;
-    bool is_sequential;
-    IntroEnumValue members [] I(length count_members);
-};
-
-struct IntroTypePtrList {
+struct IntroType {
+    union {
+        void * __data I(~gui_show);
+        IntroMember * members;
+        IntroEnumValue * values;
+        IntroType ** arg_types;
+    } INTRO_ANON_UNION_NAME;
+    IntroType * of; // TODO: move into union
+    IntroType * parent;
+    const char * name;
     uint32_t count;
-    IntroType * types [] I(length count);
+    uint32_t attr;
+    uint32_t size;
+    uint16_t flags I(gui_format "0x%02x");
+    uint8_t align;
+    uint8_t category;
 };
 
 typedef struct IntroFunction {
     const char * name;
     IntroType * type;
     IntroLocation location;
-    uint32_t flags;
-    bool has_body;
-    const char * arg_names [];
+    const char ** arg_names;
+    uint32_t count_args;
+    uint16_t flags;
 } IntroFunction;
 
 typedef enum IntroAttributeType {
@@ -176,7 +159,7 @@ typedef struct IntroAttribute {
 
 typedef struct IntroAttributeSpec {
     INTRO_ALIGN(16) uint32_t bitset [(INTRO_MAX_ATTRIBUTES+31) / 32];
-    uint32_t value_offsets [];
+    //uint32_t value_offsets []; // Flexible array members are not officially part of C++
 } IntroAttributeSpec;
 
 typedef struct IntroBuiltinAttributeIds {
@@ -225,7 +208,7 @@ typedef struct IntroContext {
     IntroType * types     I(length count_types);
     const char ** strings I(length count_strings);
     uint8_t * values      I(length size_values);
-    IntroFunction ** functions I(length count_functions);
+    IntroFunction * functions I(length count_functions);
     IntroMacro * macros   I(length count_macros);
 
     uint32_t count_types;

@@ -21,7 +21,7 @@ typedef enum {
 
 int
 main() {
-    IntroEnumValue * e = ITYPE(Test)->i_enum->members;
+    IntroEnumValue * e = ITYPE(Test)->values;
 
     assert(e[0].value == E_0);
     assert(e[1].value == E_1);

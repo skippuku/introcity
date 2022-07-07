@@ -201,12 +201,10 @@ typedef struct ParseInfo {
     IntroType ** types;
     IndexByPtrMap * index_by_ptr_map;
     uint8_t * value_buffer;
-    IntroTypePtrList ** arg_lists;
     IntroFunction ** functions;
     char ** string_set;
     struct IntroAttributeContext attr;
     uint32_t count_types;
-    uint32_t count_arg_lists;
     uint32_t count_functions;
 } ParseInfo;
 

@@ -233,7 +233,7 @@ message_internal(char * start_of_line, const char * filename, int line, char * h
     strputf(&s, "%s%s" WHITE " (" CYAN "%s:" BOLD_WHITE "%i" WHITE "): %s\n", color, message_type_string, filename, line, message);
     strput_code_segment(&s, start_of_line, end_of_line, hl_start, hl_end, color);
     fputs(s, stderr);
-    db_break();
+    //db_break();
     arrfree(s);
 }
 
@@ -262,7 +262,7 @@ parse_msg_internal(LocationContext * lctx, int32_t tk_index, char * message, int
             message_internal(start_of_line, filename, line_num, hl_start, hl_end, "In expansion", message_type);
         }
     }
-    db_break();
+    //db_break();
 }
 
 static void
@@ -281,7 +281,6 @@ preprocess_message_internal(LocationContext * lctx, const Token * tk, char * mes
 #define preprocess_error(tk, message)   preprocess_message_internal(&ctx->loc, tk, message, 0)
 #define preprocess_warning(tk, message) preprocess_message_internal(&ctx->loc, tk, message, 1)
 
-#if 0
 void
 location_note(LocationContext * lctx, IntroLocation location, const char * msg) {
     FileInfo * file = NULL;
@@ -296,24 +295,13 @@ location_note(LocationContext * lctx, IntroLocation location, const char * msg) 
         fprintf(stderr, "Could not find location for note.\n");
         return;
     }
-    char * s = file->buffer;
-    int line = 1;
-    while (s < file->buffer + file->buffer_size) {
-        if (*s == '\n') {
-            line++;
-            if (line == location.line) {
-                break;
-            }
-        }
-        s++;
-    }
-    char * start_of_line = s;
-    s += location.column;
+    char * s = file->buffer + location.offset;
+    char * start_of_line;
+    int line = count_newlines_in_range(file->buffer, s, &start_of_line);
 
     Token tk = pre_next_token(&s);
     message_internal(start_of_line, location.path, line, tk.start, tk.start + tk.length, msg, 1);
 }
-#endif
 
 static Token
 create_stringized(PreContext * ctx, Token * list) {

@@ -28,6 +28,7 @@ city:
     alloc function attribute for when you want a buffer to be allocated in a certain way ex. stb_ds
 
 config:
+    default program arguments
     allow config to be appended with another config?
     handle c type sizes
     static assert in .intro file if types don't match
@@ -35,7 +36,6 @@ config:
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
-    Not a fan of how function information works
     ParseInfo: have everything, strip away unwated stuff at gen
     handle character literals including L'x'
     fix bitfield regression
@@ -53,20 +53,18 @@ parse:
         operator overloads?
 
 pre:
-    fix -E spacing
+    FileInfo: add location
     pragma that adds a file to make dependencies
-    include macros in introspection data (optionally)
-    errors are fucked (again)
-    don't evaluate location line until it is known the type will be in info
-    save location of includes and defines
+    save location of includes
     parse #line directives
     parse comments for documentation?
     create #line directives?
+    fix -E spacing
     trim big newline gaps
 
 gen:
     idea: use type infomation to generate the header
-    idea: stop using type information to generate anything
+    idea: stop using type information to generate anything because changing anything in intro.h can be a nightmare
     allow multiple outputs at once ex. header + city
     (these 3 points all kind of go together)
         !! clang doesn't like flexible array initialization in c++
@@ -95,9 +93,6 @@ examples:
 doc:
 
 misc:
-    performance metrics
-        count lines, tokens, types
-        stage timings
     idea: some kind of plugin system
         for when you want to do metaprogramming, it seems more sensible to run your metaprogram along with intro \
           instead of compiling another program.

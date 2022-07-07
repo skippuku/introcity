@@ -47,7 +47,7 @@ main() {
     (void)t;
     const IntroType * test_int_type = ITYPE(TestInt);
     
-    const IntroMember * m = test_int_type->i_struct->members;
+    const IntroMember * m = test_int_type->members;
 
     // TODO: check type parent ex. unsigned char -> uint8_t
 
@@ -73,22 +73,22 @@ main() {
 
         CHECK0(13,,      ARRAY);
         CHECK0(13, ->of, U64);
-        assert(m[13].type->array_size == LENGTH(t.v3));
+        assert(m[13].type->count == LENGTH(t.v3));
 
         CHECK0(14,,          ARRAY);
         CHECK0(14, ->of,     POINTER);
         CHECK0(14, ->of->of, U64);
-        assert(m[14].type->array_size == LENGTH(t.v4));
+        assert(m[14].type->count == LENGTH(t.v4));
 
         CHECK0(15,,          ARRAY);
         CHECK0(15, ->of,     POINTER);
         CHECK0(15, ->of->of, U64);
-        assert(m[15].type->array_size == LENGTH(t.v5));
+        assert(m[15].type->count == LENGTH(t.v5));
 
         CHECK0(16,,          POINTER);
         CHECK0(16, ->of,     ARRAY);
         CHECK0(16, ->of->of, U64);
-        assert(m[16].type->of->array_size == LENGTH(*t.v6));
+        assert(m[16].type->of->count == LENGTH(*t.v6));
 
     CHECK0(17,, U64);
     CHECK0(18,, S64);

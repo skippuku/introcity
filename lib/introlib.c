@@ -68,12 +68,12 @@ typedef uint8_t u8;
 
 const char *
 intro_enum_name(const IntroType * type, int value) {
-    if (type->i_enum->is_sequential) {
-        return type->i_enum->members[value].name;
+    if ((type->flags & INTRO_IS_SEQUENTIAL)) {
+        return type->values[value].name;
     } else {
-        for (int i=0; i < type->i_enum->count_members; i++) {
-            if (type->i_enum->members[i].value == value) {
-                return type->i_enum->members[i].name;
+        for (int i=0; i < type->count; i++) {
+            if (type->values[i].value == value) {
+                return type->values[i].name;
             }
         }
     }
@@ -138,7 +138,8 @@ get_attribute_value_offset(IntroContext * ctx, uint32_t attr_spec_location, uint
         pop += INTRO_POPCOUNT(spec->bitset[i]);
     }
     pop += INTRO_POPCOUNT(spec->bitset[bitset_index] & pop_count_mask);
-    *out = spec->value_offsets[pop];
+    uint32_t * value_offsets = (uint32_t *)(spec + 1);
+    *out = value_offsets[pop];
 
     return true;
 }
@@ -218,7 +219,7 @@ intro_attribute_length_x(IntroContext * ctx, const void * container, const Intro
     if (has) {
         int32_t length_m_index;
         memcpy(&length_m_index, &value_offset, sizeof(length_m_index));
-        const IntroMember * length_m = &container_type->i_struct->members[length_m_index];
+        const IntroMember * length_m = &container_type->members[length_m_index];
         const void * length_data = (u8 *)container + length_m->offset;
         int64_t result = intro_int_value(length_data, length_m->type);
         *o_length = result;
@@ -257,7 +258,7 @@ static void
 intro_offset_pointers(void * dest, const IntroType * type, void * base) {
     if (type->category == INTRO_ARRAY) {
         if (type->of->category == INTRO_POINTER) {
-            for (int i=0; i < type->array_size; i++) {
+            for (int i=0; i < type->count; i++) {
                 u8 ** o_ptr = (u8 **)((u8 *)dest + i * sizeof(void *));
                 *o_ptr += (uintptr_t)base;
             }
@@ -267,7 +268,7 @@ intro_offset_pointers(void * dest, const IntroType * type, void * base) {
 
 void
 intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute) {
-    const IntroMember * m = &struct_type->i_struct->members[member_index];
+    const IntroMember * m = &struct_type->members[member_index];
     size_t size = intro_size(m->type);
     IntroVariant var;
     if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_type)) {
@@ -289,7 +290,7 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
     // TODO: this seems inelegant
     } else if (m->type->category == INTRO_ARRAY && m->type->of->category == INTRO_STRUCT) {
         int elem_size = intro_size(m->type->of);
-        for (int i=0; i < m->type->array_size; i++) {
+        for (int i=0; i < m->type->count; i++) {
             void * elem_address = (u8 *)dest + m->offset + i * elem_size;
             intro_set_values_x(ctx, elem_address, m->type->of, value_attribute);
         }
@@ -300,7 +301,7 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
 
 void
 intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute) {
-    for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
+    for (int m_index=0; m_index < type->count; m_index++) {
         intro_set_member_value_ctx(ctx, dest, type, m_index, value_attribute);
     }
 }
@@ -330,20 +331,19 @@ intro_print_scalar(const void * data, const IntroType * type) {
 
 static void
 intro_print_enum(int value, const IntroType * type) {
-    const IntroEnum * i_enum = type->i_enum;
-    if (i_enum->is_sequential) {
-        if (value >= 0 && value < i_enum->count_members) {
-            printf("%s", i_enum->members[value].name);
+    if ((type->flags & INTRO_IS_SEQUENTIAL)) {
+        if (value >= 0 && value < type->count) {
+            printf("%s", type->values[value].name);
         } else {
             printf("%i", value);
         }
-    } else if (i_enum->is_flags) {
+    } else if ((type->flags & INTRO_IS_FLAGS)) {
         bool more_than_one = false;
         if (value) {
-            for (int f=0; f < i_enum->count_members; f++) {
-                if (value & i_enum->members[f].value) {
+            for (int f=0; f < type->count; f++) {
+                if (value & type->values[f].value) {
                     if (more_than_one) printf(" | ");
-                    printf("%s", i_enum->members[f].name);
+                    printf("%s", type->values[f].name);
                     more_than_one = true;
                 }
             }
@@ -377,7 +377,7 @@ intro_sprint_type_name(char * dest, const IntroType * type) {
             *dest++ = '*';
             type = type->of;
         } else if (type->category == INTRO_ARRAY) {
-            dest += 1 + stbsp_sprintf(dest, "[%u]", type->array_size) - 1;
+            dest += 1 + stbsp_sprintf(dest, "[%u]", type->count) - 1;
             type = type->of;
         } else if (type->name) {
             dest += 1 + stbsp_sprintf(dest, "%s", type->name) - 1;
@@ -403,8 +403,8 @@ intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * 
 
     printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
 
-    for (int m_index = 0; m_index < type->i_struct->count_members; m_index++) {
-        const IntroMember * m = &type->i_struct->members[m_index];
+    for (int m_index = 0; m_index < type->count; m_index++) {
+        const IntroMember * m = &type->members[m_index];
         const void * m_data = (u8 *)data + m->offset;
         for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
         printf("%s: ", m->name);
@@ -417,8 +417,8 @@ intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * 
             case INTRO_ARRAY: {
                 const IntroType * of = m->type->of;
                 const int MAX_EXPOSED_LENGTH = 64;
-                if (intro_is_scalar(of) && m->type->array_size <= MAX_EXPOSED_LENGTH) {
-                    intro_print_basic_array(m_data, of, m->type->array_size);
+                if (intro_is_scalar(of) && m->type->count <= MAX_EXPOSED_LENGTH) {
+                    intro_print_basic_array(m_data, of, m->type->count);
                 } else {
                     printf("<concealed>");
                 }
@@ -491,7 +491,7 @@ intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, c
         int value = *(int *)data;
         intro_print_enum(value, type);
     } else if (type->category == INTRO_ARRAY && intro_is_scalar(type->of)) {
-        intro_print_basic_array(data, type, type->array_size);
+        intro_print_basic_array(data, type, type->count);
     } else if (type->category == INTRO_POINTER) {
         void * value = *(void **)data;
         printf("%p", value);
@@ -514,8 +514,8 @@ intro_type_with_name_ctx(IntroContext * ctx, const char * name) {
 const IntroMember *
 intro_member_by_name_x(const IntroType * type, const char * name) {
     assert((type->category & 0xf0) == INTRO_STRUCT);
-    for (int i=0; i < type->i_struct->count_members; i++) {
-        const IntroMember * member = &type->i_struct->members[i];
+    for (int i=0; i < type->count; i++) {
+        const IntroMember * member = &type->members[i];
         if (0==strcmp(name, member->name)) {
             return member;
         }
@@ -670,7 +670,7 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
             uint32_t elem_type_id = city__get_serialized_id(ctx, type->of);
             put_uint(&ctx->info, type->category, 1);
             put_uint(&ctx->info, elem_type_id, ctx->type_size);
-            put_uint(&ctx->info, type->array_size, 4);
+            put_uint(&ctx->info, type->count, 4);
         }break;
 
         case INTRO_POINTER: {
@@ -694,19 +694,18 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
 
         case INTRO_UNION:
         case INTRO_STRUCT: {
-            const IntroStruct * s_struct = type->i_struct;
-            uint32_t m_type_ids [s_struct->count_members];
-            for (int m_index=0; m_index < s_struct->count_members; m_index++) {
-                const IntroMember * m = &s_struct->members[m_index];
+            uint32_t * m_type_ids = (uint32_t *)malloc(type->count * sizeof(uint32_t));
+            for (int m_index=0; m_index < type->count; m_index++) {
+                const IntroMember * m = &type->members[m_index];
                 m_type_ids[m_index] = city__get_serialized_id(ctx, m->type);
             }
 
             size_t id_test_bit = 1 << (ctx->offset_size * 8 - 1);
 
             put_uint(&ctx->info, type->category, 1);
-            put_uint(&ctx->info, s_struct->count_members, 4);
-            for (int m_index=0; m_index < s_struct->count_members; m_index++) {
-                const IntroMember * m = &s_struct->members[m_index];
+            put_uint(&ctx->info, type->count, 4);
+            for (int m_index=0; m_index < type->count; m_index++) {
+                const IntroMember * m = &type->members[m_index];
                 put_uint(&ctx->info, m_type_ids[m_index], ctx->type_size);
 
                 put_uint(&ctx->info, m->offset, ctx->offset_size);
@@ -727,6 +726,8 @@ city__get_serialized_id(CityCreationContext * ctx, const IntroType * type) {
                     put_uint(&ctx->info, name_offset, ctx->offset_size);
                 }
             }
+
+            free(m_type_ids);
         }break;
 
         default: break;
@@ -744,8 +745,8 @@ city__serialize_pointer_data(CityCreationContext * ctx, uint32_t data_offset, co
     switch(type->category) {
     case INTRO_STRUCT: {
         uint32_t last_offset = 0xFFffFFff;
-        for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
-            const IntroMember * member = &type->i_struct->members[m_index];
+        for (int m_index=0; m_index < type->count; m_index++) {
+            const IntroMember * member = &type->members[m_index];
 
             if (member->offset == last_offset) {
                 continue;
@@ -817,7 +818,7 @@ city__serialize_pointer_data(CityCreationContext * ctx, uint32_t data_offset, co
     }break;
 
     case INTRO_ARRAY: {
-        for (int elem_i=0; elem_i < type->array_size; elem_i++) {
+        for (int elem_i=0; elem_i < type->count; elem_i++) {
             uint32_t elem_offset = data_offset + (elem_i * type->of->size);
             city__serialize_pointer_data(ctx, elem_offset, type->of, 1);
         }
@@ -913,11 +914,9 @@ city__safe_copy_struct(
     void * restrict src,
     const IntroType * restrict s_type
 ) {
-    const IntroStruct * d_struct = d_type->i_struct;
-    const IntroStruct * s_struct = s_type->i_struct;
     const char ** aliases = NULL;
     uint32_t * skip_members = NULL;
-    for (int dm_i=0; dm_i < d_struct->count_members; dm_i++) {
+    for (int dm_i=0; dm_i < d_type->count; dm_i++) {
         bool do_skip = false;
         for (int skip_i=0; skip_i < arrlen(skip_members); skip_i++) {
             if (skip_members[skip_i] == dm_i) {
@@ -928,7 +927,7 @@ city__safe_copy_struct(
         }
         if (do_skip) continue;
 
-        const IntroMember * dm = &d_struct->members[dm_i];
+        const IntroMember * dm = &d_type->members[dm_i];
 
         if (intro_has_attribute_x(ctx, dm->attr, ctx->attr.builtin.i_type)) {
             *(const IntroType **)((u8 *)dest + dm->offset) = d_type;
@@ -943,8 +942,8 @@ city__safe_copy_struct(
 
         bool found_match = false;
         // TODO: it would probably be faster to build a hash lookup during the type parse so this isn't slow searching
-        for (int j=0; j < s_struct->count_members; j++) {
-            const IntroMember * sm = &s_struct->members[j];
+        for (int j=0; j < s_type->count; j++) {
+            const IntroMember * sm = &s_type->members[j];
 
             bool match = false;
             if (sm->name) {
@@ -984,7 +983,7 @@ city__safe_copy_struct(
                         memcpy((u8 *)dest + dm->offset, &result_ptr, sizeof(void *));
                         int32_t length_member_index;
                         if (intro_attribute_member_x(ctx, dm->attr, ctx->attr.builtin.i_length, &length_member_index)) {
-                            const IntroMember * lm = &d_type->i_struct->members[length_member_index];
+                            const IntroMember * lm = &d_type->members[length_member_index];
                             size_t wr_size = intro_size(lm->type);
                             if (wr_size > 4) wr_size = 4;
                             memcpy((u8 *)dest + lm->offset, length_ptr, wr_size);
@@ -1101,16 +1100,8 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
                 arrput(members, member);
             }
 
-            IntroStruct struct_;
-            struct_.count_members = count_members;
-            struct_.is_union = type->category == INTRO_UNION;
-
-            IntroStruct * result = (IntroStruct *)malloc(sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
-            memcpy(result, &struct_, sizeof(struct_));
-            memcpy(result->members, members, sizeof(*members) * arrlen(members));
-            arrfree(members);
-
-            type->i_struct = result;
+            type->count = arrlen(members);
+            type->members = members;
         }break;
 
         case INTRO_POINTER: {
@@ -1127,21 +1118,17 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
 
         case INTRO_ARRAY: {
             uint32_t elem_id = next_uint(&b, type_size);
-            uint32_t array_size = next_uint(&b, 4);
+            uint32_t count = next_uint(&b, 4);
 
             IntroType * elem_type = hmget(info_by_id, elem_id);
             type->of = elem_type;
-            type->array_size = array_size;
-            type->size = elem_type->size * array_size;
+            type->count = count;
+            type->size = elem_type->size * count;
         }break;
 
         case INTRO_ENUM: {
             uint32_t size = next_uint(&b, 1);
 
-            IntroEnum * i_enum = (IntroEnum *)calloc(sizeof(*i_enum), 1);
-            memset(i_enum, 0, sizeof(*i_enum));
-
-            type->i_enum = i_enum;
             type->size = size;
         }break;
 
@@ -1170,10 +1157,11 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
     int copy_result = city__safe_copy_struct(ctx, dest, d_type, src, s_type);
 
     for (int i=0; i < hmlen(info_by_id); i++) {
-        if (intro_is_complex(info_by_id[i].value)) {
-            free(info_by_id[i].value->i_struct);
+        IntroType * type = info_by_id[i].value;
+        if (intro_has_fields(type)) {
+            arrfree(type->members);
         }
-        free(info_by_id[i].value);
+        free(type);
     }
     hmfree(info_by_id);
 

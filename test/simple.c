@@ -73,9 +73,9 @@ main(int argc, char ** argv) {
     intro_print(&dumb, ITYPE(Dumb), NULL);
     printf("\n\n");
 
-    const IntroType * strange_array_type = ITYPE(Dumb)->i_struct->members[0].type;
+    const IntroType * strange_array_type = ITYPE(Dumb)->members[0].type;
     assert(strange_array_type->category == INTRO_ARRAY);
-    assert(strange_array_type->array_size == LENGTH(dumb.strange_array));
+    assert(strange_array_type->count == LENGTH(dumb.strange_array));
     for (int i=0; i < LENGTH(dumb.strange_array); i++) {
         assert(dumb.strange_array[i] == 0);
     }

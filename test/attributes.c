@@ -51,16 +51,16 @@ typedef struct {
 void
 special_alloc(void * dest_struct, const IntroType * type) {
     int owner_index = -1;
-    for (int mi=0; mi < type->i_struct->count_members; mi++) {
-        const IntroMember * m = &type->i_struct->members[mi];
+    for (int mi=0; mi < type->count; mi++) {
+        const IntroMember * m = &type->members[mi];
         if (intro_has_attribute(m, my_handle)) {
             assert(m->type->category == INTRO_POINTER);
             owner_index = mi;
 
             struct join_info {int index; int ptr_offset;} * stack = NULL;
             size_t amount = 0;
-            for (int mi=0; mi < type->i_struct->count_members; mi++) {
-                const IntroMember * m = &type->i_struct->members[mi];
+            for (int mi=0; mi < type->count; mi++) {
+                const IntroMember * m = &type->members[mi];
                 int friend_index;
                 if (mi == owner_index
                     || (intro_attribute_member(m, my_joint, &friend_index)
@@ -83,7 +83,7 @@ special_alloc(void * dest_struct, const IntroType * type) {
 
             for (int i=0; i < arrlen(stack); i++) {
                 struct join_info info = stack[i];
-                const IntroMember * m = &type->i_struct->members[info.index];
+                const IntroMember * m = &type->members[info.index];
                 void ** member_loc = (void **)(dest_struct + m->offset);
                 *member_loc = (void *)(buffer + info.ptr_offset);
             }
@@ -95,8 +95,8 @@ special_alloc(void * dest_struct, const IntroType * type) {
 
 void
 special_free(void * dest_struct, const IntroType * type) {
-    for (int mi=0; mi < type->i_struct->count_members; mi++) {
-        const IntroMember * m = &type->i_struct->members[mi];
+    for (int mi=0; mi < type->count; mi++) {
+        const IntroMember * m = &type->members[mi];
         if (intro_has_attribute(m, my_handle)) {
             void * member_value = *(void **)(dest_struct + m->offset);
             free(member_value);
@@ -142,9 +142,9 @@ main() {
         float f;
         const char * note;
 
-        const IntroMember *m_name = &ITYPE(AttributeTest)->i_struct->members[0],
-                          *m_v1   = &ITYPE(AttributeTest)->i_struct->members[1],
-                          *m_v2   = &ITYPE(AttributeTest)->i_struct->members[2];
+        const IntroMember *m_name = &ITYPE(AttributeTest)->members[0],
+                          *m_v1   = &ITYPE(AttributeTest)->members[1],
+                          *m_v2   = &ITYPE(AttributeTest)->members[2];
 
         note = intro_attribute_string(m_name, gui_note);
         assert(note);

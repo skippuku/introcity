@@ -46,8 +46,8 @@ static void edit_member(
 
 static void
 edit_struct_children(IntroContext * ctx, void * src, const IntroType * s_type) {
-    for (uint32_t m_index=0; m_index < s_type->i_struct->count_members; m_index++) {
-        const IntroMember * m = &s_type->i_struct->members[m_index];
+    for (uint32_t m_index=0; m_index < s_type->count; m_index++) {
+        const IntroMember * m = &s_type->members[m_index];
         edit_member(ctx, m->name, (char *)src + m->offset, m->type, m_index, src, s_type, m);
     }
 }
@@ -242,7 +242,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             count_components = type->array_size;
             scalar_type = type->of;
         } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
-            const IntroType * m_type = type->i_struct->members[0].type;
+            const IntroType * m_type = type->members[0].type;
             scalar_type = m_type;
             count_components = intro_size(type) / intro_size(m_type);
         }
@@ -266,18 +266,18 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             ImGui::DragScalar("##", intro_imgui_scalar_type(type), member_data, param.scale, param.min, param.max, param.format);
         }
     } else if (type->category == INTRO_ENUM) {
-        if (type->i_enum->is_flags) {
+        if ((type->flags & INTRO_IS_FLAGS)) {
             int * flags_ptr = (int *)member_data;
-            for (uint32_t e=0; e < type->i_enum->count_members; e++) {
-                IntroEnumValue v = type->i_enum->members[e];
+            for (uint32_t e=0; e < type->count; e++) {
+                IntroEnumValue v = type->members[e];
                 ImGui::CheckboxFlags(v.name, flags_ptr, v.value);
             }
         } else {
             int current_value = *(int *)member_data;
             bool found_match = false;
             uint32_t current_index;
-            for (uint32_t e=0; e < type->i_enum->count_members; e++) {
-                IntroEnumValue v = type->i_enum->members[e];
+            for (uint32_t e=0; e < type->count; e++) {
+                IntroEnumValue v = type->members[e];
                 if (v.value == current_value) {
                     current_index = e;
                     found_match = true;
@@ -286,10 +286,10 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             if (!found_match) {
                 ImGui::InputInt(NULL, (int *)member_data);
             } else {
-                const char * preview = type->i_enum->members[current_index].name;
+                const char * preview = type->members[current_index].name;
                 if (ImGui::BeginCombo("##", preview)) {
-                    for (uint32_t e=0; e < type->i_enum->count_members; e++) {
-                        IntroEnumValue v = type->i_enum->members[e];
+                    for (uint32_t e=0; e < type->count; e++) {
+                        IntroEnumValue v = type->members[e];
                         bool is_selected = (e == current_index);
                         if (ImGui::Selectable(v.name, is_selected)) {
                             current_index = e;
@@ -299,7 +299,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
                         }
                     }
                     ImGui::EndCombo();
-                    *(int *)member_data = type->i_enum->members[current_index].value;
+                    *(int *)member_data = type->members[current_index].value;
                 }
             }
         }
