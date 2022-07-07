@@ -265,7 +265,11 @@ maybe_expect_attribute(ParseContext * ctx, TokenIndex * tidx, int32_t member_ind
         *o_tk = next_token(tidx);
         if (tk_equal(o_tk, "attribute") || tk_equal(o_tk, "apply_to")) {
             tidx->index = paren_index;
+
+            metrics.parse_time += nanointerval();
             parse_global_directive(ctx, tidx);
+            metrics.attribute_time += nanointerval();
+
             *o_tk = next_token(tidx);
         } else {
             AttributeDirective directive = {
@@ -1279,10 +1283,11 @@ parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
         }
     }
 
+    metrics.parse_time += nanointerval();
     ctx->p_info = o_info;
-
     reset_location_context(&ctx->loc);
     handle_attributes(ctx, o_info);
+    metrics.attribute_time += nanointerval();
 
     o_info->count_types = arrlen(o_info->types);
     o_info->value_buffer = ctx->value_buffer;
@@ -1290,6 +1295,9 @@ parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
     o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
     o_info->string_set = ctx->string_set;
-    metrics.parse_time += nanointerval();
+
+    metrics.count_parse_types = hmlen(ctx->type_set);
+    metrics.count_gen_types = o_info->count_types;
+
     return 0;
 }

@@ -54,17 +54,32 @@ main(int argc, char * argv []) {
     metrics.gen_time += nanointerval();
 
     if (pre_info.show_metrics) {
-        printf("intro version %s\n\n", VERSION);
+        char * buf = NULL;
+        strputf(&buf, "intro version %s", VERSION);
+#ifdef DEBUG
+        strputf(&buf, " (debug)");
+#endif
+        strputf(&buf, "\n");
+
 #define AS_SECONDS(t) ((t) / 1000000000.0)
         uint64_t now = nanotime();
-        printf("Total: %.6f s\n", AS_SECONDS(now - metrics.start));
-        printf("  Lex:   %.6f s\n", AS_SECONDS(metrics.pre_lex_time));
-        printf("  Pre:   %.6f s\n", AS_SECONDS(metrics.pre_time));
-        printf("  Parse: %.6f s\n", AS_SECONDS(metrics.parse_time));
-        printf("  Gen:   %.6f s\n\n", AS_SECONDS(metrics.gen_time));
-
-        printf("Lines parsed:  %lu\n", (unsigned long)metrics.count_lines);
-        printf("Tokens parsed: %lu\n", (unsigned long)metrics.count_tokens);
+        strputf(&buf, "Total time: %.6f s\n", AS_SECONDS(now - metrics.start));
+        strputf(&buf, "|-Pre: %.6f s\n", AS_SECONDS(metrics.pre_time + metrics.lex_time + metrics.macro_time));
+        strputf(&buf, "| |-Tokenization:    %.6f s\n", AS_SECONDS(metrics.lex_time));
+        strputf(&buf, "| |-Macro expansion: %.6f s\n", AS_SECONDS(metrics.macro_time));
+        strputf(&buf, "| |-Other:           %.6f s\n", AS_SECONDS(metrics.pre_time));
+        strputf(&buf, "|   %'16lu files\n", (unsigned long)metrics.count_pre_files);
+        strputf(&buf, "|   %'16lu lines\n", (unsigned long)metrics.count_pre_lines);
+        strputf(&buf, "|   %'16lu tokens\n", (unsigned long)metrics.count_pre_tokens);
+        strputf(&buf, "|-Parse: %.6f s\n", AS_SECONDS(metrics.parse_time + metrics.attribute_time));
+        strputf(&buf, "| |-Types:      %.6f s\n", AS_SECONDS(metrics.parse_time));
+        strputf(&buf, "| |-Attributes: %.6f s\n", AS_SECONDS(metrics.attribute_time));
+        strputf(&buf, "|   %'11lu tokens\n", (unsigned long)metrics.count_parse_tokens);
+        strputf(&buf, "|   %'11lu types\n", (unsigned long)metrics.count_parse_types);
+        strputf(&buf, "|-Gen: %.6f s\n", AS_SECONDS(metrics.gen_time));
+        strputf(&buf, "|   %'11lu types\n", (unsigned long)metrics.count_gen_types);
+        fputs(buf, stdout);
+        arrfree(buf);
     }
 
     return return_code;

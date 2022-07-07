@@ -299,14 +299,21 @@ typedef struct {
     uint64_t last;
 
     uint64_t pre_time;
-    uint64_t pre_lex_time;
+    uint64_t lex_time;
+    uint64_t macro_time;
 
     uint64_t parse_time;
+    uint64_t attribute_time;
 
     uint64_t gen_time;
 
-    uint64_t count_lines;
-    uint64_t count_tokens;
+    uint64_t count_pre_files;
+    uint64_t count_pre_lines;
+    uint64_t count_pre_tokens;
+
+    uint64_t count_parse_tokens;
+    uint64_t count_parse_types;
+    uint64_t count_gen_types;
 } Metrics;
 static Metrics metrics = {0};
 
@@ -500,7 +507,7 @@ path_extension(char * dest, const char * path) {
 static uint64_t
 nanotime() {
     struct timespec ts;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
+    timespec_get(&ts, TIME_UTC);
     return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 

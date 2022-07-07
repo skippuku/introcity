@@ -88,6 +88,7 @@ typedef struct {
     bool is_sys_header;
     bool minimal_parse;
     bool preprocess_only;
+    bool get_metrics;
 } PreContext;
 
 typedef struct {
@@ -370,7 +371,6 @@ ignore_section(PasteState * state, int32_t begin_ignored, int32_t end_ignored) {
             if (!state->ctx->preprocess_only) {
                 for (int i=0; i < len_chunk; i++) {
                     Token tk = state->chunk_file->tk_list[state->begin_chunk + i];
-                    if (tk.type == TK_NEWLINE) metrics.count_lines++;
                     if (tk.type != TK_NEWLINE && tk.type != TK_COMMENT) {
                         arrput(ctx->result_list, tk);
                     }
@@ -379,7 +379,6 @@ ignore_section(PasteState * state, int32_t begin_ignored, int32_t end_ignored) {
                 Token last_tk = {0};
                 for (int i=0; i < len_chunk; i++) {
                     Token tk = state->chunk_file->tk_list[state->begin_chunk + i];
-                    if (tk.type == TK_NEWLINE) metrics.count_lines++;
                     if (tk.type != TK_COMMENT) {
                         if (tk.type == TK_IDENTIFIER && last_tk.type == TK_IDENTIFIER) {
                             tk.preceding_space = true;
@@ -1280,7 +1279,10 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                     ctx->expand_ctx.tidx = tidx;
                     ctx->expand_ctx.list[0] = tk;
                     int32_t start_index = tidx->index - 1;
+
+                    metrics.pre_time += nanointerval();
                     if (macro_scan(ctx, 0)) {
+
                         const Token * list = ctx->expand_ctx.list;
                         ignore_section(paste, start_index, tidx->index);
 
@@ -1330,7 +1332,9 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
 
                         arrsetlen(ctx->expand_ctx.list, 1);
                         arrsetlen(ctx->expand_ctx.macro_index_stack, 0);
+
                     }
+                    metrics.macro_time += nanointerval();
                 }
             }
         }
@@ -1379,7 +1383,16 @@ preprocess_filename(PreContext * ctx, char * filename) {
 
         metrics.pre_time += nanointerval();
         new_buf->tk_list = create_token_list(file_buffer);
-        metrics.pre_lex_time += nanointerval();
+        metrics.lex_time += nanointerval();
+
+        if (ctx->get_metrics) {
+            for (int i=0; i < arrlen(new_buf->tk_list); i++) {
+                if (new_buf->tk_list[i].type == TK_NEWLINE) {
+                    metrics.count_pre_lines++;
+                }
+            }
+            metrics.count_pre_tokens += arrlen(new_buf->tk_list);
+        }
 
         new_buf->buffer_size = file_size;
         new_buf->mtime = mtime;
@@ -1555,6 +1568,7 @@ run_preprocessor(int argc, char ** argv) {
 
             case 'V': {
                 info.show_metrics = true;
+                ctx->get_metrics = true;
             }break;
 
             case 0: {
@@ -1709,7 +1723,6 @@ run_preprocessor(int argc, char ** argv) {
         intro_defs_file->buffer_size = strlen(intro_defs);
         intro_defs_file->buffer = intro_defs;
         intro_defs_file->tk_list = create_token_list(intro_defs);
-        metrics.pre_lex_time += nanointerval();
         intro_defs_file->filename = "__INTRO_DEFS__";
         arrput(ctx->loc.file_buffers, intro_defs_file);
         ctx->current_file = intro_defs_file;
@@ -1870,7 +1883,8 @@ run_preprocessor(int argc, char ** argv) {
     info.loc.index = 0;
     info.loc.count = arrlen(ctx->loc.list);
     info.result_list = ctx->result_list;
-    metrics.count_tokens = arrlen(ctx->result_list);
+    metrics.count_parse_tokens = arrlen(ctx->result_list);
     metrics.pre_time += nanointerval();
+    metrics.count_pre_files = arrlen(ctx->loc.file_buffers);
     return info;
 }
