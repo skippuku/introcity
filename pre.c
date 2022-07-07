@@ -370,6 +370,7 @@ ignore_section(PasteState * state, int32_t begin_ignored, int32_t end_ignored) {
             if (!state->ctx->preprocess_only) {
                 for (int i=0; i < len_chunk; i++) {
                     Token tk = state->chunk_file->tk_list[state->begin_chunk + i];
+                    if (tk.type == TK_NEWLINE) metrics.count_lines++;
                     if (tk.type != TK_NEWLINE && tk.type != TK_COMMENT) {
                         arrput(ctx->result_list, tk);
                     }
@@ -378,6 +379,7 @@ ignore_section(PasteState * state, int32_t begin_ignored, int32_t end_ignored) {
                 Token last_tk = {0};
                 for (int i=0; i < len_chunk; i++) {
                     Token tk = state->chunk_file->tk_list[state->begin_chunk + i];
+                    if (tk.type == TK_NEWLINE) metrics.count_lines++;
                     if (tk.type != TK_COMMENT) {
                         if (tk.type == TK_IDENTIFIER && last_tk.type == TK_IDENTIFIER) {
                             tk.preceding_space = true;
@@ -1374,7 +1376,11 @@ preprocess_filename(PreContext * ctx, char * filename) {
         FileInfo * new_buf = calloc(1, sizeof(*new_buf));
         new_buf->filename = filename;
         new_buf->buffer = file_buffer;
+
+        metrics.pre_time += nanointerval();
         new_buf->tk_list = create_token_list(file_buffer);
+        metrics.pre_lex_time += nanointerval();
+
         new_buf->buffer_size = file_size;
         new_buf->mtime = mtime;
         ctx->current_file = new_buf;
@@ -1547,6 +1553,10 @@ run_preprocessor(int argc, char ** argv) {
                 info.output_filename = argv[++i];
             }break;
 
+            case 'V': {
+                info.show_metrics = true;
+            }break;
+
             case 0: {
                 if (isatty(fileno(stdin))) {
                     fprintf(stderr, "Error: Cannot use terminal as file input.\n");
@@ -1699,6 +1709,7 @@ run_preprocessor(int argc, char ** argv) {
         intro_defs_file->buffer_size = strlen(intro_defs);
         intro_defs_file->buffer = intro_defs;
         intro_defs_file->tk_list = create_token_list(intro_defs);
+        metrics.pre_lex_time += nanointerval();
         intro_defs_file->filename = "__INTRO_DEFS__";
         arrput(ctx->loc.file_buffers, intro_defs_file);
         ctx->current_file = intro_defs_file;
@@ -1859,5 +1870,7 @@ run_preprocessor(int argc, char ** argv) {
     info.loc.index = 0;
     info.loc.count = arrlen(ctx->loc.list);
     info.result_list = ctx->result_list;
+    metrics.count_tokens = arrlen(ctx->result_list);
+    metrics.pre_time += nanointerval();
     return info;
 }

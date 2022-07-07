@@ -1290,5 +1290,6 @@ parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
     o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
     o_info->string_set = ctx->string_set;
+    metrics.parse_time += nanointerval();
     return 0;
 }

@@ -185,6 +185,7 @@ typedef struct {
     LocationContext loc;
     int ret;
     enum GenMode gen_mode;
+    bool show_metrics;
 } PreInfo;
 
 typedef struct {
@@ -292,6 +293,22 @@ typedef struct {
     MemArena * arena;
     CTypeInfo type_info;
 } Config;
+
+typedef struct {
+    uint64_t start;
+    uint64_t last;
+
+    uint64_t pre_time;
+    uint64_t pre_lex_time;
+
+    uint64_t parse_time;
+
+    uint64_t gen_time;
+
+    uint64_t count_lines;
+    uint64_t count_tokens;
+} Metrics;
+static Metrics metrics = {0};
 
 static int parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl);
 
@@ -478,6 +495,21 @@ path_extension(char * dest, const char * path) {
     if (!period || forslash > period) return NULL;
 
     return strcpy(dest, period);
+}
+
+static uint64_t
+nanotime() {
+    struct timespec ts;
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
+static uint64_t
+nanointerval() {
+    uint64_t now = nanotime();
+    uint64_t result = now - metrics.last;
+    metrics.last = now;
+    return result;
 }
 
 #ifdef DEBUG
