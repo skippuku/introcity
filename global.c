@@ -505,7 +505,11 @@ path_extension(char * dest, const char * path) {
 static uint64_t
 nanotime() {
     struct timespec ts;
+#ifdef __unix__
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
+#else
     timespec_get(&ts, TIME_UTC);
+#endif
     return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 

@@ -520,6 +520,7 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
     bool is_flags = true;
     bool is_sequential = true;
     IntroEnumValue * values = NULL;
+    arrsetcap(values, 8);
     int next_int = 0;
     int mask = 0;
     while (1) {
