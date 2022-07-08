@@ -1,0 +1,48 @@
+0.2 (Beta)
+	- Many types are now simplified.
+		- Removed IntroStruct, IntroEnum, and IntroTypePtrList
+		- Removed all usage of flexible array members in introlib
+		- IntroFunction changes:
+			func->type->args->count       => func.count_args
+			func->type->args->types       => func.arg_types
+			func->type->of                => func.return_type
+
+		- IntroType changes:
+			type->i_struct->count_members => type->count
+			type->i_struct->members       => type->members
+
+			type->i_enum->count_members   => type->count
+			type->i_enum->members         => type->values
+			type->i_enum->is_flags        => type->flags & INTRO_IS_FLAGS
+			type->i_enum->is_sequential   => type->flags & INTRO_IS_SEQUENTIAL
+
+			type->array_size              => type->count
+
+			intro_size(type)              => type->size
+			---                           => type->align
+
+			if (type->of)                 => if (intro_has_of(type))
+			(of now shares storage with other fields)
+
+	- Struct member offsets are now calculated by the parser, no more offsetof
+	in the generated header. NOTE: pack(x) / __attribute__((aligned(x))) are not
+	yet implemented. (TODO?)
+
+	- Value attributes now support structs
+
+	- Macro information can now be generated
+
+	- `#prama intro` can be used to control what parts of a file should have
+	information generated
+		- push, pop
+		- enable [x], disable [x] where x is either ommited or one of the
+		following: functions, macros, all
+
+	- intro will print out performance metrics when the option '-V' is present
+
+	- the intro preprocessor and parser now work on tokens instead of text
+
+	- city implementation improvements (TODO: fix issues)
+
+0.1 (Beta)
+	first public release

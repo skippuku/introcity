@@ -1,5 +1,6 @@
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
+    ability to reference parent structs
     more strict namespacing
         maybe use dot
     attributes on enum values
@@ -22,7 +23,12 @@ attribute:
     parse c++ struct defaults as intro defaults?
 
 city:
+    !! example 02_city fault
     !! way to select which union member to serialize
+    the idea of having the loaded struct point into the file data directly doesn't work out
+        only works for basic types
+        new data needs to be allocated, file should be able to be discarded immidiately after load
+        idea: attribute to specify allocation function
     test/city.c fails occasionally and i don't know why
     type id's?
     alloc function attribute for when you want a buffer to be allocated in a certain way ex. stb_ds
@@ -36,15 +42,17 @@ config:
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
+    Some way to get type location info
+    Allow access to anon struct/union as a struct
     ParseInfo: have everything, strip away unwated stuff at gen
-    handle character literals including L'x'
-    fix bitfield regression
-    handle bit field accessing
-    handle strings next to each other
-    const flag?
     parse float expressions (for value attributes)
         general type awareness in expressions?
+    handle character literals including L'x'
+    handle strings next to each other
+    fix bitfield regression
+    handle bitfield accessing
     parse globals (for libraries that use extern)
+    const flag?
     rudimentary C++ support
         function overloads
         namespaces
@@ -53,25 +61,20 @@ parse:
         operator overloads?
 
 pre:
-    FileInfo: add location
+    FileInfo: add include location
     pragma that adds a file to make dependencies
-    save location of includes
     parse #line directives
-    parse comments for documentation?
     create #line directives?
+    parse comments for documentation?
     fix -E spacing
     trim big newline gaps
 
 gen:
+    !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
+    c header: write protect?
     idea: use type infomation to generate the header
     idea: stop using type information to generate anything because changing anything in intro.h can be a nightmare
     allow multiple outputs at once ex. header + city
-    (these 3 points all kind of go together)
-        !! clang doesn't like flexible array initialization in c++
-            might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
-        !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
-        c header: use write protected buffer, load intro context from binary
-
     option to create typedefs for structs and enums
     typeof with _Generic?
 
@@ -83,6 +86,7 @@ lib:
     the preprocessor and parser could be part of the lib?
 
 test:
+    !! city test needs to be *way* more thorough
     !! add sanitized target
     test for errors that should be raised by the parser
     more rigorous tests

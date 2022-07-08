@@ -159,7 +159,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         var.type = type;
         ImGui::SetDragDropPayload("IntroVariant", &var, sizeof(IntroVariant));
 
-        ImGui::TextColored(type_color, type_buf);
+        ImGui::TextColored(type_color, "%s", type_buf);
 
         ImGui::EndDragDropSource();
     }
@@ -192,7 +192,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
 
     ImGui::TableNextColumn();
     if (has_length) {
-        ImGui::TextColored(type_color, "%s (%li)", type_buf, length);
+        ImGui::TextColored(type_color, "%s (%li)", type_buf, (long int)length);
     } else {
         ImGui::TextColored(type_color, "%s", type_buf);
     }
@@ -239,7 +239,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         int count_components;
         const IntroType * scalar_type;
         if (type->category == INTRO_ARRAY) {
-            count_components = type->array_size;
+            count_components = type->count;
             scalar_type = type->of;
         } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
             const IntroType * m_type = type->members[0].type;
@@ -269,7 +269,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         if ((type->flags & INTRO_IS_FLAGS)) {
             int * flags_ptr = (int *)member_data;
             for (uint32_t e=0; e < type->count; e++) {
-                IntroEnumValue v = type->members[e];
+                IntroEnumValue v = type->values[e];
                 ImGui::CheckboxFlags(v.name, flags_ptr, v.value);
             }
         } else {
@@ -277,7 +277,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             bool found_match = false;
             uint32_t current_index;
             for (uint32_t e=0; e < type->count; e++) {
-                IntroEnumValue v = type->members[e];
+                IntroEnumValue v = type->values[e];
                 if (v.value == current_value) {
                     current_index = e;
                     found_match = true;
@@ -286,10 +286,10 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             if (!found_match) {
                 ImGui::InputInt(NULL, (int *)member_data);
             } else {
-                const char * preview = type->members[current_index].name;
+                const char * preview = type->values[current_index].name;
                 if (ImGui::BeginCombo("##", preview)) {
                     for (uint32_t e=0; e < type->count; e++) {
-                        IntroEnumValue v = type->members[e];
+                        IntroEnumValue v = type->values[e];
                         bool is_selected = (e == current_index);
                         if (ImGui::Selectable(v.name, is_selected)) {
                             current_index = e;
@@ -299,20 +299,20 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
                         }
                     }
                     ImGui::EndCombo();
-                    *(int *)member_data = type->members[current_index].value;
+                    *(int *)member_data = type->values[current_index].value;
                 }
             }
         }
     } else if (type->category == INTRO_ARRAY) {
         if (do_tree_place_holder) {
             if (intro_has_attribute_x(ctx, attr, GUIATTR(edit_text))) {
-                ImGui::InputText("##", (char *)member_data, type->array_size);
+                ImGui::InputText("##", (char *)member_data, type->count);
             } else {
                 ImGui::TextDisabled("---");
             }
         }
         if (is_open) {
-            edit_array(ctx, member_data, type->of, (length > 0)? length : type->array_size);
+            edit_array(ctx, member_data, type->of, (length > 0)? length : type->count);
             ImGui::TreePop();
         }
     } else if (type->category == INTRO_POINTER) {

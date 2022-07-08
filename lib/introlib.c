@@ -979,9 +979,10 @@ city__safe_copy_struct(
                     uintptr_t offset = *(uintptr_t *)((u8 *)src + sm->offset);
                     if (offset != 0) {
                         void * result_ptr = (u8 *)src + offset;
-                        uint32_t * length_ptr = (uint32_t *)result_ptr - 1;
                         memcpy((u8 *)dest + dm->offset, &result_ptr, sizeof(void *));
+
                         int32_t length_member_index;
+                        uint32_t * length_ptr = (uint32_t *)result_ptr - 1;
                         if (intro_attribute_member_x(ctx, dm->attr, ctx->attr.builtin.i_length, &length_member_index)) {
                             const IntroMember * lm = &d_type->members[length_member_index];
                             size_t wr_size = intro_size(lm->type);
