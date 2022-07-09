@@ -80,6 +80,8 @@
 
 #include "lexer.c"
 
+static uint64_t g_timer_freq = 0;
+
 #define DEF_BUILTIN(name) {#name, offsetof(IntroBuiltinAttributeIds, name)}
 static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(i_id),
@@ -298,7 +300,6 @@ typedef struct {
 
     uint64_t pre_time;
     uint64_t lex_time;
-    uint64_t macro_time;
 
     uint64_t parse_time;
     uint64_t attribute_time;
@@ -313,7 +314,7 @@ typedef struct {
     uint64_t count_parse_types;
     uint64_t count_gen_types;
 } Metrics;
-static Metrics metrics = {0};
+static Metrics g_metrics = {0};
 
 static int parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl);
 
@@ -504,20 +505,25 @@ path_extension(char * dest, const char * path) {
 
 static uint64_t
 nanotime() {
+#if _WIN32
+    LARGE_INTEGER li;
+    QueryPerformanceCounter(&li);
+    return li.QuadPart;
+#elif defined _POSIX_TIMERS
     struct timespec ts;
-#ifdef __unix__
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
-#else
-    timespec_get(&ts, TIME_UTC);
-#endif
+    clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+#else
+#pragma message ("No nanotime implementation for this platform")
+    return 0;
+#endif
 }
 
 static uint64_t
 nanointerval() {
     uint64_t now = nanotime();
-    uint64_t result = now - metrics.last;
-    metrics.last = now;
+    uint64_t result = now - g_metrics.last;
+    g_metrics.last = now;
     return result;
 }
 

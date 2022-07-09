@@ -87,7 +87,7 @@ lib:
 
 test:
     !! city test needs to be *way* more thorough
-    !! add sanitized target
+    add sanitized target
     test for errors that should be raised by the parser
     more rigorous tests
 

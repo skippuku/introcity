@@ -1,3 +1,5 @@
+CHANGELOG
+
 0.2 (Beta)
 	- Many types are now simplified.
 		- Removed IntroStruct, IntroEnum, and IntroTypePtrList

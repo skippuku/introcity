@@ -1154,6 +1154,8 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                 } else if (tk_equal(&tk, "clang")) {
                 } else if (tk_equal(&tk, "push_macro")) {
                 } else if (tk_equal(&tk, "pop_macro")) {
+                } else if (tk_equal(&tk, "message")) {
+                    preprocess_warning(&tk, "Message pragma.");
                 } else {
                     if (!ctx->is_sys_header) {
                         preprocess_warning(&tk, "Unknown pragma, ignoring.");
@@ -1268,7 +1270,6 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                     ctx->expand_ctx.list[0] = tk;
                     int32_t start_index = tidx->index - 1;
 
-                    metrics.pre_time += nanointerval();
                     if (macro_scan(ctx, 0)) {
 
                         const Token * list = ctx->expand_ctx.list;
@@ -1320,9 +1321,7 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
 
                         arrsetlen(ctx->expand_ctx.list, 1);
                         arrsetlen(ctx->expand_ctx.macro_index_stack, 0);
-
                     }
-                    metrics.macro_time += nanointerval();
                 }
             }
         }
@@ -1369,17 +1368,17 @@ preprocess_filename(PreContext * ctx, char * filename) {
         new_buf->filename = filename;
         new_buf->buffer = file_buffer;
 
-        metrics.pre_time += nanointerval();
+        g_metrics.pre_time += nanointerval();
         new_buf->tk_list = create_token_list(file_buffer);
-        metrics.lex_time += nanointerval();
+        g_metrics.lex_time += nanointerval();
 
         if (ctx->get_metrics) {
             for (int i=0; i < arrlen(new_buf->tk_list); i++) {
                 if (new_buf->tk_list[i].type == TK_NEWLINE) {
-                    metrics.count_pre_lines++;
+                    g_metrics.count_pre_lines++;
                 }
             }
-            metrics.count_pre_tokens += arrlen(new_buf->tk_list);
+            g_metrics.count_pre_tokens += arrlen(new_buf->tk_list);
         }
 
         new_buf->buffer_size = file_size;
@@ -1871,8 +1870,8 @@ run_preprocessor(int argc, char ** argv) {
     info.loc.index = 0;
     info.loc.count = arrlen(ctx->loc.list);
     info.result_list = ctx->result_list;
-    metrics.count_parse_tokens = arrlen(ctx->result_list);
-    metrics.pre_time += nanointerval();
-    metrics.count_pre_files = arrlen(ctx->loc.file_buffers);
+    g_metrics.count_parse_tokens = arrlen(ctx->result_list);
+    g_metrics.pre_time += nanointerval();
+    g_metrics.count_pre_files = arrlen(ctx->loc.file_buffers);
     return info;
 }
