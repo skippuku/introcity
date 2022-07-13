@@ -23,12 +23,8 @@ attribute:
     parse c++ struct defaults as intro defaults?
 
 city:
-    !! example 02_city fault
     !! way to select which union member to serialize
-    the idea of having the loaded struct point into the file data directly doesn't work out
-        only works for basic types
-        new data needs to be allocated, file should be able to be discarded immidiately after load
-        idea: attribute to specify allocation function
+    idea: attribute to specify allocation function
     test/city.c fails occasionally and i don't know why
     type id's?
     alloc function attribute for when you want a buffer to be allocated in a certain way ex. stb_ds
@@ -61,6 +57,7 @@ parse:
         operator overloads?
 
 pre:
+    implement the include and system header omission pragmas
     FileInfo: add include location
     pragma that adds a file to make dependencies
     parse #line directives
@@ -84,6 +81,7 @@ lib:
     sprint/mprint version of everything that uses stdout
     single header?
     the preprocessor and parser could be part of the lib?
+    printf-like formatting print with insertions for types and values of types
 
 test:
     !! city test needs to be *way* more thorough
@@ -102,5 +100,7 @@ misc:
           instead of compiling another program.
         these plugins could be inserted at different parts of the process, simplest case being, just run something with the type information before gen
         could be used to add checking to attributes, and maybe other kinds of enforcement
+    idea: use parser to generate system headers with types only, no functions
+        if we are to have our own system headers, we may as well also parse them into types into a City file bfore hand
     memory cleanup
     parse program options and pass only relevant ones to sub-processes

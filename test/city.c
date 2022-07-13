@@ -12,6 +12,13 @@ enum Wood {
     WOOD_MAHOGANY,
 };
 
+typedef struct LinkNodeSave LinkNodeSave;
+
+struct LinkNodeSave {
+    LinkNodeSave * next;
+    int value;
+};
+
 typedef struct {
     char * name;
     int32_t a, b;
@@ -36,7 +43,16 @@ typedef struct {
         char * buffer I(1);
         char * bookmark I(2, ~cstring);
     } text;
+
+    LinkNodeSave * linked I(11);
 } Basic;
+
+typedef struct LinkNodeLoad LinkNodeLoad;
+struct LinkNodeLoad {
+    LinkNodeLoad * next;
+    double something;
+    int value;
+};
 
 typedef struct {
     char * name I(0);
@@ -74,7 +90,24 @@ typedef struct {
     } text;
 
     int * _internal I(10, ~city);
+
+    LinkNodeLoad * linked I(11);
 } BasicPlus;
+
+#define GEN_LINK_REPORT(TYPE) \
+void \
+report_ ## TYPE (TYPE * node) { \
+    if (node) { \
+        do { \
+            printf("%i -> ", node->value); \
+            node = node->next; \
+        } while (node); \
+        printf("null\n"); \
+    } \
+}
+
+GEN_LINK_REPORT(LinkNodeSave)
+GEN_LINK_REPORT(LinkNodeLoad)
 
 #include "city.c.intro"
 
@@ -103,20 +136,41 @@ main() {
     obj_save.text.buffer = "Long ago, 4 nations ruled over the earth in harmony, but everything changed when the fire nation attacked.";
     obj_save.text.bookmark = obj_save.text.buffer + 53;
 
+    LinkNodeSave * node0 = calloc(1, sizeof(LinkNodeSave));
+    node0->value = 0;
+
+    LinkNodeSave * node1 = calloc(1, sizeof(LinkNodeSave));
+    node1->value = 1;
+
+    LinkNodeSave * node2 = calloc(1, sizeof(LinkNodeSave));
+    node2->value = 2;
+
+    LinkNodeSave * node3 = calloc(1, sizeof(LinkNodeSave));
+    node3->value = 3;
+    
+    node3->next = node2;
+    node2->next = node0;
+    node0->next = node1;
+
+    obj_save.linked = node3;
+
     printf("obj_save: Basic = ");
     intro_print(&obj_save, ITYPE(Basic), NULL);
-    printf("\n\n");
+    printf("\n");
+    report_LinkNodeSave(obj_save.linked);
+    printf("\n");
 
     bool create_success = intro_create_city_file("obj.cty", &obj_save, ITYPE(Basic));
     assert(create_success);
 
     BasicPlus obj_load;
-    void * city_data_handle = intro_load_city_file(&obj_load, ITYPE(BasicPlus), "obj.cty");
-    assert(city_data_handle != NULL);
+    bool load_ok = intro_load_city_file(&obj_load, ITYPE(BasicPlus), "obj.cty");
+    assert(load_ok);
 
     printf("obj_load: BasicPlus = ");
     intro_print(&obj_load, obj_load.type, NULL);
     printf("\n");
+    report_LinkNodeLoad(obj_load.linked);
 
 #define CHECK_EQUAL(member) \
     if (0!=memcmp(&obj_load.member, &obj_save.member, sizeof(obj_save.member))) { \
@@ -144,7 +198,13 @@ main() {
     CHECK_STR_EQUAL(long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file);
     assert(obj_load._internal == NULL);
 
-    free(city_data_handle);
+    LinkNodeSave * save_node = obj_save.linked;
+    LinkNodeLoad * load_node = obj_load.linked;
+    while (save_node && load_node) {
+        assert(save_node->value == load_node->value);
+        save_node = save_node->next;
+        load_node = load_node->next;
+    }
 
     return 0;
 }

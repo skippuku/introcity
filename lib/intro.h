@@ -8,6 +8,7 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #ifndef __INTRO__
@@ -227,6 +228,12 @@ typedef struct IntroVariant {
     const IntroType * type;
 } IntroVariant;
 
+typedef struct IntroContainerStack {
+    const IntroType ** stack;
+    int32_t index;
+    int32_t cap;
+} IntroContainerStack;
+
 I(attribute i_ (
     id:       int,
     btfld:    int,
@@ -300,6 +307,23 @@ intro_has_of(const IntroType * type) {
     return type->category == INTRO_ARRAY || type->category == INTRO_POINTER;
 }
 
+INTRO_API_INLINE void
+intro_push_container(IntroContainerStack * containers, const IntroType * type) {
+    if (containers->index + 1 >= containers->cap) {
+        containers->cap <<= 1;
+        containers->stack = realloc(containers->stack, containers->cap);
+    }
+    containers->stack[++containers->index] = type;
+}
+
+INTRO_API_INLINE void
+intro_pop_container(IntroContainerStack * containers, const IntroType * type) {
+    containers->index--;
+    if (containers->index == 0) {
+        free(containers->stack);
+    }
+}
+
 #define intro_has_attribute(m, a) intro_has_attribute_x(INTRO_CTX, m->attr, IATTR_##a)
 INTRO_API_INLINE bool
 intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
@@ -314,6 +338,8 @@ intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t 
 typedef struct {
     int indent;
 } IntroPrintOptions;
+
+typedef struct IntroPool IntroPool;
 
 // ATTRIBUTE INFO
 #define intro_attribute_value(m, a, out) intro_attribute_value_x(INTRO_CTX, m->type, m->attr, IATTR_##a, out)
@@ -348,7 +374,7 @@ IntroType * intro_type_with_name_ctx(IntroContext * ctx, const char * name);
 char * intro_read_file(const char * filename, size_t * o_size);
 int intro_dump_file(const char * filename, void * data, size_t data_size);
 #define intro_load_city_file(dest, dest_type, filename) intro_load_city_file_ctx(INTRO_CTX, dest, dest_type, filename)
-void * intro_load_city_file_ctx(IntroContext * ctx, void * dest, const IntroType * dest_type, const char * filename);
+bool intro_load_city_file_ctx(IntroContext * ctx, void * dest, const IntroType * dest_type, const char * filename);
 #define intro_create_city_file(filename, src, src_type) intro_create_city_file_x(INTRO_CTX, filename, src, src_type)
 bool intro_create_city_file_x(IntroContext * ctx, const char * filename, void * src, const IntroType * src_type);
 #define intro_create_city(src, s_type, o_size) intro_create_city_x(INTRO_CTX, src, s_type, o_size)
