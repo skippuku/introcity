@@ -532,7 +532,7 @@ intro_member_by_name_x(const IntroType * type, const char * name) {
 // CITY IMPLEMENTATION
 
 static const int implementation_version_major = 0;
-static const int implementation_version_minor = 3;
+static const int implementation_version_minor = 4;
 
 typedef struct {
     char magic_number [4];
@@ -694,7 +694,7 @@ city__get_serialized_id(CityContext * ctx, const IntroType * type) {
             uint32_t elem_type_id = city__get_serialized_id(ctx, type->of);
             put_uint(&ctx->info, type->category, 1);
             put_uint(&ctx->info, elem_type_id, ctx->type_size);
-            put_uint(&ctx->info, type->count, 4);
+            put_uint(&ctx->info, type->count, ctx->ptr_size);
         }break;
 
         case INTRO_POINTER: {
@@ -761,7 +761,6 @@ city__get_serialized_id(CityContext * ctx, const IntroType * type) {
     return type_id;
 }
 
-// TODO: support ptr to ptr, array of ptr
 static void
 city__serialize(CityContext * ctx, uint32_t data_offset, const IntroType * type, const u8 * src, uint32_t elem_count) {
     switch(type->category) {
@@ -872,6 +871,7 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
 
     shdefault(ctx->name_cache, CITY_INVALID_CACHE);
     ctx->ictx = ictx;
+
     // TODO: base on actual data size
     ctx->type_size = 2;
     ctx->ptr_size = 3;
@@ -1165,7 +1165,7 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
 
         case INTRO_ARRAY: {
             uint32_t elem_id = next_uint(&b, city->type_size);
-            uint32_t count = next_uint(&b, 4);
+            uint32_t count = next_uint(&b, city->ptr_size);
 
             IntroType * elem_type = hmget(info_by_id, elem_id);
             type->of = elem_type;
