@@ -38,6 +38,7 @@ config:
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
+    vector types (__m128, etc)
     Some way to get type location info
     Allow access to anon struct/union as a struct
     ParseInfo: have everything, strip away unwated stuff at gen
@@ -57,7 +58,6 @@ parse:
         operator overloads?
 
 pre:
-    implement the include and system header omission pragmas
     FileInfo: add include location
     pragma that adds a file to make dependencies
     parse #line directives
@@ -70,8 +70,10 @@ gen:
     !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
     c header: write protect?
     idea: use type infomation to generate the header
+        some kind of create_c_constant function or something
     idea: stop using type information to generate anything because changing anything in intro.h can be a nightmare
     allow multiple outputs at once ex. header + city
+    vector types (__m128, etc)
     option to create typedefs for structs and enums
     typeof with _Generic?
 

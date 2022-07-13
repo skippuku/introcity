@@ -1,7 +1,7 @@
 #include "lib/intro.h"
 #include "global.c"
 
-#define INCLUDE_INTRO_DATA 0
+#define INCLUDE_INTRO_DATA 0 // TODO: reenable after union selection is implemented
 
 #if INCLUDE_INTRO_DATA
 #include "lib/intro.h.intro"
@@ -391,7 +391,12 @@ generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
         IntroAttribute attr = info->attr.available[attr_i];
         strputf(s, " %s", attr.name);
     }
-    strputf(s, "\n");
+
+    strputf(s, "\n\n");
+    for (int macro_i=0; macro_i < arrlen(pre_info->macros); macro_i++) {
+        IntroMacro macro = pre_info->macros[macro_i];
+        strputf(s, "syn keyword Macro %s\n", macro.name);
+    }
 
     intro_dump_file(pre_info->output_filename, buf, arrlen(buf));
 

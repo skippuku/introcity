@@ -43,12 +43,14 @@ CHANGELOG
 	information generated
 		- push, pop
 		- enable [x], disable [x] where x is either ommited or one of the
-		following: functions, macros, all
+		following: functions, macros, all, includes, system
 
 	- intro will print out performance metrics when the option '-V' is present
 
 	- files are now tokenized ahead of time. previously, the preprocessor and
 	parser would tokenize as needed.
+
+	- vim syntax generation with --gen-vim-syntax
 
 0.1 (Beta)
 	first public release

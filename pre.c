@@ -894,6 +894,8 @@ pre_handle_intro_pragma(PreContext * ctx, TokenIndex * tidx, Token * o_tk) {
         {"functions", NOTICE_FUNCTIONS},
         {"macros", NOTICE_MACROS},
         {"all", NOTICE_ALL},
+        {"includes", NOTICE_INCLUDES},
+        {"system", NOTICE_SYS_HEADERS},
     };
     Token tk;
     while (1) {
