@@ -27,13 +27,12 @@ CHANGELOG
 			(of now shares storage with other fields)
 
 	- Struct member offsets are now calculated by the parser, no more offsetof
-	in the generated header. NOTE: pack(x) / __attribute__((aligned(x))) are not
-	yet implemented. (TODO?)
+	in the generated header. NOTE: pack(x), __attribute__((aligned(x))), etc. are
+	not yet implemented.
 
-	- City improvements
+	- City is now much more reliable
 		- much better handling of pointers
-			- city file data can be discarded after load
-		- various other fixes
+		- city file data can now be discarded after load
 
 	- Value attributes now support structs
 

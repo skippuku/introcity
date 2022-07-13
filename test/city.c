@@ -20,6 +20,18 @@ struct LinkNodeSave {
 };
 
 typedef struct {
+    int id      I(= -1);
+    char * name I(= "unnamed");
+} StuffSave;
+
+typedef struct {
+    uint32_t hex I(= 0xFF56A420);
+    int id       I(= -1);
+    double speed I(= 5.6);
+    char * name  I(= "unnamed");
+} StuffLoad;
+
+typedef struct {
     char * name;
     int32_t a, b;
     uint8_t array [8];
@@ -38,6 +50,9 @@ typedef struct {
     char * long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file I(id 9, = "jerry");
 
     int * _internal I(10, ~city);
+
+    StuffSave * stuffs I(length count_stuffs);
+    int count_stuffs;
 
     struct {
         char * buffer I(1);
@@ -88,6 +103,9 @@ typedef struct {
         char * buffer I(1);
         char * bookmark I(2, ~cstring);
     } text;
+
+    StuffLoad * stuffs I(length count_stuffs);
+    int count_stuffs;
 
     int * _internal I(10, ~city);
 
@@ -154,6 +172,25 @@ main() {
 
     obj_save.linked = node3;
 
+    int count_stuffs = 5;
+    obj_save.count_stuffs = count_stuffs;
+    obj_save.stuffs = calloc(count_stuffs, sizeof(obj_save.stuffs[0]));
+
+    obj_save.stuffs[0].id = 15;
+    obj_save.stuffs[0].name = "Burger King Foot Lettuce";
+
+    obj_save.stuffs[1].id = 985;
+    obj_save.stuffs[1].name = "Jeremy Elbertson";
+
+    obj_save.stuffs[2].id = 12;
+    obj_save.stuffs[2].name = "The Father";
+
+    obj_save.stuffs[3].id = 9999;
+    obj_save.stuffs[3].name = "Another one.";
+
+    obj_save.stuffs[4].id = 2;
+    obj_save.stuffs[4].name = NULL;
+
     printf("obj_save: Basic = ");
     intro_print(&obj_save, ITYPE(Basic), NULL);
     printf("\n");
@@ -204,6 +241,20 @@ main() {
         assert(save_node->value == load_node->value);
         save_node = save_node->next;
         load_node = load_node->next;
+    }
+
+#define ABS(x) (((x) > 0)? (x) : -(x))
+
+    CHECK_EQUAL(count_stuffs);
+    for (int i=0; i < count_stuffs; i++) {
+        assert(obj_load.stuffs[i].id == obj_save.stuffs[i].id);
+        if (obj_save.stuffs[i].name == NULL) {
+            assert(0==strcmp(obj_load.stuffs[i].name, "unnamed"));
+        } else {
+            assert(0==strcmp(obj_load.stuffs[i].name, obj_save.stuffs[i].name));
+        }
+        assert(obj_load.stuffs[i].hex == 0xFF56A420);
+        assert(ABS(obj_load.stuffs[i].speed - 5.6) < 0.00001);
     }
 
     return 0;

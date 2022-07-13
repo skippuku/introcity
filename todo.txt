@@ -24,10 +24,9 @@ attribute:
 
 city:
     !! way to select which union member to serialize
-    idea: attribute to specify allocation function
-    test/city.c fails occasionally and i don't know why
+    attribute to specify allocation function
     type id's?
-    alloc function attribute for when you want a buffer to be allocated in a certain way ex. stb_ds
+        could also check against type names or maybe name hashes
 
 config:
     default program arguments
