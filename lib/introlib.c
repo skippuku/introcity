@@ -64,6 +64,9 @@ intro_bsr(uint64_t x) {
   #define restrict
 #endif
 
+const static int MAX_EXPOSED_LENGTH = 64;
+static const char * tab = "    ";
+
 typedef uint8_t u8;
 
 struct IntroPool {
@@ -362,15 +365,28 @@ intro_print_enum(int value, const IntroType * type) {
 }
 
 static void
-intro_print_basic_array(const void * data, const IntroType * type, int length) {
-    int elem_size = intro_size(type);
-    if (elem_size) {
-        printf("{");
-        for (int i=0; i < length; i++) {
-            if (i > 0) printf(", ");
-            intro_print_scalar((u8 *)data + elem_size * i, type);
+intro_print_array(IntroContext * ctx, const void * data, const IntroType * type, int length, const IntroPrintOptions * opt) {
+    int elem_size = type->size;
+    if (length <= MAX_EXPOSED_LENGTH) {
+        if (intro_is_scalar(type)) {
+            printf("{");
+            for (int i=0; i < length; i++) {
+                if (i > 0) printf(", ");
+                intro_print_scalar((u8 *)data + elem_size * i, type);
+            }
+            printf("}");
+        } else  {
+            printf("{\n");
+            for (int i=0; i < length; i++) {
+                for (int t=0; t < opt->indent + 2; t++) fputs(tab, stdout);
+                IntroPrintOptions opt2 = *opt;
+                opt2.indent += 2;
+                intro_print_ctx(ctx, (u8 *)data + elem_size * i, type, &opt2);
+                printf(",\n");
+            }
+            for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
+            printf("}");
         }
-        printf("}");
     } else {
         printf("<concealed>");
     }
@@ -405,8 +421,6 @@ intro_print_type_name(const IntroType * type) {
 
 static void
 intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt) {
-    static const char * tab = "    ";
-
     printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
 
     for (int m_index = 0; m_index < type->count; m_index++) {
@@ -421,38 +435,30 @@ intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * 
         } else {
             switch(m->type->category) {
             case INTRO_ARRAY: {
-                const IntroType * of = m->type->of;
-                const int MAX_EXPOSED_LENGTH = 64;
-                if (intro_is_scalar(of) && m->type->count <= MAX_EXPOSED_LENGTH) {
-                    intro_print_basic_array(m_data, of, m->type->count);
-                } else {
-                    printf("<concealed>");
-                }
+                intro_print_array(ctx, m_data, m->type->of, m->type->count, opt);
             }break;
 
-            case INTRO_POINTER: { // TODO
+            case INTRO_POINTER: {
                 void * ptr = *(void **)m_data;
+                if ((m_index > 0 && m->offset == type->members[m_index - 1].offset) || m->type->of->category == INTRO_UNKNOWN) {
+                    printf("0x%016llx", (unsigned long long)ptr);
+                    break;
+                }
                 if (ptr) {
-                    const IntroType * base = m->type->of;
-                    if (intro_is_scalar(base)) {
-                        int64_t length;
-                        if (intro_attribute_length_x(ctx, data, type, m, &length)) {
-                            intro_print_basic_array(ptr, base, length);
+                    if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_cstring)) {
+                        char * str = (char *)ptr;
+                        const int max_string_length = 32;
+                        if (strlen(str) <= max_string_length) {
+                            printf("\"%s\"", str);
                         } else {
-                            if (strcmp(base->name, "char") == 0) {
-                                char * str = (char *)ptr;
-                                const int max_string_length = 32;
-                                if (strlen(str) <= max_string_length) {
-                                    printf("\"%s\"", str);
-                                } else {
-                                    printf("\"%*.s...\"", max_string_length - 3, str);
-                                }
-                            } else {
-                                intro_print_basic_array(ptr, base, 1);
-                            }
+                            printf("\"%.*s...\"", max_string_length - 3, str);
                         }
                     } else {
-                        printf("%p", ptr);
+                        int64_t length;
+                        if (!intro_attribute_length_x(ctx, data, type, m, &length)) {
+                            length = 1;
+                        }
+                        intro_print_array(ctx, ptr, m->type->of, length, opt);
                     }
                 } else {
                     printf("<null>");
@@ -496,11 +502,18 @@ intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, c
     } else if (type->category == INTRO_ENUM) {
         int value = *(int *)data;
         intro_print_enum(value, type);
-    } else if (type->category == INTRO_ARRAY && intro_is_scalar(type->of)) {
-        intro_print_basic_array(data, type, type->count);
+    } else if (type->category == INTRO_ARRAY) {
+        intro_print_array(ctx, data, type->of, type->count, opt);
     } else if (type->category == INTRO_POINTER) {
-        void * value = *(void **)data;
-        printf("%p", value);
+        void * ptr = *(void **)data;
+        if (!ptr) {
+            printf("<null>");
+        } else if (intro_has_attribute_x(ctx, type->attr, ctx->attr.builtin.i_cstring)) {
+            printf("\"%s\"", (char *)ptr);
+        } else {
+            unsigned long long ptr_value = (unsigned long long)ptr;
+            printf("0x%016llx", ptr_value);
+        }
     } else {
         printf("<unknown>");
     }

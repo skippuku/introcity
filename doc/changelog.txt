@@ -1,7 +1,7 @@
 CHANGELOG
 
 0.2 (Beta)
-	- Many types are now simplified.
+	- Simplified types
 		- Removed IntroStruct, IntroEnum, and IntroTypePtrList
 		- Removed all usage of flexible array members in introlib
 		- IntroFunction changes:
@@ -24,19 +24,19 @@ CHANGELOG
 			<unavailable>                 => type->align
 
 			if (type->of)                 => if (intro_has_of(type))
-			(of now shares storage with other fields)
+			/* of now shares storage with other fields */
 
-	- Struct member offsets are now calculated by the parser, no more offsetof
-	in the generated header. NOTE: pack(x), __attribute__((aligned(x))), etc. are
-	not yet implemented.
+	- Struct member offsets are now calculated by the parser.
+	NOTE: pack(x), __attribute__((aligned(x))), etc. are not yet implemented.
+		- Value attributes now support structs
+		- Generated headers are smaller and more concise
 
 	- City is now much more reliable
 		- much better handling of pointers
 		- city file data can now be discarded after load
+		- reduction in file size
 
-	- Value attributes now support structs
-
-	- Macro information can now be generated
+	- Macro information generation
 
 	- `#prama intro` can be used to control what parts of a file should have
 	information generated
@@ -44,12 +44,14 @@ CHANGELOG
 		- enable [x], disable [x] where x is either ommited or one of the
 		following: functions, macros, all, includes, system
 
-	- intro will print out performance metrics when the option '-V' is present
-
 	- files are now tokenized ahead of time. previously, the preprocessor and
 	parser would tokenize as needed.
 
+	- intro_print() improvements
+
 	- vim syntax generation with --gen-vim-syntax
+
+	- intro performance metrics report with option '-V'
 
 0.1 (Beta)
 	first public release
