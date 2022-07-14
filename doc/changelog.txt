@@ -41,17 +41,19 @@ CHANGELOG
 	- `#prama intro` can be used to control what parts of a file should have
 	information generated
 		- push, pop
-		- enable [x], disable [x] where x is either ommited or one of the
+		- enable [x], disable [x] where x is either omitted or one of the
 		following: functions, macros, all, includes, system
 
-	- files are now tokenized ahead of time. previously, the preprocessor and
+	- Files are now tokenized ahead of time. Previously, the preprocessor and
 	parser would tokenize as needed.
 
 	- intro_print() improvements
 
-	- vim syntax generation with --gen-vim-syntax
+	- Vim syntax generation with --gen-vim-syntax
 
 	- intro performance metrics report with option '-V'
+
+	- Miscellaneous fixes
 
 0.1 (Beta)
 	first public release

@@ -1052,7 +1052,7 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
                 shput(ctx->function_map, func->name, func);
             }
             if (count_args > 0 && decl->arg_names) {
-                memcpy(func->arg_names, decl->arg_names, count_args * sizeof(func->arg_names[0]));
+                memcpy(func->arg_names, decl->arg_names, (count_args - 1) * sizeof(func->arg_names[0]));
                 arrfree(decl->arg_names);
             }
         } else {

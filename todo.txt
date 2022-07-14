@@ -35,7 +35,6 @@ config:
     static assert in .intro file if types don't match
 
 parse:
-    !! sanitize: parser does invalid read
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
     vector types (__m128, etc)
