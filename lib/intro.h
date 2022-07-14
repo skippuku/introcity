@@ -8,7 +8,6 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdlib.h>
 #include <assert.h>
 
 #ifndef __INTRO__
@@ -228,11 +227,12 @@ typedef struct IntroVariant {
     const IntroType * type;
 } IntroVariant;
 
-typedef struct IntroContainerStack {
-    const IntroType ** stack;
-    int32_t index;
-    int32_t cap;
-} IntroContainerStack;
+typedef struct IntroContainer {
+    const struct IntroContainer * parent;
+    const IntroType * type;
+    void * data;
+    size_t index;
+} IntroContainer;
 
 I(attribute i_ (
     id:       int,
@@ -263,6 +263,16 @@ I(attribute gui_ (
 
 I(apply_to (char *) (cstring))
 I(apply_to (void *) (~city))
+
+INTRO_API_INLINE IntroContainer
+intro_push_container(void * data, const IntroContainer * parent, const IntroType * type, size_t index) {
+    IntroContainer container;
+    container.data = data;
+    container.type = type;
+    container.index = index;
+    container.parent = parent;
+    return container;
+}
 
 #define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
 #define intro_var_ptr(var, T) ((type->of == ITYPE(T))? (T *)var.data : (T *)0)
@@ -307,23 +317,6 @@ intro_has_of(const IntroType * type) {
     return type->category == INTRO_ARRAY || type->category == INTRO_POINTER;
 }
 
-INTRO_API_INLINE void
-intro_push_container(IntroContainerStack * containers, const IntroType * type) {
-    if (containers->index + 1 >= containers->cap) {
-        containers->cap <<= 1;
-        containers->stack = realloc(containers->stack, containers->cap);
-    }
-    containers->stack[++containers->index] = type;
-}
-
-INTRO_API_INLINE void
-intro_pop_container(IntroContainerStack * containers, const IntroType * type) {
-    containers->index--;
-    if (containers->index == 0) {
-        free(containers->stack);
-    }
-}
-
 #define intro_has_attribute(m, a) intro_has_attribute_x(INTRO_CTX, m->attr, IATTR_##a)
 INTRO_API_INLINE bool
 intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
@@ -366,8 +359,8 @@ void intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * t
 // PRINTERS
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
-#define intro_print(data, type, opt) intro_print_ctx(INTRO_CTX, data, type, opt)
-void intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt);
+#define intro_print(data, type, opt) intro_print_ctx(INTRO_CTX, data, type, NULL, opt)
+void intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroContainer * container, const IntroPrintOptions * opt);
 IntroType * intro_type_with_name_ctx(IntroContext * ctx, const char * name);
 
 // CITY IMPLEMENTATION

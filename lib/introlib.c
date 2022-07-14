@@ -13,7 +13,6 @@
 #ifndef LENGTH
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #endif
-#define strputnull(a) arrput(a,0)
 // index of last put or get
 #define shtemp(t) stbds_temp((t)-1)
 #define hmtemp(t) stbds_temp((t)-1)
@@ -320,78 +319,6 @@ intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) 
     intro_set_values_x(ctx, dest, type, ctx->attr.builtin.i_default);
 }
 
-static void
-intro_print_scalar(const void * data, const IntroType * type) {
-    if (intro_is_scalar(type)) {
-        if (type->category <= INTRO_S64) {
-            int64_t value = intro_int_value(data, type);
-            printf("%li", (long int)value);
-        } else if (type->category == INTRO_F32) {
-            printf("%f", *(float *)data);
-        } else if (type->category == INTRO_F64) {
-            printf("%f", *(double *)data);
-        } else {
-            printf("<unknown>");
-        }
-    } else {
-        printf("<NaN>");
-    }
-}
-
-static void
-intro_print_enum(int value, const IntroType * type) {
-    if ((type->flags & INTRO_IS_SEQUENTIAL)) {
-        if (value >= 0 && value < type->count) {
-            printf("%s", type->values[value].name);
-        } else {
-            printf("%i", value);
-        }
-    } else if ((type->flags & INTRO_IS_FLAGS)) {
-        bool more_than_one = false;
-        if (value) {
-            for (int f=0; f < type->count; f++) {
-                if (value & type->values[f].value) {
-                    if (more_than_one) printf(" | ");
-                    printf("%s", type->values[f].name);
-                    more_than_one = true;
-                }
-            }
-        } else {
-            printf("0");
-        }
-    } else {
-        printf("%i", value);
-    }
-}
-
-static void
-intro_print_array(IntroContext * ctx, const void * data, const IntroType * type, int length, const IntroPrintOptions * opt) {
-    int elem_size = type->size;
-    if (length <= MAX_EXPOSED_LENGTH) {
-        if (intro_is_scalar(type)) {
-            printf("{");
-            for (int i=0; i < length; i++) {
-                if (i > 0) printf(", ");
-                intro_print_scalar((u8 *)data + elem_size * i, type);
-            }
-            printf("}");
-        } else  {
-            printf("{\n");
-            for (int i=0; i < length; i++) {
-                for (int t=0; t < opt->indent + 2; t++) fputs(tab, stdout);
-                IntroPrintOptions opt2 = *opt;
-                opt2.indent += 2;
-                intro_print_ctx(ctx, (u8 *)data + elem_size * i, type, &opt2);
-                printf(",\n");
-            }
-            for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
-            printf("}");
-        }
-    } else {
-        printf("<concealed>");
-    }
-}
-
 void
 intro_sprint_type_name(char * dest, const IntroType * type) {
     while (1) {
@@ -420,101 +347,177 @@ intro_print_type_name(const IntroType * type) {
 }
 
 static void
-intro_print_struct_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt) {
-    printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
-
-    for (int m_index = 0; m_index < type->count; m_index++) {
-        const IntroMember * m = &type->members[m_index];
-        const void * m_data = (u8 *)data + m->offset;
-        for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
-        printf("%s: ", m->name);
-        intro_print_type_name(m->type);
-        printf(" = ");
-        if (intro_is_scalar(m->type)) {
-            intro_print_scalar(m_data, m->type);
-        } else {
-            switch(m->type->category) {
-            case INTRO_ARRAY: {
-                intro_print_array(ctx, m_data, m->type->of, m->type->count, opt);
-            }break;
-
-            case INTRO_POINTER: {
-                void * ptr = *(void **)m_data;
-                if ((m_index > 0 && m->offset == type->members[m_index - 1].offset) || m->type->of->category == INTRO_UNKNOWN) {
-                    printf("0x%016llx", (unsigned long long)ptr);
-                    break;
-                }
-                if (ptr) {
-                    if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_cstring)) {
-                        char * str = (char *)ptr;
-                        const int max_string_length = 32;
-                        if (strlen(str) <= max_string_length) {
-                            printf("\"%s\"", str);
-                        } else {
-                            printf("\"%.*s...\"", max_string_length - 3, str);
-                        }
-                    } else {
-                        int64_t length;
-                        if (!intro_attribute_length_x(ctx, data, type, m, &length)) {
-                            length = 1;
-                        }
-                        intro_print_array(ctx, ptr, m->type->of, length, opt);
-                    }
-                } else {
-                    printf("<null>");
-                }
-            }break;
-
-            case INTRO_STRUCT: // FALLTHROUGH
-            case INTRO_UNION: {
-                IntroPrintOptions opt2 = *opt;
-                opt2.indent++;
-                intro_print_struct_ctx(ctx, m_data, m->type, &opt2);
-            }break;
-
-            case INTRO_ENUM: {
-                intro_print_enum(*(int *)m_data, m->type);
-            }break;
-
-            default: {
-                printf("<unknown>");
-            }break;
+intro__print_array(IntroContext * ctx, const void * data, const IntroType * type, size_t length, const IntroPrintOptions * opt) {
+    size_t elem_size = type->size;
+    if (length <= MAX_EXPOSED_LENGTH) {
+        if (intro_is_scalar(type)) {
+            printf("{");
+            for (int i=0; i < length; i++) {
+                if (i > 0) printf(", ");
+                intro_print_ctx(ctx, (u8 *)data + elem_size * i, type, NULL, opt);
             }
+            printf("}");
+        } else {
+            printf("{\n");
+            for (int i=0; i < length; i++) {
+                for (int t=0; t < opt->indent + 2; t++) fputs(tab, stdout);
+                IntroPrintOptions opt2 = *opt;
+                opt2.indent += 2;
+                intro_print_ctx(ctx, (u8 *)data + elem_size * i, type, NULL, &opt2);
+                printf(",\n");
+            }
+            for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
+            printf("}");
         }
-        printf(";\n");
+    } else {
+        printf("<concealed>");
     }
-    for (int t=0; t < opt->indent; t++) fputs(tab, stdout);
-    printf("}");
 }
 
 void
-intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroPrintOptions * opt) {
+intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroContainer * container, const IntroPrintOptions * opt) {
     static const IntroPrintOptions opt_default = {0};
 
     if (!opt) {
         opt = &opt_default;
     }
 
-    if (intro_is_scalar(type)) {
-        intro_print_scalar(data, type);
-    } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
-        intro_print_struct_ctx(ctx, data, type, opt);
-    } else if (type->category == INTRO_ENUM) {
+    switch(type->category) {
+    case INTRO_U8: case INTRO_U16: case INTRO_U32: case INTRO_U64:
+    case INTRO_S8: case INTRO_S16: case INTRO_S32: case INTRO_S64:
+    {
+        int64_t value = intro_int_value(data, type);
+        printf("%li", (long int)value);
+    }break;
+
+    case INTRO_F32: {
+        printf("%f", *(float *)data);
+    }break;
+    case INTRO_F64: {
+        printf("%f", *(double *)data);
+    }break;
+
+    case INTRO_STRUCT:
+    case INTRO_UNION: {
+        printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
+
+        for (int m_index = 0; m_index < type->count; m_index++) {
+            const IntroMember * m = &type->members[m_index];
+            const void * m_data = (u8 *)data + m->offset;
+            for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
+            printf("%s: ", m->name);
+            intro_print_type_name(m->type);
+            printf(" = ");
+            IntroContainer next_container = intro_push_container((void *)data, container, type, m_index);
+            if (intro_is_scalar(m->type)) {
+                intro_print_ctx(ctx, m_data, m->type, &next_container, opt);
+            } else {
+                switch(m->type->category) {
+                case INTRO_ARRAY: {
+                    intro_print_ctx(ctx, m_data, m->type->of, &next_container, opt);
+                }break;
+
+                case INTRO_POINTER: {
+                    void * ptr = *(void **)m_data;
+                    if ((m_index > 0 && m->offset == type->members[m_index - 1].offset) || m->type->of->category == INTRO_UNKNOWN) {
+                        printf("0x%016llx", (unsigned long long)ptr);
+                        break;
+                    }
+                    if (ptr) {
+                        intro_print_ctx(ctx, m_data, m->type, &next_container, opt);
+                    } else {
+                        printf("<null>");
+                    }
+                }break;
+
+                case INTRO_STRUCT: // FALLTHROUGH
+                case INTRO_UNION: {
+                    IntroPrintOptions opt2 = *opt;
+                    opt2.indent++;
+                    intro_print_ctx(ctx, m_data, m->type, &next_container, &opt2);
+                }break;
+
+                case INTRO_ENUM: {
+                    intro_print_ctx(ctx, m_data, m->type, &next_container, opt);
+                }break;
+
+                default: {
+                    printf("<unknown>");
+                }break;
+                }
+            }
+            printf(";\n");
+        }
+        for (int t=0; t < opt->indent; t++) fputs(tab, stdout);
+        printf("}");
+    }break;
+
+    case INTRO_ENUM: {
         int value = *(int *)data;
-        intro_print_enum(value, type);
-    } else if (type->category == INTRO_ARRAY) {
-        intro_print_array(ctx, data, type->of, type->count, opt);
-    } else if (type->category == INTRO_POINTER) {
+        if ((type->flags & INTRO_IS_SEQUENTIAL)) {
+            if (value >= 0 && value < type->count) {
+                printf("%s", type->values[value].name);
+            } else {
+                printf("%i", value);
+            }
+        } else if ((type->flags & INTRO_IS_FLAGS)) {
+            bool more_than_one = false;
+            if (value) {
+                for (int f=0; f < type->count; f++) {
+                    if (value & type->values[f].value) {
+                        if (more_than_one) printf(" | ");
+                        printf("%s", type->values[f].name);
+                        more_than_one = true;
+                    }
+                }
+            } else {
+                printf("0");
+            }
+        } else {
+            printf("%i", value);
+        }
+    }break;
+
+    case INTRO_ARRAY: {
+        int64_t length;
+        if (container->type->category == INTRO_STRUCT) {
+            if (!intro_attribute_length_x(ctx, container->data, type, &container->type->members[container->index], &length)) {
+                length = 1;
+            }
+        } else if (container->type->category == INTRO_ARRAY) {
+            length = container->type->count;
+        }
+        intro__print_array(ctx, data, type->of, length, opt);
+    }break;
+
+    case INTRO_POINTER: {
+        uint32_t attr;
+        if (container->type->category == INTRO_STRUCT) {
+            attr = container->type->members[container->index].attr;
+        } else {
+            attr = type->attr;
+        }
         void * ptr = *(void **)data;
         if (!ptr) {
             printf("<null>");
-        } else if (intro_has_attribute_x(ctx, type->attr, ctx->attr.builtin.i_cstring)) {
-            printf("\"%s\"", (char *)ptr);
+        } else if (intro_has_attribute_x(ctx, attr, ctx->attr.builtin.i_cstring)) {
+            char * str = (char *)ptr;
+            const int max_string_length = 32;
+            if (strlen(str) <= max_string_length) {
+                printf("\"%s\"", str);
+            } else {
+                printf("\"%.*s...\"", max_string_length - 3, str);
+            }
         } else {
-            unsigned long long ptr_value = (unsigned long long)ptr;
-            printf("0x%016llx", ptr_value);
+            int64_t length;
+            if (!intro_attribute_length_x(ctx, container->data, container->type, &container->type->members[container->index], &length)) {
+                length = 1;
+            }
+            intro__print_array(ctx, ptr, type->of, length, opt);
         }
-    } else {
+    }break;
+
+    default:
         printf("<unknown>");
     }
 }
@@ -1055,7 +1058,7 @@ city__load_into(
     }break;
 
     case INTRO_POINTER: {
-        const u8 * b = src;
+        const u8 * b = (u8 *)src;
         uintptr_t offset = next_uint(&b, city->ptr_size);
         if (offset != 0) {
             void * src_ptr = city->data + offset;
@@ -1116,7 +1119,7 @@ intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, v
     } * info_by_id = NULL;
 
     city->data = (uint8_t *)data + header->data_ptr;
-    const uint8_t * b = (uint8_t *)data + sizeof(*header);
+    const uint8_t * b = (u8 *)data + sizeof(*header);
 
     size_t id_test_bit = 1 << (city->ptr_size * 8 - 1);
 

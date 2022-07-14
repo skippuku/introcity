@@ -77,7 +77,6 @@ gen:
     typeof with _Generic?
 
 lib:
-    impl: combine all print functions into one
     accurate type display
     a little dubious and evil: ability to create types at runtime
     sprint/mprint version of everything that uses stdout
