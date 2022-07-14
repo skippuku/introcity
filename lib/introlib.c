@@ -275,7 +275,7 @@ intro_offset_pointers(void * dest, const IntroType * type, void * base) {
 }
 
 void
-intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute) {
+intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute) {
     const IntroMember * m = &struct_type->members[member_index];
     size_t size = intro_size(m->type);
     IntroVariant var;
@@ -310,12 +310,12 @@ intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * st
 void
 intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute) {
     for (int m_index=0; m_index < type->count; m_index++) {
-        intro_set_member_value_ctx(ctx, dest, type, m_index, value_attribute);
+        intro_set_member_value_x(ctx, dest, type, m_index, value_attribute);
     }
 }
 
 void
-intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type) {
+intro_set_defaults_x(IntroContext * ctx, void * dest, const IntroType * type) {
     intro_set_values_x(ctx, dest, type, ctx->attr.builtin.i_default);
 }
 
@@ -354,7 +354,7 @@ intro__print_array(IntroContext * ctx, const void * data, const IntroType * type
             printf("{");
             for (int i=0; i < length; i++) {
                 if (i > 0) printf(", ");
-                intro_print_ctx(ctx, (u8 *)data + elem_size * i, type, NULL, opt);
+                intro_print_x(ctx, (u8 *)data + elem_size * i, type, NULL, opt);
             }
             printf("}");
         } else {
@@ -363,7 +363,7 @@ intro__print_array(IntroContext * ctx, const void * data, const IntroType * type
                 for (int t=0; t < opt->indent + 2; t++) fputs(tab, stdout);
                 IntroPrintOptions opt2 = *opt;
                 opt2.indent += 2;
-                intro_print_ctx(ctx, (u8 *)data + elem_size * i, type, NULL, &opt2);
+                intro_print_x(ctx, (u8 *)data + elem_size * i, type, NULL, &opt2);
                 printf(",\n");
             }
             for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
@@ -375,7 +375,7 @@ intro__print_array(IntroContext * ctx, const void * data, const IntroType * type
 }
 
 void
-intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroContainer * container, const IntroPrintOptions * opt) {
+intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, const IntroContainer * container, const IntroPrintOptions * opt) {
     static const IntroPrintOptions opt_default = {0};
 
     if (!opt) {
@@ -410,11 +410,11 @@ intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, c
             printf(" = ");
             IntroContainer next_container = intro_push_container((void *)data, container, type, m_index);
             if (intro_is_scalar(m->type)) {
-                intro_print_ctx(ctx, m_data, m->type, &next_container, opt);
+                intro_print_x(ctx, m_data, m->type, &next_container, opt);
             } else {
                 switch(m->type->category) {
                 case INTRO_ARRAY: {
-                    intro_print_ctx(ctx, m_data, m->type->of, &next_container, opt);
+                    intro_print_x(ctx, m_data, m->type->of, &next_container, opt);
                 }break;
 
                 case INTRO_POINTER: {
@@ -424,7 +424,7 @@ intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, c
                         break;
                     }
                     if (ptr) {
-                        intro_print_ctx(ctx, m_data, m->type, &next_container, opt);
+                        intro_print_x(ctx, m_data, m->type, &next_container, opt);
                     } else {
                         printf("<null>");
                     }
@@ -434,11 +434,11 @@ intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, c
                 case INTRO_UNION: {
                     IntroPrintOptions opt2 = *opt;
                     opt2.indent++;
-                    intro_print_ctx(ctx, m_data, m->type, &next_container, &opt2);
+                    intro_print_x(ctx, m_data, m->type, &next_container, &opt2);
                 }break;
 
                 case INTRO_ENUM: {
-                    intro_print_ctx(ctx, m_data, m->type, &next_container, opt);
+                    intro_print_x(ctx, m_data, m->type, &next_container, opt);
                 }break;
 
                 default: {
@@ -523,7 +523,7 @@ intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, c
 }
 
 IntroType *
-intro_type_with_name_ctx(IntroContext * ctx, const char * name) {
+intro_type_with_name_x(IntroContext * ctx, const char * name) {
     for (int i=0; i < ctx->count_types; i++) {
         IntroType * type = &ctx->types[i];
         if (type->name && strcmp(type->name, name) == 0) {
@@ -598,12 +598,12 @@ intro_dump_file(const char * filename, void * data, size_t data_size) {
 }
 
 bool // is_ok
-intro_load_city_file_ctx(IntroContext * ctx, void * dest, const IntroType * dest_type, const char * filename) {
+intro_load_city_file_x(IntroContext * ctx, void * dest, const IntroType * dest_type, const char * filename) {
     size_t size;
     void * data = intro_read_file(filename, &size);
     if (!data) return false;
 
-    intro_load_city_ctx(ctx, dest, dest_type, data, size);
+    intro_load_city_x(ctx, dest, dest_type, data, size);
     free(data);
     return true;
 }
@@ -1049,7 +1049,7 @@ city__load_into(
                 }
             }
             if (!found_match) {
-                intro_set_member_value_ctx(ctx, dest, d_type, dm_i, ctx->attr.builtin.i_default);
+                intro_set_member_value_x(ctx, dest, d_type, dm_i, ctx->attr.builtin.i_default);
             }
             arrsetlen(aliases, 0);
         }
@@ -1088,7 +1088,7 @@ city__load_into(
 }
 
 int
-intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size) {
+intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size) {
     CityContext _city = {0}, * city = &_city;
     const CityHeader * header = (const CityHeader *)data;
     city->ictx = ctx;

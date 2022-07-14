@@ -349,35 +349,35 @@ const char * intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec, ui
 bool intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length);
 
 // INITIALIZERS
-void intro_set_member_value_ctx(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);
+void intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);
 #define intro_set_values(dest, type, a) intro_set_values_x(INTRO_CTX, dest, type, IATTR_##a)
 void intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute);
-#define intro_set_defaults(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
-#define intro_default(dest, type) intro_set_defaults_ctx(INTRO_CTX, dest, type)
-void intro_set_defaults_ctx(IntroContext * ctx, void * dest, const IntroType * type);
+#define intro_set_defaults(dest, type) intro_set_defaults_x(INTRO_CTX, dest, type)
+#define intro_default(dest, type) intro_set_defaults_x(INTRO_CTX, dest, type)
+void intro_set_defaults_x(IntroContext * ctx, void * dest, const IntroType * type);
 
 // PRINTERS
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
-#define intro_print(data, type, opt) intro_print_ctx(INTRO_CTX, data, type, NULL, opt)
-void intro_print_ctx(IntroContext * ctx, const void * data, const IntroType * type, const IntroContainer * container, const IntroPrintOptions * opt);
-IntroType * intro_type_with_name_ctx(IntroContext * ctx, const char * name);
+#define intro_print(data, type, opt) intro_print_x(INTRO_CTX, data, type, NULL, opt)
+void intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, const IntroContainer * container, const IntroPrintOptions * opt);
+IntroType * intro_type_with_name_x(IntroContext * ctx, const char * name);
 
 // CITY IMPLEMENTATION
 char * intro_read_file(const char * filename, size_t * o_size);
 int intro_dump_file(const char * filename, void * data, size_t data_size);
-#define intro_load_city_file(dest, dest_type, filename) intro_load_city_file_ctx(INTRO_CTX, dest, dest_type, filename)
-bool intro_load_city_file_ctx(IntroContext * ctx, void * dest, const IntroType * dest_type, const char * filename);
+#define intro_load_city_file(dest, dest_type, filename) intro_load_city_file_x(INTRO_CTX, dest, dest_type, filename)
+bool intro_load_city_file_x(IntroContext * ctx, void * dest, const IntroType * dest_type, const char * filename);
 #define intro_create_city_file(filename, src, src_type) intro_create_city_file_x(INTRO_CTX, filename, src, src_type)
 bool intro_create_city_file_x(IntroContext * ctx, const char * filename, void * src, const IntroType * src_type);
 #define intro_create_city(src, s_type, o_size) intro_create_city_x(INTRO_CTX, src, s_type, o_size)
 void * intro_create_city_x(IntroContext * ctx, const void * src, const IntroType * s_type, size_t *o_size);
-#define intro_load_city(dest, dest_type, data, data_size) intro_load_city_ctx(INTRO_CTX, dest, dest_type, data, data_size)
-int intro_load_city_ctx(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size);
+#define intro_load_city(dest, dest_type, data, data_size) intro_load_city_x(INTRO_CTX, dest, dest_type, data, data_size)
+int intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size);
 
 // DEAR IMGUI (must link with intro_imgui.cpp to use)
-#define intro_imgui_edit(data, data_type) intro_imgui_edit_ctx(INTRO_CTX, data, data_type, #data)
-void intro_imgui_edit_ctx(IntroContext * ctx, void * data, const IntroType * data_type, const char * name);
+#define intro_imgui_edit(data, data_type) intro_imgui_edit_x(INTRO_CTX, data, data_type, #data)
+void intro_imgui_edit_x(IntroContext * ctx, void * data, const IntroType * data_type, const char * name);
 
 // MISC
 const char * intro_enum_name(const IntroType * type, int value);
