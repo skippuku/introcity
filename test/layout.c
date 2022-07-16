@@ -29,7 +29,7 @@ const IntroMember *
 get_member(const IntroType * type, char * name) {
     for (int i=0; i < type->count; i++) {
         const IntroMember * m = &type->members[i];
-        if (0==strcmp(m->name, name)) {
+        if (m->name && 0==strcmp(m->name, name)) {
             return m;
         }
     }
@@ -61,12 +61,8 @@ main() {
     CHECK_SIZE(IntroType);
     CHECK_OFFSET(IntroType, category);
     CHECK_OFFSET(IntroType, flags);
-    CHECK_OFFSET(IntroType, __data);
-    CHECK_OFFSET(IntroType, of);
     CHECK_OFFSET(IntroType, parent);
     CHECK_OFFSET(IntroType, count);
-    CHECK_OFFSET(IntroType, members);
-    CHECK_OFFSET(IntroType, values);
     CHECK_OFFSET(IntroType, name);
     CHECK_OFFSET(IntroType, attr);
     CHECK_OFFSET(IntroType, size);

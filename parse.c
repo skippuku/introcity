@@ -434,27 +434,7 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
         if (decl.name_tk.start) {
             member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
         } else {
-            if (decl.type->category == INTRO_STRUCT || decl.type->category == INTRO_UNION) {
-                total_size += (decl.type->align - (total_size % decl.type->align)) % decl.type->align;
-                int member_index_offset = arrlen(members);
-                for (int i=0; i < decl.type->count; i++) {
-                    IntroMember embed_member = decl.type->members[i];
-                    embed_member.offset = member.offset + embed_member.offset;
-                    arrput(members, embed_member);
-                }
-                // correct member_index for attributes applied to members in the embedded type
-                for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
-                    AttributeDirective * p_directive = &ctx->attribute_directives[i];
-                    if (p_directive->type == decl.type) {
-                        p_directive->type = NULL;
-                        p_directive->member_index += member_index_offset;
-                    }
-                }
-                continue;
-            } else {
-                parse_error(ctx, tk, "Struct member has no name, or type is unknown.");
-                return -1;
-            }
+            member.name = NULL;
         }
 
         arrput(members, member);

@@ -37,8 +37,8 @@ int
 main() {
     SaveData save;
 
-    void * city_data_handle = intro_load_city_file(&save, ITYPE(SaveData), "save.cty");
-    if (!city_data_handle) {
+    bool have_file = intro_load_city_file(&save, ITYPE(SaveData), "save.cty");
+    if (!have_file) {
         intro_set_defaults(&save, ITYPE(SaveData));
     }
 
@@ -56,7 +56,6 @@ main() {
 
     intro_create_city_file("save.cty", &save, ITYPE(SaveData));
 
-    if (city_data_handle) free(city_data_handle);
     return 0;
 }
 ```

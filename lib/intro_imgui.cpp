@@ -131,7 +131,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         member_color = color_from_var(colorv.data);
     }
     ImGui::PushStyleColor(ImGuiCol_Text, member_color);
-    bool is_open = ImGui::TreeNodeEx(name, tree_flags);
+    bool is_open = ImGui::TreeNodeEx((name)? name : "<anon>", tree_flags);
     ImGui::PopStyleColor();
 
     char type_buf [1024];

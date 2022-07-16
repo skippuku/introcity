@@ -72,8 +72,13 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
                 for (int m_i=0; m_i < t->count; m_i++) {
                     IntroMember m = t->members[m_i];
                     int32_t member_type_index = hmget(info->index_by_ptr_map, m.type);
-                    strputf(&mbr, "{\"%s\", &__intro_t[%i], %u, %u},\n",
-                                m.name, member_type_index, m.offset, m.attr);
+                    if (m.name) {
+                        strputf(&mbr, "{\"%s\", ", m.name);
+                    } else {
+                        strputf(&mbr, "{0, ");
+                    }
+                    strputf(&mbr, "&__intro_t[%i], %u, %u},\n",
+                                  member_type_index, m.offset, m.attr);
                 }
                 struct_member_index += t->count;
             }break;
