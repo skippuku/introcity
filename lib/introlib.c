@@ -347,14 +347,14 @@ intro_print_type_name(const IntroType * type) {
 }
 
 static void
-intro__print_array(IntroContext * ctx, const void * data, const IntroType * type, size_t length, const IntroPrintOptions * opt) {
-    size_t elem_size = type->size;
+intro__print_array(IntroContext * ctx, const IntroContainer * p_container, size_t length, const IntroPrintOptions * opt) {
+    const IntroType * type = p_container->type->of;
     if (length <= MAX_EXPOSED_LENGTH) {
         if (intro_is_scalar(type)) {
             printf("{");
             for (int i=0; i < length; i++) {
                 if (i > 0) printf(", ");
-                intro_print_x(ctx, (u8 *)data + elem_size * i, type, NULL, opt);
+                intro_print_x(ctx, intro_push(p_container, i), opt);
             }
             printf("}");
         } else {
@@ -363,7 +363,7 @@ intro__print_array(IntroContext * ctx, const void * data, const IntroType * type
                 for (int t=0; t < opt->indent + 2; t++) fputs(tab, stdout);
                 IntroPrintOptions opt2 = *opt;
                 opt2.indent += 2;
-                intro_print_x(ctx, (u8 *)data + elem_size * i, type, NULL, &opt2);
+                intro_print_x(ctx, intro_push(p_container, i), &opt2);
                 printf(",\n");
             }
             for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
@@ -375,8 +375,10 @@ intro__print_array(IntroContext * ctx, const void * data, const IntroType * type
 }
 
 void
-intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, const IntroContainer * container, const IntroPrintOptions * opt) {
+intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOptions * opt) {
     static const IntroPrintOptions opt_default = {0};
+    const IntroType * type = container.type;
+    const void * data = container.data;
 
     if (!opt) {
         opt = &opt_default;
@@ -408,13 +410,13 @@ intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, con
             printf("%s: ", m->name);
             intro_print_type_name(m->type);
             printf(" = ");
-            IntroContainer next_container = intro_push_container((void *)data, container, type, m_index);
+            IntroContainer next_container = intro_push(&container, m_index);
             if (intro_is_scalar(m->type)) {
-                intro_print_x(ctx, m_data, m->type, &next_container, opt);
+                intro_print_x(ctx, next_container, opt);
             } else {
                 switch(m->type->category) {
                 case INTRO_ARRAY: {
-                    intro_print_x(ctx, m_data, m->type->of, &next_container, opt);
+                    intro_print_x(ctx, next_container, opt);
                 }break;
 
                 case INTRO_POINTER: {
@@ -424,7 +426,7 @@ intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, con
                         break;
                     }
                     if (ptr) {
-                        intro_print_x(ctx, m_data, m->type, &next_container, opt);
+                        intro_print_x(ctx, next_container, opt);
                     } else {
                         printf("<null>");
                     }
@@ -434,11 +436,11 @@ intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, con
                 case INTRO_UNION: {
                     IntroPrintOptions opt2 = *opt;
                     opt2.indent++;
-                    intro_print_x(ctx, m_data, m->type, &next_container, &opt2);
+                    intro_print_x(ctx, next_container, &opt2);
                 }break;
 
                 case INTRO_ENUM: {
-                    intro_print_x(ctx, m_data, m->type, &next_container, opt);
+                    intro_print_x(ctx, next_container, opt);
                 }break;
 
                 default: {
@@ -479,21 +481,19 @@ intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, con
     }break;
 
     case INTRO_ARRAY: {
-        int64_t length;
-        if (container->type->category == INTRO_STRUCT) {
-            if (!intro_attribute_length_x(ctx, container->data, type, &container->type->members[container->index], &length)) {
-                length = 1;
+        int64_t length = type->count;
+        if (container.parent->type->category == INTRO_STRUCT) {
+            if (!intro_attribute_length_x(ctx, container.parent->data, container.parent->type, &container.parent->type->members[container.index], &length)) {
+                length = type->count;
             }
-        } else if (container->type->category == INTRO_ARRAY) {
-            length = container->type->count;
         }
-        intro__print_array(ctx, data, type->of, length, opt);
+        intro__print_array(ctx, &container, length, opt);
     }break;
 
     case INTRO_POINTER: {
         uint32_t attr;
-        if (container->type->category == INTRO_STRUCT) {
-            attr = container->type->members[container->index].attr;
+        if (container.parent->type->category == INTRO_STRUCT) {
+            attr = container.parent->type->members[container.index].attr;
         } else {
             attr = type->attr;
         }
@@ -510,10 +510,10 @@ intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, con
             }
         } else {
             int64_t length;
-            if (!intro_attribute_length_x(ctx, container->data, container->type, &container->type->members[container->index], &length)) {
+            if (!intro_attribute_length_x(ctx, container.parent->data, container.parent->type, &container.parent->type->members[container.index], &length)) {
                 length = 1;
             }
-            intro__print_array(ctx, ptr, type->of, length, opt);
+            intro__print_array(ctx, &container, length, opt);
         }
     }break;
 
@@ -543,6 +543,36 @@ intro_member_by_name_x(const IntroType * type, const char * name) {
         }
     }
     return NULL;
+}
+
+IntroContainer
+intro_push(const IntroContainer * parent, int32_t index) {
+    IntroContainer result;
+    switch(parent->type->category) {
+    case INTRO_POINTER: {
+        result.type = parent->type->of;
+        result.data = *(uint8_t **)(parent->data) + result.type->size * index;
+    }break;
+
+    case INTRO_ARRAY: {
+        result.type = parent->type->of;
+        result.data = parent->data + result.type->size * index;
+    }break;
+
+    case INTRO_STRUCT:
+    case INTRO_UNION: {
+        result.type = parent->type->members[index].type;
+        result.data = parent->data + parent->type->members[index].offset;
+    }break;
+
+    default:
+        result = *parent;
+        return result;
+    }
+
+    result.index = index;
+    result.parent = parent;
+    return result;
 }
 
 // CITY IMPLEMENTATION
@@ -1221,7 +1251,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
 
     for (int i=0; i < hmlen(info_by_id); i++) {
         IntroType * type = info_by_id[i].value;
-        if (intro_has_fields(type)) {
+        if (intro_has_members(type)) {
             arrfree(type->members);
         }
         free(type);

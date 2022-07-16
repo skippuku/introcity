@@ -9,11 +9,6 @@ main() {
     intro_print(&default_test, default_test.type, NULL);
     printf("\n");
 
-    for (int i=0; i < LENGTH(default_test.words); i++) {
-        printf("words[%i] = \"%s\";\n", i, default_test.words[i]);
-    }
-    printf("\n");
-
 #define ABS(x) ((x)<0?-1 * (x):(x))
     assert(default_test.v_int == 123);
     assert(default_test.v_u8 == 1);

@@ -352,7 +352,7 @@ parse_value(ParseContext * ctx, IntroType * type, TokenIndex * tidx, uint32_t * 
         }
         ptrdiff_t result = parse_array_value(ctx, type, tidx, NULL);
         return result;
-    } else if (intro_has_fields(type)) {
+    } else if (intro_has_members(type)) {
         ptrdiff_t result = parse_struct_value(ctx, type, tidx);
         return result;
     }

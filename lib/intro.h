@@ -230,7 +230,7 @@ typedef struct IntroVariant {
 typedef struct IntroContainer {
     const struct IntroContainer * parent;
     const IntroType * type;
-    void * data;
+    uint8_t * data;
     size_t index;
 } IntroContainer;
 
@@ -264,16 +264,6 @@ I(attribute gui_ (
 I(apply_to (char *) (cstring))
 I(apply_to (void *) (~city))
 
-INTRO_API_INLINE IntroContainer
-intro_push_container(void * data, const IntroContainer * parent, const IntroType * type, size_t index) {
-    IntroContainer container;
-    container.data = data;
-    container.type = type;
-    container.index = index;
-    container.parent = parent;
-    return container;
-}
-
 #define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
 #define intro_var_ptr(var, T) ((type->of == ITYPE(T))? (T *)var.data : (T *)0)
 
@@ -295,8 +285,13 @@ intro_is_complex(const IntroType * type) {
 }
 
 INTRO_API_INLINE bool
-intro_has_fields(const IntroType * type) {
+intro_has_members(const IntroType * type) {
     return (type->category & 0xf0) == INTRO_STRUCT;
+}
+
+INTRO_API_INLINE bool
+intro_has_of(const IntroType * type) {
+    return type->category == INTRO_ARRAY || type->category == INTRO_POINTER;
 }
 
 INTRO_API_INLINE int
@@ -312,11 +307,6 @@ intro_origin(const IntroType * type) {
     return type;
 }
 
-INTRO_API_INLINE bool
-intro_has_of(const IntroType * type) {
-    return type->category == INTRO_ARRAY || type->category == INTRO_POINTER;
-}
-
 #define intro_has_attribute(m, a) intro_has_attribute_x(INTRO_CTX, m->attr, IATTR_##a)
 INTRO_API_INLINE bool
 intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
@@ -326,6 +316,16 @@ intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t 
     uint32_t bit_index = attr_id & 31;
     uint32_t attr_bit = 1 << bit_index;
     return (spec->bitset[bitset_index] & attr_bit);
+}
+
+INTRO_API_INLINE IntroContainer
+intro_container(void * data, const IntroType * type) {
+    IntroContainer container;
+    container.data = data;
+    container.type = type;
+    container.parent = NULL;
+    container.index = 0;
+    return container;
 }
 
 typedef struct {
@@ -359,9 +359,9 @@ void intro_set_defaults_x(IntroContext * ctx, void * dest, const IntroType * typ
 // PRINTERS
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
-#define intro_print(data, type, opt) intro_print_x(INTRO_CTX, data, type, NULL, opt)
-void intro_print_x(IntroContext * ctx, const void * data, const IntroType * type, const IntroContainer * container, const IntroPrintOptions * opt);
-IntroType * intro_type_with_name_x(IntroContext * ctx, const char * name);
+
+#define intro_print(DATA, TYPE, OPT) intro_print_x(INTRO_CTX, intro_container(DATA, TYPE), OPT)
+void intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOptions * opt);
 
 // CITY IMPLEMENTATION
 char * intro_read_file(const char * filename, size_t * o_size);
@@ -380,6 +380,8 @@ int intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type,
 void intro_imgui_edit_x(IntroContext * ctx, void * data, const IntroType * data_type, const char * name);
 
 // MISC
+IntroContainer intro_push(const IntroContainer * parent, int32_t index);
+IntroType * intro_type_with_name_x(IntroContext * ctx, const char * name);
 const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
 #define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
