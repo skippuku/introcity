@@ -24,28 +24,29 @@ CHANGELOG
 			<unavailable>                 => type->align
 
 			if (type->of)                 => if (intro_has_of(type))
-			/* of now shares storage with other fields */
+			/* 'of' now shares storage with other fields */
 
-	- Struct member offsets are now calculated by the parser.
-	NOTE: pack(x), __attribute__((aligned(x))), etc. are not yet implemented.
+	- Struct member offsets are now known by the parser.
 		- Value attributes now support structs
-		- Generated headers are smaller and more concise
+		- Generated headers are much more concise
+		- NOTE: pack(x), __attribute__((aligned(x))), etc. are not yet implemented
 
 	- City is now much more reliable
 		- much better handling of pointers
 		- city file data can now be discarded after load
-		- reduction in file size
+		- reduction in serialized data size
 
 	- Macro information generation
 
-	- `#prama intro` can be used to control what parts of a file should have
+	- '#prama intro' can be used to control what parts of a file should have
 	information generated
 		- push, pop
 		- enable [x], disable [x] where x is either omitted or one of the
 		following: functions, macros, all, includes, system
 
-	- Files are now tokenized ahead of time. Previously, the preprocessor and
-	parser would tokenize as needed.
+	- Files are now tokenized all at once. Previously, the preprocessor and
+	parser would tokenize as needed. This simplifies the preprocessor and
+	parser.
 
 	- intro_print() improvements
 

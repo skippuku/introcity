@@ -321,7 +321,7 @@ intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t 
 INTRO_API_INLINE IntroContainer
 intro_container(void * data, const IntroType * type) {
     IntroContainer container;
-    container.data = data;
+    container.data = (uint8_t *)data;
     container.type = type;
     container.parent = NULL;
     container.index = 0;

@@ -54,7 +54,7 @@ edit_struct_children(IntroContext * ctx, void * src, const IntroType * s_type) {
 
 static void
 edit_array(IntroContext * ctx, void * src, const IntroType * type, int count) {
-    size_t element_size = intro_size(type);
+    size_t element_size = type->size;
     for (int i=0; i < count; i++) {
         char name [64];
         stbsp_snprintf(name, 63, "[%i]", i);
@@ -171,7 +171,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
             ImGui::SameLine(); ImGui::TextColored(ptr_color, "[ ]");
             if (ImGui::BeginDragDropTarget()) {
                 if (ImGui::AcceptDragDropPayload("IntroVariant")) {
-                    memcpy(member_data, var->data, intro_size(type));
+                    memcpy(member_data, var->data, type->size);
                 }
                 
                 ImGui::EndDragDropTarget();
@@ -205,7 +205,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
 
     bool do_tree_place_holder = true;
     if (intro_has_attribute_x(ctx, attr, GUIATTR(edit_color))) {
-        size_t size = intro_size(type);
+        size_t size = type->size;
         switch(size) {
         case 12:
             ImGui::ColorEdit3("##", (float *)member_data);
@@ -244,7 +244,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
         } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
             const IntroType * m_type = type->members[0].type;
             scalar_type = m_type;
-            count_components = intro_size(type) / intro_size(m_type);
+            count_components = type->size / m_type->size;
         }
         auto param = get_scalar_params(ctx, type, attr);
         ImGui::DragScalarN("##", intro_imgui_scalar_type(scalar_type), member_data, count_components, param.scale, param.min, param.max, param.format);
@@ -341,7 +341,7 @@ edit_member(IntroContext * ctx, const char * name, void * member_data, const Int
 }
 
 void
-intro_imgui_edit_ctx(IntroContext * ctx, void * src, const IntroType * s_type, const char * name) {
+intro_imgui_edit_x(IntroContext * ctx, void * src, const IntroType * s_type, const char * name) {
     static ImGuiTableFlags flags = ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_NoBordersInBody;
     if (ImGui::BeginTable(name, 3, flags)) {
         ImGui::TableSetupColumn("name");

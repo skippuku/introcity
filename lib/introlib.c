@@ -79,7 +79,7 @@ intro_enum_name(const IntroType * type, int value) {
     if ((type->flags & INTRO_IS_SEQUENTIAL)) {
         return type->values[value].name;
     } else {
-        for (int i=0; i < type->count; i++) {
+        for (uint32_t i=0; i < type->count; i++) {
             if (type->values[i].value == value) {
                 return type->values[i].name;
             }
@@ -142,7 +142,7 @@ get_attribute_value_offset(IntroContext * ctx, uint32_t attr_spec_location, uint
     }
 
     int pop = 0;
-    for (int i=0; i < bitset_index; i++) {
+    for (uint32_t i=0; i < bitset_index; i++) {
         pop += INTRO_POPCOUNT(spec->bitset[i]);
     }
     pop += INTRO_POPCOUNT(spec->bitset[bitset_index] & pop_count_mask);
@@ -266,7 +266,7 @@ static void
 intro_offset_pointers(void * dest, const IntroType * type, void * base) {
     if (type->category == INTRO_ARRAY) {
         if (type->of->category == INTRO_POINTER) {
-            for (int i=0; i < type->count; i++) {
+            for (uint32_t i=0; i < type->count; i++) {
                 u8 ** o_ptr = (u8 **)((u8 *)dest + i * sizeof(void *));
                 *o_ptr += (uintptr_t)base;
             }
@@ -298,7 +298,7 @@ intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * stru
     // TODO: this seems inelegant
     } else if (m->type->category == INTRO_ARRAY && m->type->of->category == INTRO_STRUCT) {
         int elem_size = intro_size(m->type->of);
-        for (int i=0; i < m->type->count; i++) {
+        for (uint32_t i=0; i < m->type->count; i++) {
             void * elem_address = (u8 *)dest + m->offset + i * elem_size;
             intro_set_values_x(ctx, elem_address, m->type->of, value_attribute);
         }
@@ -309,7 +309,7 @@ intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * stru
 
 void
 intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute) {
-    for (int m_index=0; m_index < type->count; m_index++) {
+    for (uint32_t m_index=0; m_index < type->count; m_index++) {
         intro_set_member_value_x(ctx, dest, type, m_index, value_attribute);
     }
 }
@@ -352,14 +352,14 @@ intro__print_array(IntroContext * ctx, const IntroContainer * p_container, size_
     if (length <= MAX_EXPOSED_LENGTH) {
         if (intro_is_scalar(type)) {
             printf("{");
-            for (int i=0; i < length; i++) {
+            for (uint32_t i=0; i < length; i++) {
                 if (i > 0) printf(", ");
                 intro_print_x(ctx, intro_push(p_container, i), opt);
             }
             printf("}");
         } else {
             printf("{\n");
-            for (int i=0; i < length; i++) {
+            for (uint32_t i=0; i < length; i++) {
                 for (int t=0; t < opt->indent + 2; t++) fputs(tab, stdout);
                 IntroPrintOptions opt2 = *opt;
                 opt2.indent += 2;
@@ -403,7 +403,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     case INTRO_UNION: {
         printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
 
-        for (int m_index = 0; m_index < type->count; m_index++) {
+        for (uint32_t m_index = 0; m_index < type->count; m_index++) {
             const IntroMember * m = &type->members[m_index];
             const void * m_data = (u8 *)data + m->offset;
             for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
@@ -457,7 +457,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     case INTRO_ENUM: {
         int value = *(int *)data;
         if ((type->flags & INTRO_IS_SEQUENTIAL)) {
-            if (value >= 0 && value < type->count) {
+            if (value >= 0 && value < (int)type->count) {
                 printf("%s", type->values[value].name);
             } else {
                 printf("%i", value);
@@ -465,7 +465,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
         } else if ((type->flags & INTRO_IS_FLAGS)) {
             bool more_than_one = false;
             if (value) {
-                for (int f=0; f < type->count; f++) {
+                for (uint32_t f=0; f < type->count; f++) {
                     if (value & type->values[f].value) {
                         if (more_than_one) printf(" | ");
                         printf("%s", type->values[f].name);
@@ -524,7 +524,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
 
 IntroType *
 intro_type_with_name_x(IntroContext * ctx, const char * name) {
-    for (int i=0; i < ctx->count_types; i++) {
+    for (uint32_t i=0; i < ctx->count_types; i++) {
         IntroType * type = &ctx->types[i];
         if (type->name && strcmp(type->name, name) == 0) {
             return type;
@@ -536,7 +536,7 @@ intro_type_with_name_x(IntroContext * ctx, const char * name) {
 const IntroMember *
 intro_member_by_name_x(const IntroType * type, const char * name) {
     assert((type->category & 0xf0) == INTRO_STRUCT);
-    for (int i=0; i < type->count; i++) {
+    for (uint32_t i=0; i < type->count; i++) {
         const IntroMember * member = &type->members[i];
         if (0==strcmp(name, member->name)) {
             return member;
@@ -701,7 +701,7 @@ packed_size(const CityContext * city, const IntroType * type) {
     switch(type->category) {
     case INTRO_STRUCT: {
         size_t size = 0;
-        for (int i=0; i < type->count; i++) {
+        for (uint32_t i=0; i < type->count; i++) {
             size += packed_size(city, type->members[i].type);
         }
         return size;
@@ -765,7 +765,7 @@ city__get_serialized_id(CityContext * ctx, const IntroType * type) {
         case INTRO_UNION:
         case INTRO_STRUCT: {
             uint32_t * m_type_ids = (uint32_t *)malloc(type->count * sizeof(uint32_t));
-            for (int m_index=0; m_index < type->count; m_index++) {
+            for (uint32_t m_index=0; m_index < type->count; m_index++) {
                 const IntroMember * m = &type->members[m_index];
                 m_type_ids[m_index] = city__get_serialized_id(ctx, m->type);
             }
@@ -774,7 +774,7 @@ city__get_serialized_id(CityContext * ctx, const IntroType * type) {
 
             put_uint(&ctx->info, type->category, 1);
             put_uint(&ctx->info, type->count, ctx->ptr_size);
-            for (int m_index=0; m_index < type->count; m_index++) {
+            for (uint32_t m_index=0; m_index < type->count; m_index++) {
                 const IntroMember * m = &type->members[m_index];
                 put_uint(&ctx->info, m_type_ids[m_index], ctx->type_size);
 
@@ -813,7 +813,7 @@ city__serialize(CityContext * ctx, uint32_t data_offset, const IntroType * type,
     case INTRO_STRUCT: {
         uint32_t current_offset = 0xFFffFFff;
         size_t next_offset = 0;
-        for (int m_index=0; m_index < type->count; m_index++) {
+        for (uint32_t m_index=0; m_index < type->count; m_index++) {
             const IntroMember * member = &type->members[m_index];
 
             if (current_offset == next_offset) {
@@ -878,7 +878,7 @@ city__serialize(CityContext * ctx, uint32_t data_offset, const IntroType * type,
         if (intro_is_scalar(type->of)) {
             memcpy(ctx->data + ser_offset, ptr, buf_size);
         } else {
-            for (int elem_i=0; elem_i < elem_count; elem_i++) {
+            for (uint32_t elem_i=0; elem_i < elem_count; elem_i++) {
                 uint32_t elem_offset = ser_offset + (elem_i * elem_size);
                 city__serialize(ctx, elem_offset, type->of, ptr + (elem_i * type->of->size), 1);
             }
@@ -890,7 +890,7 @@ city__serialize(CityContext * ctx, uint32_t data_offset, const IntroType * type,
             memcpy(ctx->data + data_offset, src, type->size);
         } else {
             size_t ser_size = packed_size(ctx, type->of);
-            for (int elem_i=0; elem_i < type->count; elem_i++) {
+            for (uint32_t elem_i=0; elem_i < type->count; elem_i++) {
                 uint32_t elem_offset = data_offset + (elem_i * ser_size);
                 city__serialize(ctx, elem_offset, type->of, src + (elem_i * type->of->size), 1);
             }
@@ -938,7 +938,7 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     src_buf.size = packed_size(ctx, s_type);
 
     arrput(ctx->buffers, src_buf);
-    city__serialize(ctx, 0, s_type, src, 1);
+    city__serialize(ctx, 0, s_type, (u8 *)src, 1);
 
     for (int i=0; i < arrlen(ctx->deferred_ptrs); i++) {
         CityDeferredPointer dptr = ctx->deferred_ptrs[i];
@@ -990,7 +990,7 @@ city__load_into(
     case INTRO_UNION: {
         const char ** aliases = NULL;
         uint32_t * skip_members = NULL;
-        for (int dm_i=0; dm_i < d_type->count; dm_i++) {
+        for (uint32_t dm_i=0; dm_i < d_type->count; dm_i++) {
             bool do_skip = false;
             for (int skip_i=0; skip_i < arrlen(skip_members); skip_i++) {
                 if (skip_members[skip_i] == dm_i) {
@@ -1020,7 +1020,7 @@ city__load_into(
 
             bool found_match = false;
             // TODO: it would probably be faster to build a hash lookup during the type parse so this isn't slow searching
-            for (int j=0; j < s_type->count; j++) {
+            for (uint32_t j=0; j < s_type->count; j++) {
                 const IntroMember * sm = &s_type->members[j];
 
                 bool match = false;
@@ -1062,7 +1062,7 @@ city__load_into(
                             size_t wr_size = lm->type->size;
                             if (wr_size > 4) wr_size = 4;
                             memcpy((u8 *)dest + lm->offset, &length, wr_size);
-                            if (length_member_index > dm_i) {
+                            if ((uint32_t)length_member_index > dm_i) {
                                 arrput(skip_members, length_member_index);
                             }
                         }
@@ -1091,13 +1091,13 @@ city__load_into(
         const u8 * b = (u8 *)src;
         uintptr_t offset = next_uint(&b, city->ptr_size);
         if (offset != 0) {
-            void * src_ptr = city->data + offset;
+            u8 * src_ptr = city->data + offset;
 
-            u8 * dest_ptr = malloc(d_type->of->size * count_elements); // TODO: track
+            u8 * dest_ptr = (u8 *)malloc(d_type->of->size * count_elements); // TODO: track
             if (intro_is_scalar(d_type->of)) {
                 memcpy(dest_ptr, src_ptr, count_elements * d_type->of->size);
             } else {
-                for (int i=0; i < count_elements; i++) {
+                for (uint32_t i=0; i < count_elements; i++) {
                     size_t s_size = packed_size(city, s_type->of);
                     city__load_into(city, dest_ptr + (i * d_type->of->size), d_type->of, src_ptr + (i * s_size), s_type->of, 1);
                 }
@@ -1159,7 +1159,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
     } TypePtrOf;
     TypePtrOf * deferred_pointer_ofs = NULL;
 
-    for (int i=0; i < header->count_types; i++) {
+    for (uint32_t i=0; i < header->count_types; i++) {
         IntroType * type = (IntroType *)malloc(sizeof(*type)); // TODO: use arena allocator
         memset(type, 0, sizeof(*type));
 
@@ -1177,7 +1177,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
 
             IntroMember * members = NULL;
             int32_t current_offset = 0;
-            for (int m=0; m < type->count; m++) {
+            for (uint32_t m=0; m < type->count; m++) {
                 IntroMember member = {0};
                 uint32_t type_id = next_uint(&b, city->type_size);
                 member.type   = hmget(info_by_id, type_id);
