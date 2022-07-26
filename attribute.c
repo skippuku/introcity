@@ -30,7 +30,7 @@ attribute_parse_init(ParseContext * ctx) {
         {"inherit", ATTR_TK_INHERIT},
         {"attribute", ATTR_TK_ATTRIBUTE},
         {"apply_to", ATTR_TK_APPLY_TO},
-        {"repress", ATTR_TK_APPLY_TO},
+        {"repress", ATTR_TK_REPRESS},
     };
     shdefault(ctx->attribute_token_map, ATTR_TK_INVALID);
     for (int i=0; i < LENGTH(attribute_keywords); i++) {
@@ -597,7 +597,6 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
 
     char * end;
     switch(attribute_type) {
-    default: break;
     case INTRO_AT_FLAG: {
         if (data.id == ctx->builtin.i_type) {
             IntroType * mtype = type->members[member_index].type;
@@ -691,6 +690,16 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         }
     } break;
 
+    case INTRO_AT_EXPR: {
+        Token err_tk;
+        ExprNode * tree = build_expression_tree(ctx->expr_ctx, &tidx->list[tidx->index], 0, &err_tk);
+        if (!tree) {
+            parse_error(ctx, err_tk, "Invalid symbol in expression.");
+            return -1; 
+        }
+        reset_arena(ctx->expr_ctx->arena);
+    }break;
+
     case INTRO_AT_REMOVE: {
         int32_t id = parse_attribute_id(ctx, tidx);
         if (id < 0) {
@@ -698,6 +707,12 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         }
         data.v.i = id;
     }break;
+
+    case INTRO_AT_TYPE: {
+        parse_error(ctx, tk, "Not implemented.");
+    }break;
+
+    case INTRO_AT_COUNT: assert(0);
     }
 
     if (o_result) *o_result = data;

@@ -368,7 +368,7 @@ generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
     char * buf = NULL;
     char ** s = &buf;
 
-    strputf(s, "\" generated with intro version %s\n\n", VERSION);
+    strputf(s, "\" generated with intro %s\n\n", VERSION);
 
     for (int type_i=LENGTH(known_types)-1; type_i < info->count_types; type_i++) {
         const IntroType * type = info->types[type_i];
@@ -376,7 +376,7 @@ generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
             strputf(s, "syn keyword Type %s\n", type->name);
         }
         if (!type->parent && type->category == INTRO_ENUM && type->count > 0) {
-            strputf(s, "  syn keyword Constant");
+            strputf(s, "syn keyword Constant");
             for (int ei=0; ei < type->count; ei++) {
                 IntroEnumValue value = type->values[ei];
                 strputf(s, " %s", value.name);

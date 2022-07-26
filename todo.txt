@@ -24,6 +24,7 @@ attribute:
 
 city:
     !! way to select which union member to serialize
+    version for "release" without as much information where types are assumed to match
     attribute to specify allocation function
     type id's?
         could also check against type names or maybe name hashes
@@ -77,15 +78,15 @@ gen:
     typeof with _Generic?
 
 lib:
+    intro_print circular detection
     accurate type display
-    a little dubious and evil: ability to create types at runtime
+    interface for creating types/contexts
     sprint/mprint version of everything that uses stdout
     single header?
     the preprocessor and parser could be part of the lib?
     printf-like formatting print with insertions for types and values of types
 
 test:
-    !! city test needs to be *way* more thorough
     add sanitized target
     test for errors that should be raised by the parser
     more rigorous tests
@@ -102,6 +103,6 @@ misc:
         these plugins could be inserted at different parts of the process, simplest case being, just run something with the type information before gen
         could be used to add checking to attributes, and maybe other kinds of enforcement
     idea: use parser to generate system headers with types only, no functions
-        if we are to have our own system headers, we may as well also parse them into types into a City file bfore hand
+        if we are to have our own system headers, we may as well also parse them into a binary format as well
     memory cleanup
     parse program options and pass only relevant ones to sub-processes

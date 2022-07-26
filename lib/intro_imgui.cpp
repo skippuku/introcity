@@ -38,7 +38,7 @@ static void edit_member(
     const IntroType * type,
     int id,
 
-    // TODO: i hate this
+    // TODO: i hate this (use IntroContainer)
     const void * container = NULL,
     const IntroType * container_type = NULL,
     const IntroMember * m = NULL

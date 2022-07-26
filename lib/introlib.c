@@ -422,7 +422,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
                 case INTRO_POINTER: {
                     void * ptr = *(void **)m_data;
                     if ((m_index > 0 && m->offset == type->members[m_index - 1].offset) || m->type->of->category == INTRO_UNKNOWN) {
-                        printf("0x%016llx", (unsigned long long)ptr);
+                        printf("0x%016x", (int)(uintptr_t)ptr);
                         break;
                     }
                     if (ptr) {

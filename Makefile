@@ -84,7 +84,7 @@ EXE := $(OBJDIR)/intro
 
 .PHONY: build test install clean cleanall config
 
-build: lib/intro.h.intro $(EXE)
+build: $(EXE)
 	@echo "Build complete for $(PROFILE)."
 
 $(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o

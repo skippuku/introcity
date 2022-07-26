@@ -1868,6 +1868,10 @@ run_preprocessor(int argc, char ** argv) {
         }
     }
 
+    for (int i=0; i < arrlen(ctx->result_list); i++) {
+        ctx->result_list[i].index = i;
+    }
+
     info.loc = ctx->loc;
     info.loc.index = 0;
     info.loc.count = arrlen(ctx->loc.list);

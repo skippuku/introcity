@@ -48,6 +48,10 @@ typedef enum {
 
     TK_IDENTIFIER,
     TK_STRING,
+    TK_NUMBER,
+
+    TK_L_ARROW,
+    TK_R_ARROW,
 
     // preprocessor only
     TK_COMMENT,
@@ -110,8 +114,37 @@ pre_next_token(char ** o_s) {
     if (s != *o_s) tk.preceding_space = true;
 
     if (is_iden(*s)) {
-        while (*++s != '\0' && is_iden(*s));
-        tk.type = TK_IDENTIFIER;
+        if (is_digit(*s)) {
+            bool is_integer = true;
+            if (*s == '0') {
+                switch (*(s+1)) {
+                case 'x': do ++s; while (is_digit(*s) || (*s >= 'a' && *s >= 'f') || (*s >= 'A' && *s <= 'F'));
+                          break;
+                case 'b': do ++s; while (*s == '0' || *s == '1');
+                          break;
+                default:  do ++s; while (*s >= '0' && *s <= '7');
+                          break;
+                }
+            } else {
+                while (is_digit(*++s));
+                if (*s == '.') {
+                    is_integer = false;
+                    while (is_digit(*++s));
+                }
+                if (*s == 'f' || *s == 'F') {
+                    is_integer = false;
+                    ++s;
+                }
+            }
+            if (is_integer) {
+                while (*s == 'l' || *s == 'L' || *s == 'u' || *s == 'U') ++s;
+            }
+            tk.type = TK_NUMBER;
+            tk.length = s - tk.start;
+        } else {
+            while (is_iden(*++s));
+            tk.type = TK_IDENTIFIER;
+        }
         tk.length = s - tk.start;
         *o_s = s;
         return tk;
@@ -219,8 +252,15 @@ pre_next_token(char ** o_s) {
     case '(': tk.type = TK_L_PARENTHESIS; break;
     case ')': tk.type = TK_R_PARENTHESIS; break;
 
-    case '<': tk.type = TK_L_ANGLE;
-              flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL; break;
+    case '<': if (*(s+1) == '-') {
+                  tk.length = 2;
+                  tk.type = TK_L_ARROW;
+                  *o_s = s + 2;
+                  return tk;
+              }
+              tk.type = TK_L_ANGLE;
+              flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL;
+              break;
     case '>': tk.type = TK_R_ANGLE;
               flags = TK_CHECK_DOUBLE | TK_CHECK_EQUAL; break;
 
@@ -229,7 +269,14 @@ pre_next_token(char ** o_s) {
     case '*': tk.type = TK_STAR; break;
     case ',': tk.type = TK_COMMA; break;
     case '.': tk.type = TK_PERIOD; break;
-    case '-': tk.type = TK_HYPHEN; break;
+    case '-': if (*(s+1) == '>') {
+                  tk.length = 2;
+                  tk.type = TK_R_ARROW;
+                  *o_s = s + 2;
+                  return tk;
+              }
+              tk.type = TK_HYPHEN;
+              break;
     case '+': tk.type = TK_PLUS; break;
     case '^': tk.type = TK_CARET; break;
     case '~': tk.type = TK_TILDE; break;
@@ -278,7 +325,6 @@ tk_at(const TokenIndex * tidx) {
 static inline Token
 next_token(TokenIndex * tidx) {
     Token tk = tidx->list[tidx->index];
-    tk.index = tidx->index;
     tidx->index++;
     return tk;
 }

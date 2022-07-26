@@ -92,6 +92,7 @@ static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(i_city),
     DEF_BUILTIN(i_cstring),
     DEF_BUILTIN(i_type),
+    DEF_BUILTIN(i_when),
     DEF_BUILTIN(i_remove),
 
     DEF_BUILTIN(gui_note),
@@ -526,6 +527,8 @@ nanointerval() {
     g_metrics.last = now;
     return result;
 }
+
+static void parse_error(ParseContext * ctx, Token tk, char * message);
 
 #ifdef DEBUG
 // this is so i can get array and map length in gdb

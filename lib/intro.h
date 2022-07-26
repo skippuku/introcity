@@ -28,11 +28,11 @@ extern "C" {
 #define INTRO_MAX_ATTRIBUTES 128
 #endif
 
-#ifndef INTRO_ANON_UNION_NAME
+#ifndef INTRO_TYPE_UNION_NAME
   #if __STDC_VERSION__ < 199901L && !defined(__cplusplus) && !defined(__GNUC__)
-    #define INTRO_ANON_UNION_NAME u
+    #define INTRO_TYPE_UNION_NAME u
   #else
-    #define INTRO_ANON_UNION_NAME
+    #define INTRO_TYPE_UNION_NAME
   #endif
 #endif
 
@@ -114,11 +114,11 @@ typedef struct IntroEnumValue {
 struct IntroType {
     union {
         void * __data I(~gui_show);
-        IntroType * of;
-        IntroMember * members;
-        IntroEnumValue * values;
-        IntroType ** arg_types;
-    } INTRO_ANON_UNION_NAME;
+        IntroType * of          I(when <-category == INTRO_ARRAY || <-category == INTRO_POINTER);
+        IntroMember * members   I(length <-count, when (<-category & 0xf0) == INTRO_STRUCT);
+        IntroEnumValue * values I(length <-count, when <-category == INTRO_ENUM);
+        IntroType ** arg_types  I(length <-count, when <-category == INTRO_FUNCTION);
+    } INTRO_TYPE_UNION_NAME;
     IntroType * parent;
     const char * name;
     uint32_t count;
@@ -148,7 +148,7 @@ typedef enum IntroAttributeType {
     INTRO_AT_MEMBER,
     INTRO_AT_STRING,
     INTRO_AT_TYPE, // unimplemented
-    INTRO_AT_EXPR, // unimplemented
+    INTRO_AT_EXPR,
     INTRO_AT_REMOVE,
     INTRO_AT_COUNT
 } IntroAttributeType;
@@ -173,6 +173,7 @@ typedef struct IntroBuiltinAttributeIds {
     uint8_t i_city;
     uint8_t i_cstring;
     uint8_t i_type;
+    uint8_t i_when;
     uint8_t i_remove;
 
     uint8_t gui_note;
@@ -243,6 +244,7 @@ I(attribute i_ (
     city:     flag @global,
     cstring:  flag,
     type:     flag,
+    when:     expr,
     remove:   __remove,
 ))
 

@@ -6,3 +6,4 @@ magic.mk
 build/
 scripts/
 .github/
+.syntax.vim

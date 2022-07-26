@@ -80,8 +80,8 @@ struct ParseContext {
     Token * tk_list;
     MemArena * arena;
     NameSet * ignore_typedefs;
-    struct{char * key; IntroType * value;} * type_map;
-    struct{IntroType key; IntroType * value;} * type_set;
+    struct {char    * key; IntroType * value;} * type_map;
+    struct {IntroType key; IntroType * value;} * type_set;
     NameSet * keyword_set;
     NameSet * enum_name_set;
 
@@ -93,14 +93,16 @@ struct ParseContext {
     ExprContext * expr_ctx;
     LocationContext loc;
 
-    struct {size_t key; IntroType ** value;} * arg_list_by_hash;
-    struct {char * key; IntroFunction * value;} * function_map;
-    struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
-    struct{ void * key; IntroLocation value; } * location_map;
+    struct {char * key; IntroFunction * value;}    * function_map;
+    struct {char * key; AttributeParseInfo value;} * attribute_map;
+    struct {char * key; int value;}                * attribute_token_map;
+    struct {char * key; int value;}                * builtin_map;
 
-    struct{ char * key; AttributeParseInfo value; } * attribute_map;
-    struct{ char * key; int value; } * attribute_token_map;
-    struct{ char * key; int value; } * builtin_map;
+    struct {size_t      key; IntroType  ** value;} * arg_list_by_hash;
+    struct {IntroType * key; IntroType  ** value;} * incomplete_typedefs;
+    struct {void      * key; IntroLocation value;} * location_map;
+    struct {IntroType * key; IntroType   * value;} * container_map;
+
     AttributeData * attribute_globals;
     AttributeDirective * attribute_directives;
     AttributeDataMap * attribute_data_map;
@@ -111,7 +113,7 @@ struct ParseContext {
 };
 
 static void
-parse_error(ParseContext * ctx, Token tk, char * message) { // TODO
+parse_error(ParseContext * ctx, Token tk, char * message) {
     parse_msg_internal(&ctx->loc, tk.index, message, 0);
 }
 
@@ -311,7 +313,7 @@ is_ignored(int keyword) {
 
 static intmax_t
 parse_constant_expression(ParseContext * ctx, TokenIndex * tidx) {
-    Token * tks = NULL;
+    int start_index = tidx->index;
     Token tk;
     int depth = 0;
     while (1) {
@@ -332,10 +334,9 @@ parse_constant_expression(ParseContext * ctx, TokenIndex * tidx) {
             tidx->index--;
             break;
         }
-        arrput(tks, tk);
     }
-    ExprNode * tree = build_expression_tree(ctx->expr_ctx, tks, arrlen(tks), &tk);
-    arrfree(tks);
+    int end_index = tidx->index;
+    ExprNode * tree = build_expression_tree(ctx->expr_ctx, &tidx->list[start_index], end_index - start_index, &tk);
     if (!tree) {
         parse_error(ctx, tk, "Unknown value in expression.");
         exit(1);
@@ -463,6 +464,12 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
             if (p_directive->type == NULL) { // this will be set if it is from a nested struct definition
                 p_directive->type = stored;
             }
+        }
+    }
+
+    for (int i=0; i < stored->count; i++) {
+        if (stored->members[i].name == NULL) {
+            hmput(ctx->container_map, stored->members[i].type, stored);
         }
     }
 
