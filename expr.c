@@ -4,9 +4,9 @@
 #define EXPR_BUCKET_CAP (1<<12)
 
 typedef enum {
-    OP_LITERAL = 0x00,
-    OP_MEMBER,
-    OP_INT = OP_LITERAL, // TODO: remove
+    OP_NUMBER = 0x00,
+    OP_OTHER,
+    OP_INT = OP_NUMBER, // TODO: remove
 
     OP_MACCESS = 0x10,
     OP_PTR_MACCESS,
@@ -55,43 +55,42 @@ typedef enum {
 } ExprOp;
 
 typedef enum {
-    I_RETURN,
+    I_INVALID = 0,
+    I_RETURN = 1,
 
-    I_LD_R0,
-    I_LD_R1,
-    I_CLD_R0,
-    I_CLD_R1,
-    I_IMM_R0,
-    I_IMM_R1,
+    I_LD,
+    I_IMM,
+    I_ZERO,
+
+    I_CND_LD_TOP,
+
+    I_NEGATE_I,
+    I_NEGATE_F,
+    I_BIT_NOT,
+    I_NOT_ZERO,
+    I_CVT_D_TO_I,
+    I_CVT_F_TO_I,
+    I_CVT_I_TO_D,
+    I_CVT_F_TO_D,
+
+    I_GREATER_POP = I_CVT_F_TO_D,
 
     I_ADDI,
-    I_SUBI,
     I_MULI,
     I_DIVI,
+    I_MODI,
     I_L_SHIFT,
     I_R_SHIFT,
 
     I_BIT_AND,
     I_BIT_OR,
     I_BIT_XOR,
-    I_BIT_NOT,
 
     I_CMP,
 
     I_ADDF,
-    I_SUBF,
     I_MULF,
     I_DIVF,
-
-    I_CVT_D_TO_I,
-    I_CVT_F_TO_I,
-    I_CVT_I_TO_D,
-    I_CVT_F_TO_D,
-
-    I_PUSH,
-    I_POP,
-    I_SWAP,
-    I_ZERO,
 
     I_COUNT
 } InstrCode;
@@ -142,19 +141,19 @@ typedef enum {
     REG_VALUE,
     REG_LAST_RESULT,
     REG_POP_STACK,
-} ExprInstructionRegisterType;
+} ExprInstructionRegisterType; // TODO: remove
 
 typedef struct {
     ExprOp op;
     ExprInstructionRegisterType left_type, right_type;
     intmax_t left_value, right_value;
-} ExprInstruction;
+} ExprInstruction; // TODO: remove
 
 typedef struct {
     int stack_size;
     int count_instructions;
     ExprInstruction instructions [];
-} ExprProcedure;
+} ExprProcedure; // TODO: remove
 
 static void UNUSED
 free_expr_context(ExprContext * ectx) {
@@ -323,7 +322,7 @@ build_expression_tree(ExprContext * ectx, Token * tokens, int count_tokens, Toke
 }
 
 ExprNode *
-build_expression_tree2(ParseContext * ctx, MemArena * arena, TokenIndex * tidx) {
+build_expression_tree2(ExprContext * ectx, MemArena * arena, TokenIndex * tidx) {
     int paren_depth = 0;
     ExprNode * base = NULL;
     ExprNode * node = arena_alloc(arena, sizeof(*base));
@@ -333,12 +332,16 @@ build_expression_tree2(ParseContext * ctx, MemArena * arena, TokenIndex * tidx) 
         bool found_end = false;
         tk = next_token(tidx);
         switch (tk.type) {
+        case TK_R_BRACKET:
+        case TK_SEMICOLON:
         case TK_END: {
+            tidx->index -= 2;
             found_end = true;
         }break;
 
         case TK_L_PARENTHESIS: {
             paren_depth += 1;
+            continue;
         }break;
 
         case TK_R_PARENTHESIS: {
@@ -346,24 +349,33 @@ build_expression_tree2(ParseContext * ctx, MemArena * arena, TokenIndex * tidx) 
             if (paren_depth < 0) {
                 found_end = true;
             }
+            continue;
         }break;
 
         case TK_IDENTIFIER: {
-            DeclState cast = {.state = DECL_CAST};
-            int ret = parse_declaration(ctx, tidx, &cast);
-            if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
-                node->op = OP_CAST;
-            } else if (ret == RET_NOT_TYPE) {
-                if (tk_equal(&tk, "sizeof")) {
-                    node->op = OP_SIZEOF;
-                } else if (tk_equal(&tk, "_Alignof")) {
-                    node->op = OP_ALIGNOF;
+            if (ectx->mode == MODE_PARSE) {
+                DeclState cast = {.state = DECL_CAST};
+                int ret = parse_declaration(ectx->ctx, tidx, &cast);
+                if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
+                    node->op = OP_CAST;
+                } else if (ret == RET_NOT_TYPE) {
+                    if (tk_equal(&tk, "sizeof")) {
+                        node->op = OP_SIZEOF;
+                    } else if (tk_equal(&tk, "_Alignof")) {
+                        node->op = OP_ALIGNOF;
+                    } else {
+                        node->op = OP_OTHER;
+                    }
                 } else {
-                    node->op = OP_MEMBER;
+                    return NULL;
                 }
             } else {
-                return NULL;
+                node->op = OP_NUMBER;
             }
+        }break;
+
+        case TK_NUMBER: {
+            node->op = OP_NUMBER;
         }break;
 
         case TK_PLUS:          node->op = (last_was_value)? OP_ADD : OP_UNARY_ADD; break;
@@ -393,7 +405,7 @@ build_expression_tree2(ParseContext * ctx, MemArena * arena, TokenIndex * tidx) 
         case TK_R_ARROW:       node->op = OP_PTR_MACCESS; break;
 
         default: {
-            parse_error(ctx, tk, "Invalid token.");
+            parse_error(ectx->ctx, tk, "Invalid token.");
             return NULL;
         }break;
         }
@@ -454,8 +466,193 @@ get_member_offset(const IntroType * type, Token * p_name_tk) {
     return -1;
 }
 
+static void
+put_imm_int(uint8_t ** pproc, intmax_t val) {
+    int ext;
+    if ((val & UINT8_MAX) == val) {
+        ext = I_S8;
+    } else if ((val & UINT16_MAX) == val) {
+        ext = I_S16;
+    } else if ((val & UINT32_MAX) == val) {
+        ext = I_S32;
+    } else {
+        ext = I_S64;
+    }
+    bool is_negative = val < 0;
+    if (is_negative) {
+        val = -val;
+    }
+    arrput(*pproc, I_IMM | ext);
+    size_t size = 1 << (ext >> 6);
+    void * dest = arraddnptr(*pproc, size);
+    memcpy(dest, &val, size);
+    if (is_negative) {
+        arrput(*pproc, I_NEGATE_I);
+    }
+}
+
 uint8_t *
-build_expression_procedure2(ExprNode * tree, const IntroContainer * cont) {
+build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const IntroContainer * cont) {
+    uint8_t * proc = NULL;
+
+    if (node->left) {
+        uint8_t * clip = build_expression_procedure_internal(ectx, node->left, cont);
+        void * dest = arraddnptr(proc, arrlen(clip));
+        memcpy(dest, clip, arrlen(clip));
+        arrfree(clip);
+        if (node->op == OP_BOOL_OR || node->op == OP_BOOL_AND) {
+            arrput(proc, I_NOT_ZERO);
+        }
+    }
+    if (node->right) {
+        uint8_t * clip = build_expression_procedure_internal(ectx, node->right, cont);
+        void * dest = arraddnptr(proc, arrlen(clip));
+        memcpy(dest, clip, arrlen(clip));
+        arrfree(clip);
+    }
+
+    switch(node->op) {
+    case OP_NUMBER: {
+        Token ntk = node->tk;
+        if (memcmp(ntk.start, "0x", 2)!=0 && (memchr(ntk.start, '.', ntk.length))) {
+            double val = strtod(ntk.start, NULL);
+            arrput(proc, I_IMM | I_S64);
+            void * dest = arraddnptr(proc, 8);
+            memcpy(dest, &val, 8);
+        } else {
+            long val = strtol(ntk.start, NULL, 0);
+            put_imm_int(&proc, val);
+        }
+    }break;
+
+    case OP_OTHER: {
+        STACK_TERMINATE(const_name, node->tk.start, node->tk.length);
+        ptrdiff_t map_index = shgeti(ectx->constant_map, const_name);
+        if (map_index >= 0) {
+            intmax_t value = ectx->constant_map[map_index].value;
+            put_imm_int(&proc, value);
+        } else {
+            parse_error(ectx->ctx, node->tk, "Unknown identifier.");
+            exit(1);
+        }
+    }break;
+
+    case OP_UNARY_ADD: break;
+
+    case OP_UNARY_SUB:
+        arrput(proc, I_NEGATE_I);
+        break;
+    case OP_BIT_NOT:
+        arrput(proc, I_BIT_NOT);
+        break;
+    case OP_BOOL_NOT:
+        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_IMM | I_S8);
+        arrput(proc, 1);
+        arrput(proc, I_BIT_XOR);
+        break;
+
+    case OP_MUL:
+        arrput(proc, I_MULI);
+        break;
+    case OP_DIV:
+        arrput(proc, I_DIVI);
+        break;
+    case OP_MOD:
+        arrput(proc, I_MODI);
+        break;
+
+    case OP_ADD:
+        arrput(proc, I_ADDI);
+        break;
+    case OP_SUB:
+        arrput(proc, I_NEGATE_I);
+        arrput(proc, I_ADDI);
+        break;
+
+    case OP_SHIFT_LEFT:
+        arrput(proc, I_L_SHIFT);
+        break;
+    case OP_SHIFT_RIGHT: 
+        arrput(proc, I_R_SHIFT);
+        break;
+
+    case OP_LESS:
+        arrput(proc, I_CMP);
+        arrput(proc, I_IMM | I_S8);
+        arrput(proc, (1 << 1));
+        arrput(proc, I_BIT_AND);
+        arrput(proc, I_NOT_ZERO);
+        break;
+    case OP_LESS_OR_EQUAL:
+        arrput(proc, I_CMP);
+        arrput(proc, I_NOT_ZERO);
+        break;
+    case OP_GREATER:
+        arrput(proc, I_CMP);
+        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_IMM | I_S8);
+        arrput(proc, 1);
+        arrput(proc, I_BIT_XOR);
+        break;
+    case OP_GREATER_OR_EQUAL:
+        arrput(proc, I_CMP);
+        arrput(proc, I_BIT_NOT);
+        arrput(proc, I_IMM | I_S8);
+        arrput(proc, (1 << 1));
+        arrput(proc, I_BIT_AND);
+        arrput(proc, I_NOT_ZERO);
+        break;
+
+    case OP_EQUAL:
+        arrput(proc, I_CMP);
+        arrput(proc, I_IMM | I_S8);
+        arrput(proc, 1);
+        arrput(proc, I_BIT_AND);
+        break;
+    case OP_NOT_EQUAL:
+        arrput(proc, I_CMP);
+        arrput(proc, I_BIT_NOT);
+        arrput(proc, I_IMM | I_S8);
+        arrput(proc, 1);
+        arrput(proc, I_BIT_AND);
+        break;
+
+    case OP_BIT_AND:
+        arrput(proc, I_BIT_AND);
+        break;
+    case OP_BIT_XOR:
+        arrput(proc, I_BIT_XOR);
+        break;
+    case OP_BIT_OR:
+        arrput(proc, I_BIT_OR);
+        break;
+    case OP_BOOL_AND:
+        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_BIT_AND);
+        break;
+    case OP_BOOL_OR:
+        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_BIT_OR);
+        break;
+
+    case OP_TERNARY_1: break;
+
+    case OP_TERNARY_2:
+        arrput(proc, I_CND_LD_TOP);
+        break;
+
+    case OP_PUSH: case OP_SET: case OP_DONE: break;
+    }
+
+    return proc;
+}
+
+uint8_t *
+build_expression_procedure2(ExprContext * ectx, ExprNode * tree, const IntroContainer * cont) {
+    uint8_t * result = build_expression_procedure_internal(ectx, tree, cont);
+    arrput(result, I_RETURN);
+    return result;
 }
 
 ExprProcedure *
@@ -638,7 +835,7 @@ run_expression(ExprProcedure * proc) {
 RegisterData
 intro_run_bytecode(uint8_t * code, uint8_t * data) {
     RegisterData stack [1024];
-    RegisterData r0, r1;
+    RegisterData r0, r1, r2;
     size_t stack_idx = 0;
     size_t code_idx = 0;
 
@@ -647,50 +844,51 @@ intro_run_bytecode(uint8_t * code, uint8_t * data) {
         uint8_t inst = byte & ~0xC0;
         uint8_t size = 1 << ((byte >> 6) & 0x03);
 
+        if (inst > I_GREATER_POP) {
+            r1 = r0;
+            r0 = stack[--stack_idx];
+        }
+
         switch ((InstrCode)inst) {
         case I_RETURN: return r0;
 
-        case I_LD_R0: {
+        case I_LD: {
+            stack[stack_idx++] = r0;
             r0.ui = 0;
             memcpy(&r0, data + r0.ui, size);
         }break;
 
-        case I_LD_R1: {
-            r1.ui = 0;
-            memcpy(&r1, data + r0.ui, size);
-        }break;
-
-        case I_CLD_R0: {
-            r0.ui = 0;
-            if (r1.ui != 0) memcpy(&r0, data + r0.ui, size);
-        }break;
-
-        case I_CLD_R1: {
-            r1.ui = 0;
-            if (r1.ui != 0) memcpy(&r1, data + r0.ui, size);
-        }break;
-
-        case I_IMM_R0: {
+        case I_IMM: {
+            stack[stack_idx++] = r0;
             r0.ui = 0;
             memcpy(&r0, &code[code_idx], size);
             code_idx += size;
         }break;
 
-        case I_IMM_R1: {
-            r1.ui = 0;
-            memcpy(&r1, &code[code_idx], size);
-            code_idx += size;
+        case I_ZERO: {
+            stack[stack_idx++] = r0;
+            r0.ui = 0;
         }break;
 
-        case I_ADDI: r0.si += r1.si; break;
-        case I_SUBI: r0.si -= r1.si; break;
-        case I_MULI: r0.si *= r1.si; break;
-        case I_DIVI: {
-            int64_t top = r0.si;
-            int64_t bot = r1.si;
-            r0.si = top / bot;
-            r1.si = top % bot;
+        case I_CND_LD_TOP: {
+            r1 = stack[--stack_idx]; // alternate value
+            r2 = stack[--stack_idx]; // condition
+            if (r2.ui) r0 = r1;
         }break;
+
+        case I_NEGATE_I:   r0.si = -r0.si; break;
+        case I_NEGATE_F:   r0.df = -r0.df; break;
+        case I_BIT_NOT:    r0.ui = ~r0.ui; break;
+        case I_NOT_ZERO:   r0.ui = !!(r0.ui); break;
+        case I_CVT_D_TO_I: r0.si = (int64_t)r0.df; break;
+        case I_CVT_F_TO_I: r0.si = (int64_t)r0.sf; break;
+        case I_CVT_I_TO_D: r0.df = (double) r0.si; break;
+        case I_CVT_F_TO_D: r0.df = (double) r0.sf; break;
+
+        case I_ADDI: r0.si += r1.si; break;
+        case I_MULI: r0.si *= r1.si; break;
+        case I_DIVI: r0.si /= r1.si; break;
+        case I_MODI: r0.si %= r1.si; break;
 
         case I_L_SHIFT: r0.ui <<= r1.ui; break;
         case I_R_SHIFT: r0.ui >>= r1.ui; break;
@@ -698,41 +896,49 @@ intro_run_bytecode(uint8_t * code, uint8_t * data) {
         case I_BIT_AND: r0.ui &= r1.ui; break;
         case I_BIT_OR:  r0.ui |= r1.ui; break;
         case I_BIT_XOR: r0.ui ^= r1.ui; break;
-        case I_BIT_NOT: r0.ui = ~r0.ui; break;
 
         case I_CMP: r0.ui = ((r0.si < r1.si) << 1) | (r0.si == r1.si); break;
 
         case I_ADDF: r0.df += r1.df; break;
-        case I_SUBF: r0.df -= r1.df; break;
         case I_MULF: r0.df *= r1.df; break;
         case I_DIVF: r0.df /= r1.df; break;
 
-        case I_CVT_D_TO_I: r0.si = (ssize_t)r0.df; break;
-        case I_CVT_F_TO_I: r0.si = (ssize_t)r0.sf; break;
-        case I_CVT_I_TO_D: r0.df = (double) r0.si; break;
-        case I_CVT_F_TO_D: r0.df = (double) r0.sf; break;
-
-        case I_PUSH: {
-            assert(stack_idx < LENGTH(stack));
-            stack[stack_idx++] = r0;
-        }break;
-
-        case I_POP: {
-            assert(stack_idx > 0);
-            r0 = stack[--stack_idx];
-        }break;
-
-        case I_SWAP: {
-            RegisterData temp = r0;
-            r0 = r1;
-            r1 = temp;
-        }break;
-
-        case I_ZERO: {
-            r0.ui = 0;
-        }break;
-
-        default: assert(0);
+        case I_COUNT: case I_INVALID: assert(0);
         }
     }
+}
+
+void
+expr_test() {
+    char expr_buf [1024];
+    MemArena * arena = new_arena(512);
+    while (1) {
+        printf("expr> ");
+        fgets(expr_buf, sizeof(expr_buf), stdin);
+        char * endl = strchr(expr_buf, '\n');
+        if (endl) *endl = '\0';
+
+        if (0==strcmp(expr_buf, "q")) {
+            break;
+        }
+
+        Token * tklist = create_token_list(expr_buf);
+
+        TokenIndex tidx = {.list = tklist, .index = 0};
+
+        ExprNode * tree = build_expression_tree2(NULL, arena, &tidx);
+        if (tree == NULL) {
+            printf("invalid symbol\n");
+            arrfree(tklist);
+            continue;
+        }
+        uint8_t * procedure = build_expression_procedure2(NULL, tree, NULL);
+        RegisterData ret = intro_run_bytecode(procedure, NULL);
+        printf(" = %I64i    (expr size: %i)\n", ret.si, (int)arrlen(procedure));
+
+        reset_arena(arena);
+        arrfree(tklist);
+        arrfree(procedure);
+    }
+    free_arena(arena);
 }

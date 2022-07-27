@@ -557,7 +557,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             Token replace_tk = (Token){
                 .start = replace,
                 .length = 1,
-                .type = TK_IDENTIFIER,
+                .type = TK_NUMBER,
                 .preceding_space = preceding_space,
             };
             arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2));
@@ -577,7 +577,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 line_num = count_newlines_in_range(current_file->buffer, ctx->expansion_site, &start_of_line_);
             }
             strputf(&buf, "%i", line_num);
-            token_type = TK_IDENTIFIER;
+            token_type = TK_NUMBER;
         }break;
 
         case MACRO_DATE: {
@@ -832,16 +832,16 @@ expand_line(PreContext * ctx, TokenIndex * tidx, bool is_include) {
 bool
 parse_expression(PreContext * ctx, TokenIndex * tidx) {
     Token * tks = expand_line(ctx, tidx, false);
-    Token err_tk = {0};
-    ExprNode * tree = build_expression_tree(ctx->expr_ctx, tks, arrlen(tks), &err_tk);
-    if (!tree && err_tk.start) {
-        preprocess_error(&err_tk, "Invalid symbol in expression.");
+    TokenIndex etidx = {.list = tks, .index = 0};
+    ExprNode * tree = build_expression_tree2(ctx->expr_ctx, ctx->expr_ctx->arena, &etidx);
+    if (!tree) {
+        preprocess_error(&etidx.list[etidx.index - 1], "Problem token.");
         exit(1);
     }
-    ExprProcedure * expr = build_expression_procedure(tree);
-    intmax_t result = run_expression(expr);
+    uint8_t * bytecode = build_expression_procedure2(ctx->expr_ctx, tree, NULL);
+    intmax_t result = intro_run_bytecode(bytecode, NULL).si;
 
-    free(expr);
+    arrfree(bytecode);
     reset_arena(ctx->expr_ctx->arena);
     arrfree(tks);
 

@@ -140,7 +140,6 @@ pre_next_token(char ** o_s) {
                 while (*s == 'l' || *s == 'L' || *s == 'u' || *s == 'U') ++s;
             }
             tk.type = TK_NUMBER;
-            tk.length = s - tk.start;
         } else {
             while (is_iden(*++s));
             tk.type = TK_IDENTIFIER;

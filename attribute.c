@@ -691,10 +691,8 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     } break;
 
     case INTRO_AT_EXPR: {
-        Token err_tk;
-        ExprNode * tree = build_expression_tree(ctx->expr_ctx, &tidx->list[tidx->index], 0, &err_tk);
+        ExprNode * tree = build_expression_tree2(ctx->expr_ctx, ctx->expr_ctx->arena, tidx);
         if (!tree) {
-            parse_error(ctx, err_tk, "Invalid symbol in expression.");
             return -1; 
         }
         reset_arena(ctx->expr_ctx->arena);
@@ -735,25 +733,24 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
         tk = next_token(tidx);
         AttributeData data;
         if (tk.type == TK_IDENTIFIER) {
-            if (is_digit(tk.start[0])) {
-                data.id = ctx->builtin.i_id;
-                // @copy from above
-                char * end;
-                long result = strtol(tk.start, &end, 0);
-                advance_to(tidx, end);
-                if (end == tk.start) {
-                    parse_error(ctx, tk, "Invalid integer.");
-                    return -1;
-                }
-                data.v.i = (int32_t)result;
-                if (!check_id_valid(directive->type, data.v.i)) {
-                    parse_error(ctx, tk, "This ID is reserved.");
-                    return -1;
-                }
-            } else {
-                tidx->index--;
-                int error = parse_attribute(ctx, tidx, directive->type, directive->member_index, &data);
-                if (error) return -1;
+            tidx->index--;
+            int error = parse_attribute(ctx, tidx, directive->type, directive->member_index, &data);
+            if (error) return -1;
+            arrput(attributes, data);
+        } else if (tk.type == TK_NUMBER) {
+            data.id = ctx->builtin.i_id;
+            // @copy from above
+            char * end;
+            long result = strtol(tk.start, &end, 0);
+            advance_to(tidx, end);
+            if (end == tk.start) {
+                parse_error(ctx, tk, "Invalid integer.");
+                return -1;
+            }
+            data.v.i = (int32_t)result;
+            if (!check_id_valid(directive->type, data.v.i)) {
+                parse_error(ctx, tk, "This ID is reserved.");
+                return -1;
             }
             arrput(attributes, data);
         } else if (tk.type == TK_EQUAL) {

@@ -239,7 +239,7 @@ I(attribute i_ (
     id:       int,
     btfld:    int,
     default:  value(@inherit),
-    length:   member,
+    length:   expr,
     alias:    string,
     city:     flag @global,
     cstring:  flag,

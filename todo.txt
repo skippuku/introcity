@@ -1,5 +1,7 @@
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
+    does the string attribute need to exist?
+        strings could at least be stored in the values section
     ability to reference parent structs
     more strict namespacing
         maybe use dot

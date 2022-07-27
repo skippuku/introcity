@@ -27,6 +27,11 @@ int
 main(int argc, char * argv []) {
     init_platform();
 
+
+    if (argc > 1 && 0==strcmp(argv[1], "--calculator")) {
+        expr_test();
+        return 0;
+    }
     if (argc > 1 && 0==strcmp(argv[1], "--gen-config")) {
         generate_config(argc - 2, &argv[2]);
         return 0;
