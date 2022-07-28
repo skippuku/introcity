@@ -313,38 +313,14 @@ is_ignored(int keyword) {
 
 static intmax_t
 parse_constant_expression(ParseContext * ctx, TokenIndex * tidx) {
-    int start_index = tidx->index;
-    Token tk;
-    int depth = 0;
-    while (1) {
-        tk = next_token(tidx);
-        if (tk.type == TK_END) {
-            parse_error(ctx, tk, "End reached unexpectedly.");
-            exit(1);
-        }
-        if (tk.type == TK_L_PARENTHESIS) {
-            depth += 1;
-        } else if (tk.type == TK_R_PARENTHESIS) {
-            depth -= 1;
-            if (depth < 0) {
-                tidx->index--;
-                break;
-            }
-        } else if (tk.type == TK_COMMA || tk.type == TK_R_BRACE || tk.type == TK_SEMICOLON || tk.type == TK_R_BRACKET) {
-            tidx->index--;
-            break;
-        }
-    }
-    int end_index = tidx->index;
-    ExprNode * tree = build_expression_tree(ctx->expr_ctx, &tidx->list[start_index], end_index - start_index, &tk);
+    ExprNode * tree = build_expression_tree2(ctx->expr_ctx, ctx->expr_ctx->arena, tidx);
     if (!tree) {
-        parse_error(ctx, tk, "Unknown value in expression.");
         exit(1);
     }
-    ExprProcedure * expr = build_expression_procedure(tree);
-    intmax_t result = run_expression(expr);
+    uint8_t * bytecode = build_expression_procedure2(ctx->expr_ctx, tree, NULL);
+    intmax_t result = intro_run_bytecode(bytecode, NULL).si;
 
-    free(expr);
+    arrfree(bytecode);
     reset_arena(ctx->expr_ctx->arena);
 
     return result;
