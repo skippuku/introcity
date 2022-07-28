@@ -262,7 +262,6 @@ parse_msg_internal(LocationContext * lctx, int32_t tk_index, char * message, int
             message_internal(start_of_line, filename, line_num, hl_start, hl_end, "In expansion", message_type);
         }
     }
-    //db_break();
 }
 
 static void
@@ -742,9 +741,9 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 result.start = copy_and_terminate(ctx->arena, buf, arrlen(buf));
                 result.length = arrlen(buf);
                 result.preceding_space = last_tk.preceding_space;
-                if (is_iden(result.start[0])) { // TODO: handle this more gracefully
-                    result.type = TK_IDENTIFIER;
-                }
+                char * s = result.start;
+                Token result_eval_tk = pre_next_token(&s);
+                result.type = result_eval_tk.type;
                 arrfree(buf);
             }
             i--;

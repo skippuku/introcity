@@ -762,8 +762,12 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             arrfree(type_name);
             decl->base = stored;
         } else {
-            parse_error(ctx, decl->base_tk, "Undeclared type.");
-            return -1;
+            if (decl->state == DECL_CAST) {
+                return RET_NOT_TYPE;
+            } else {
+                parse_error(ctx, decl->base_tk, "Undeclared type.");
+                return -1;
+            }
         }
     }
     return 0;
@@ -892,6 +896,33 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 }
 
 static int
+handle_static_assert(ParseContext * ctx, TokenIndex * tidx) {
+    Token tk;
+    int assert_keyword_index = tidx->index - 1;
+    EXPECT('(');
+    bool ok = !!parse_constant_expression(ctx, tidx);
+
+    EXPECT(',');
+    tk = next_token(tidx);
+    if (tk.type != TK_STRING) {
+        parse_error(ctx, tk, "Expected string.");
+        return -1;
+    }
+
+    if (!ok) {
+        char * msg = NULL;
+        strputf(&msg, "Assertion failed: %.*s\n", tk.length, tk.start);
+        parse_error(ctx, tidx->list[assert_keyword_index], msg);
+        arrfree(msg);
+        return -1;
+    }
+
+    EXPECT(')');
+
+    return 0;
+}
+
+static int
 parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     IntroFunction * func = NULL;
     int ret = 0;
@@ -901,6 +932,13 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
         decl->member_index = MIDX_TYPE;
     }
     Token tk = next_token(tidx);
+
+    if (tk_equal(&tk, "_Static_assert")) {
+        ret = handle_static_assert(ctx, tidx);
+        if (ret < 0) return -1;
+        goto find_end;
+    }
+
     attribute_at_start = maybe_expect_attribute(ctx, tidx, decl->member_index, &tk);
 
     tidx->index--;
@@ -911,10 +949,10 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
         bool finished = (tk.type == TK_R_PARENTHESIS)
                      || (tk.type == TK_SEMICOLON)
                      || (tk.type == TK_R_BRACE);
-        if (finished) {
-            return RET_DECL_FINISHED;
-        } else if (decl->state == DECL_CAST) {
+        if (decl->state == DECL_CAST) {
             return RET_NOT_TYPE;
+        } else if (finished) {
+            return RET_DECL_FINISHED;
         } else {
             parse_error(ctx, tk, "Invalid type.");
             return -1;

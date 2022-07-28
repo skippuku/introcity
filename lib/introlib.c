@@ -384,19 +384,27 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
         opt = &opt_default;
     }
 
+    uint32_t attr;
+    if (container.parent && container.parent->type->category == INTRO_STRUCT) {
+        attr = container.parent->type->members[container.index].attr;
+    } else {
+        attr = type->attr;
+    }
+    const char * fmt = intro_attribute_string_x(ctx, attr, ctx->attr.builtin.gui_format);
+
     switch(type->category) {
     case INTRO_U8: case INTRO_U16: case INTRO_U32: case INTRO_U64:
     case INTRO_S8: case INTRO_S16: case INTRO_S32: case INTRO_S64:
     {
         int64_t value = intro_int_value(data, type);
-        printf("%li", (long int)value);
+        printf((fmt)? fmt : "%li", (long int)value);
     }break;
 
     case INTRO_F32: {
-        printf("%f", *(float *)data);
+        printf((fmt)? fmt : "%f", *(float *)data);
     }break;
     case INTRO_F64: {
-        printf("%f", *(double *)data);
+        printf((fmt)? fmt : "%f", *(double *)data);
     }break;
 
     case INTRO_STRUCT:
@@ -491,12 +499,6 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     }break;
 
     case INTRO_POINTER: {
-        uint32_t attr;
-        if (container.parent->type->category == INTRO_STRUCT) {
-            attr = container.parent->type->members[container.index].attr;
-        } else {
-            attr = type->attr;
-        }
         void * ptr = *(void **)data;
         if (!ptr) {
             printf("<null>");
@@ -847,7 +849,10 @@ city__serialize(CityContext * ctx, uint32_t data_offset, const IntroType * type,
     case INTRO_POINTER: {
         if (type->of->size == 0) return;
         u8 * ptr = *(u8 **)src;
-        if (!ptr) return;
+        if (!ptr) {
+            memset(ctx->data + data_offset, 0, ctx->ptr_size);
+            return;
+        }
 
         uint32_t elem_size = packed_size(ctx, type->of);
         uint32_t buf_size = elem_size * elem_count;

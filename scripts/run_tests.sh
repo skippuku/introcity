@@ -11,14 +11,12 @@ echo > log.txt
 for f in $@; do
     printf "\n----------------\nTEST $f\n----------------\n" >> log.txt
     printf "%-30b" "TEST ${CCYAN}$f${CRESET}"
-    err=$(./$f 2>&1 >> log.txt)
+    ./$f >> log.txt
     ok=$?
-    printf -- "$err" >> log.txt
     if [ $ok -eq 0 ]; then
         printf "${CGREEN}OK"
     else
         printf "${CRED}FAILED${CRESET}\n"
-        printf "    $err"
         fails=1
     fi
     printf "${CRESET}\n"

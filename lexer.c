@@ -118,9 +118,11 @@ pre_next_token(char ** o_s) {
             bool is_integer = true;
             if (*s == '0') {
                 switch (*(s+1)) {
-                case 'x': do ++s; while (is_digit(*s) || (*s >= 'a' && *s >= 'f') || (*s >= 'A' && *s <= 'F'));
+                case 'x': s++;
+                          do ++s; while (is_digit(*s) || (*s >= 'a' && *s <= 'f') || (*s >= 'A' && *s <= 'F'));
                           break;
-                case 'b': do ++s; while (*s == '0' || *s == '1');
+                case 'b': s++;
+                          do ++s; while (*s == '0' || *s == '1');
                           break;
                 default:  do ++s; while (*s >= '0' && *s <= '7');
                           break;

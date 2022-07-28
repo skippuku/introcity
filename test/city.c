@@ -25,7 +25,7 @@ typedef struct {
 } StuffSave;
 
 typedef struct {
-    uint32_t hex I(= 0xFF56A420);
+    uint32_t hex I(= 0xFF56A420, gui_format "0x%x");
     int id       I(= -1);
     double speed I(= 5.6);
     char * name  I(= "unnamed");

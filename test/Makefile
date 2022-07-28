@@ -16,7 +16,7 @@ export ASAN_OPTIONS = detect_leaks=0
 all: $(EXE)
 	@echo "Build complete."
 
-run: $(TESTS) $(INTRO_PARSE)
+run: $(TESTS)
 	@./../scripts/run_tests.sh $(TESTS)
 	$(INTRO_PARSE) --cfg $(ICFG) ../intro.c -o intro.c.intro
 
@@ -43,7 +43,7 @@ $(EXE): db_%: %.c $(INTROLIB)
 clean:
 	rm -f *.intro *.o *.d $(EXE)
 
-%.d: $(INTRO_PARSE)
+%.d:
 	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) -MM -MG -MT 'db_$*' $*.c > $@
 
 DEPS := $(SRC:.c=.d)

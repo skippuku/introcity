@@ -115,9 +115,9 @@ struct IntroType {
     union {
         void * __data I(~gui_show);
         IntroType * of          I(when <-category == INTRO_ARRAY || <-category == INTRO_POINTER);
-        IntroMember * members   I(length <-count, when (<-category & 0xf0) == INTRO_STRUCT);
-        IntroEnumValue * values I(length <-count, when <-category == INTRO_ENUM);
-        IntroType ** arg_types  I(length <-count, when <-category == INTRO_FUNCTION);
+        IntroMember * members   I(/* length <-count, */ when (<-category & 0xf0) == INTRO_STRUCT);
+        IntroEnumValue * values I(/* length <-count, */ when <-category == INTRO_ENUM);
+        IntroType ** arg_types  I(/* length <-count, */ when <-category == INTRO_FUNCTION);
     } INTRO_TYPE_UNION_NAME;
     IntroType * parent;
     const char * name;
@@ -239,7 +239,7 @@ I(attribute i_ (
     id:       int,
     btfld:    int,
     default:  value(@inherit),
-    length:   expr,
+    length:   member, // TODO: change to expr
     alias:    string,
     city:     flag @global,
     cstring:  flag,
