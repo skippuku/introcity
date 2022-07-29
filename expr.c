@@ -375,7 +375,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         case 2: ext = I_S16; break;
         case 4: ext = I_S32; break;
         case 8: ext = I_S64; break;
-        default: assert(0);
+        default: assert(0), ext = 0;
         }
 
         put_imm_int(&proc, offset);

@@ -330,8 +330,8 @@ parse_value(ParseContext * ctx, IntroType * type, TokenIndex * tidx, uint32_t * 
                     return -1;
                 }
                 ptrdiff_t result = arrlen(ctx->value_buffer);
-                char * dest = (char *)arraddnptr(ctx->value_buffer, intro_size(type));
-                memset(dest, 0, intro_size(type));
+                char * dest = (char *)arraddnptr(ctx->value_buffer, type->size);
+                memset(dest, 0, type->size);
                 strcpy(dest, str);
                 free(str);
 
@@ -842,6 +842,8 @@ apply_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_
 
 static void
 handle_deferred_defaults(ParseContext * ctx) {
+    // TODO: not sure how to handle this now that length is an expression...
+#if 0
     for (int i=0; i < arrlen(ctx->deferred_length_defaults); i++) {
         DeferredDefault def = ctx->deferred_length_defaults[i];
         AttributeDataKey key = {
@@ -862,7 +864,7 @@ handle_deferred_defaults(ParseContext * ctx) {
         }
         if (!length_member) continue;
 
-        ptrdiff_t value_offset = store_value(ctx, &def.value, intro_size(length_member->type));
+        ptrdiff_t value_offset = store_value(ctx, &def.value, length_member->type->size);
         AttributeData data = {
             .id = def.attr_id,
             .v.i = value_offset,
@@ -871,6 +873,7 @@ handle_deferred_defaults(ParseContext * ctx) {
         apply_attributes_to_member(ctx, def.type, length_member_index, &data, 1);
     }
     arrsetlen(ctx->deferred_length_defaults, 0);
+#endif
 }
 
 static void

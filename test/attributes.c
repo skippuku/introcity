@@ -62,13 +62,16 @@ special_alloc(void * dest_struct, const IntroType * type) {
             for (int mi=0; mi < type->count; mi++) {
                 const IntroMember * m = &type->members[mi];
                 int friend_index;
-                if (mi == owner_index
+                if (
+                    mi == owner_index
                     || (intro_attribute_member(m, my_joint, &friend_index)
-                        && friend_index == owner_index))
+                        && friend_index == owner_index)
+                   )
                 {
-                    int element_size = intro_size(m->type->of);
+                    int element_size = m->type->of->size;
                     int64_t length;
-                    assert( intro_attribute_length(dest_struct, type, m, &length) );
+                    IntroContainer parent = intro_container(dest_struct, type);
+                    assert( intro_attribute_length(intro_push(&parent, mi), &length) );
 
                     struct join_info info;
                     info.index = mi;

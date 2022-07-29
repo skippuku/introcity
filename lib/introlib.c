@@ -221,22 +221,9 @@ intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec_location, uint32
 }
 
 bool
-intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length) {
-    assert(container_type->category == INTRO_STRUCT || container_type->category == INTRO_UNION);
-    uint32_t value_offset;
-    bool has = get_attribute_value_offset(ctx, m->attr, ctx->attr.builtin.i_length, &value_offset);
-    if (has) {
-        int32_t length_m_index;
-        memcpy(&length_m_index, &value_offset, sizeof(length_m_index));
-        const IntroMember * length_m = &container_type->members[length_m_index];
-        const void * length_data = (u8 *)container + length_m->offset;
-        int64_t result = intro_int_value(length_data, length_m->type);
-        *o_length = result;
-        return true;
-    } else {
-        *o_length = 0;
-        return false;
-    }
+intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t * o_length) {
+    assert(cont.parent && intro_has_members(cont.parent->type));
+    return intro_attribute_expr_x(ctx, cont.parent->type->members[cont.index].attr, ctx->attr.builtin.i_length, intro_expr_data(&cont), o_length);
 }
 
 bool
@@ -369,7 +356,7 @@ intro_offset_pointers(void * dest, const IntroType * type, void * base) {
 void
 intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute) {
     const IntroMember * m = &struct_type->members[member_index];
-    size_t size = intro_size(m->type);
+    size_t size = m->type->size;
     IntroVariant var;
     if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_type)) {
         memcpy((u8 *)dest + m->offset, &struct_type, sizeof(void *));
@@ -389,7 +376,7 @@ intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * stru
         intro_set_values_x(ctx, (u8 *)dest + m->offset, m->type, value_attribute);
     // TODO: this seems inelegant
     } else if (m->type->category == INTRO_ARRAY && m->type->of->category == INTRO_STRUCT) {
-        int elem_size = intro_size(m->type->of);
+        int elem_size = m->type->of->size;
         for (uint32_t i=0; i < m->type->count; i++) {
             void * elem_address = (u8 *)dest + m->offset + i * elem_size;
             intro_set_values_x(ctx, elem_address, m->type->of, value_attribute);
@@ -503,8 +490,20 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     case INTRO_UNION: {
         printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
 
+        const void * expr_data = intro_expr_data(&container);
+        int64_t expr_result;
+
         for (uint32_t m_index = 0; m_index < type->count; m_index++) {
             const IntroMember * m = &type->members[m_index];
+
+            if (
+                !intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.gui_show)
+              ||(intro_attribute_expr_x(ctx, m->attr, ctx->attr.builtin.i_when, expr_data, &expr_result) && !expr_result)
+               )
+            {
+                continue;
+            }
+
             const void * m_data = (u8 *)data + m->offset;
             for (int t=0; t < opt->indent + 1; t++) fputs(tab, stdout);
             printf("%s: ", m->name);
@@ -583,7 +582,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     case INTRO_ARRAY: {
         int64_t length = type->count;
         if (container.parent->type->category == INTRO_STRUCT) {
-            if (!intro_attribute_length_x(ctx, container.parent->data, container.parent->type, &container.parent->type->members[container.index], &length)) {
+            if (!intro_attribute_length_x(ctx, container, &length)) {
                 length = type->count;
             }
         }
@@ -604,7 +603,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
             }
         } else {
             int64_t length;
-            if (!intro_attribute_length_x(ctx, container.parent->data, container.parent->type, &container.parent->type->members[container.index], &length)) {
+            if (!intro_attribute_length_x(ctx, container, &length)) {
                 length = 1;
             }
             intro__print_array(ctx, &container, length, opt);
@@ -922,7 +921,8 @@ city__serialize(CityContext * ctx, uint32_t data_offset, const IntroType * type,
             }
 
             int64_t length;
-            if (intro_attribute_length_x(ctx->ictx, src, type, member, &length)) {
+            IntroContainer parent = intro_container((void *)src, type);
+            if (intro_attribute_length_x(ctx->ictx, intro_push(&parent, m_index), &length)) {
             } else if (intro_has_attribute_x(ctx->ictx, member->attr, ctx->ictx->attr.builtin.i_cstring)) {
                 char * str = *(char **)(src + member->offset);
                 if (str) {
@@ -1149,11 +1149,12 @@ city__load_into(
 
                     uint32_t length = 1;
                     if (dm->type->category == INTRO_POINTER) {
-                        int32_t length_member_index;
                         const u8 * ptr_loc = (u8 *)src + sm->offset;
                         uintptr_t offset = next_uint(&ptr_loc, city->ptr_size);
                         if (offset == 0) break;
                         memcpy(&length, city->data + offset - 4, 4);
+                    #if 0 // TODO...
+                        int32_t length_member_index;
                         if (intro_attribute_member_x(ctx, dm->attr, ctx->attr.builtin.i_length, &length_member_index)) {
                             const IntroMember * lm = &d_type->members[length_member_index];
                             size_t wr_size = lm->type->size;
@@ -1163,6 +1164,7 @@ city__load_into(
                                 arrput(skip_members, length_member_index);
                             }
                         }
+                    #endif
                     }
 
                     int ret = city__load_into(city,

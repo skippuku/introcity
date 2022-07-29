@@ -86,9 +86,8 @@ typedef struct IntroLocation {
 } IntroLocation;
 
 typedef enum IntroFlags {
-    INTRO_CONST = 0x01,
-    INTRO_STATIC = 0x02,
-    INTRO_INLINE = 0x04,
+    INTRO_EMBEDDED_DEFINITION = 0x01,
+    // unallocated
     INTRO_EXPLICITLY_GENERATED = 0x08,
     INTRO_HAS_BODY = 0x10,
     INTRO_IS_FLAGS = 0x20,
@@ -115,9 +114,9 @@ struct IntroType {
     union {
         void * __data I(~gui_show);
         IntroType * of          I(when <-category == INTRO_ARRAY || <-category == INTRO_POINTER);
-        IntroMember * members   I(/* length <-count, */ when (<-category & 0xf0) == INTRO_STRUCT);
-        IntroEnumValue * values I(/* length <-count, */ when <-category == INTRO_ENUM);
-        IntroType ** arg_types  I(/* length <-count, */ when <-category == INTRO_FUNCTION);
+        IntroMember * members   I(length <-count, when (<-category & 0xf0) == INTRO_STRUCT);
+        IntroEnumValue * values I(length <-count, when <-category == INTRO_ENUM);
+        IntroType ** arg_types  I(length <-count, when <-category == INTRO_FUNCTION);
     } INTRO_TYPE_UNION_NAME;
     IntroType * parent;
     const char * name;
@@ -126,7 +125,7 @@ struct IntroType {
     uint32_t size;
     uint16_t flags I(gui_format "0x%02x");
     uint8_t align;
-    uint8_t category;
+    uint8_t category I(gui_format "0x%02x");
 };
 
 typedef struct IntroFunction {
@@ -246,12 +245,12 @@ I(attribute i_ (
     id:       int,
     btfld:    int,
     default:  value(@inherit),
-    length:   member, // TODO: change to expr
+    length:   expr,
+    when:     expr,
     alias:    string,
     city:     flag @global,
     cstring:  flag,
     type:     flag,
-    when:     expr,
     remove:   __remove,
 ))
 
@@ -303,11 +302,6 @@ intro_has_of(const IntroType * type) {
     return type->category == INTRO_ARRAY || type->category == INTRO_POINTER;
 }
 
-INTRO_API_INLINE int
-intro_size(const IntroType * type) {
-    return type->size;
-}
-
 INTRO_API_INLINE const IntroType *
 intro_origin(const IntroType * type) {
     while (type->parent) {
@@ -337,6 +331,15 @@ intro_container(void * data, const IntroType * type) {
     return container;
 }
 
+INTRO_API_INLINE const void *
+intro_expr_data(const IntroContainer * cont) {
+    if (cont->parent) cont = cont->parent;
+    while (cont->parent && (cont->type->flags & INTRO_EMBEDDED_DEFINITION)) {
+        cont = cont->parent;
+    }
+    return cont->data;
+}
+
 typedef struct {
     int indent;
 } IntroPrintOptions;
@@ -354,8 +357,8 @@ bool intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec, uint32_t a
 bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, float * o_float);
 #define intro_attribute_string(m, a) intro_attribute_string_x(INTRO_CTX, m->attr, IATTR_##a)
 const char * intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id);
-#define intro_attribute_length(c, ct, m, out) intro_attribute_length_x(INTRO_CTX, c, ct, m, out)
-bool intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length);
+#define intro_attribute_length(container, out) intro_attribute_length_x(INTRO_CTX, container, out)
+bool intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t * o_length);
 union IntroRegisterData intro_run_bytecode(uint8_t * code, const uint8_t * data);
 bool intro_attribute_expr_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, const void * cont_data, int64_t * o_result);
 
@@ -387,8 +390,8 @@ void * intro_create_city_x(IntroContext * ctx, const void * src, const IntroType
 int intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size);
 
 // DEAR IMGUI (must link with intro_imgui.cpp to use)
-#define intro_imgui_edit(data, data_type) intro_imgui_edit_x(INTRO_CTX, data, data_type, #data)
-void intro_imgui_edit_x(IntroContext * ctx, void * data, const IntroType * data_type, const char * name);
+#define intro_imgui_edit(data, data_type) intro_imgui_edit_x(INTRO_CTX, intro_container(data, data_type), #data)
+void intro_imgui_edit_x(IntroContext * ctx, IntroContainer cont, const char * name);
 
 // MISC
 IntroContainer intro_push(const IntroContainer * parent, int32_t index);

@@ -449,9 +449,11 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
     }
 
     for (int i=0; i < stored->count; i++) {
-        if (!stored->members[i].type->name) {
+        IntroType * m_type = stored->members[i].type;
+        if (intro_has_members(m_type) && !m_type->name) {
             ContainerMapValue v = {.type = stored, .index = i};
-            hmput(ctx->container_map, stored->members[i].type, v);
+            hmput(ctx->container_map, m_type, v);
+            m_type->flags |= INTRO_EMBEDDED_DEFINITION;
         }
     }
 

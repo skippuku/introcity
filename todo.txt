@@ -1,4 +1,5 @@
 lib:
+    !! use IntroContainer where possible, especially for city and imgui
     intro_print circular detection
     accurate type display
     interface for creating types/contexts
@@ -9,6 +10,7 @@ lib:
 
 city:
     !! way to select which union member to serialize
+    !! handle allocation
     version for "release" without as much information where types are assumed to match
     attribute to specify allocation function
     type id's?
@@ -35,9 +37,6 @@ attribute:
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
     members of complex type can specify an attribute as a value: I(default default)
-    expression attribute type
-        select: attribute describes when a member is valid, ex. unions
-        length: change to expression ex. I(length map_width * map_height)
     parse c++ struct defaults as intro defaults?
 
 parse:
@@ -58,12 +57,14 @@ parse:
         operator overloads?
 
 expr:
+    implement float math
     array subscript
     parse float expressions (for value attributes)
         general type awareness in expressions?
     handle character literals including L'x'
     handle strings next to each other
     compound literals
+    ability to return complex types?
 
 pre:
     FileInfo: add include location

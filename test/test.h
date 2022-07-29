@@ -120,7 +120,7 @@ typedef struct {
     char * words [5] I(= {[3] = "apple", [1] = "banana", "mango", [0] = "pineapple", [4] = "newline\ntest"});
 
     float * speeds I(length count_speeds, default {3.4, 5.6, 1.7, 8.2, 0.002});
-    uint32_t count_speeds I(remove gui_show);
+    uint32_t count_speeds I(= 5, remove gui_show);
 
     Skills skills I(= SKILL_MUSICIAN | SKILL_PROGRAMMER);
 
