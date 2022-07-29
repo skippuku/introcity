@@ -141,7 +141,7 @@ typedef enum {
     SIZEOF_SHORT = sizeof(short),
 } EvilEnum;
 
-// commented out because gcc doesn't enabled MS extensions by default
+// commented out because gcc doesn't enable MS extensions by default
 #if 0
 typedef struct {
     char * name;

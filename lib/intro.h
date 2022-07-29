@@ -235,6 +235,13 @@ typedef struct IntroContainer {
     size_t index;
 } IntroContainer;
 
+union IntroRegisterData {
+    uint64_t ui;
+    int64_t  si;
+    float    sf;
+    double   df;
+};
+
 I(attribute i_ (
     id:       int,
     btfld:    int,
@@ -349,6 +356,8 @@ bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec, uint32_t at
 const char * intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id);
 #define intro_attribute_length(c, ct, m, out) intro_attribute_length_x(INTRO_CTX, c, ct, m, out)
 bool intro_attribute_length_x(IntroContext * ctx, const void * container, const IntroType * container_type, const IntroMember * m, int64_t * o_length);
+union IntroRegisterData intro_run_bytecode(uint8_t * code, const uint8_t * data);
+bool intro_attribute_expr_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, const void * cont_data, int64_t * o_result);
 
 // INITIALIZERS
 void intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);
@@ -388,6 +397,49 @@ const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
 #define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
+
+#ifdef INTRO_INCLUDE_INSTR_CODE
+typedef enum {
+    I_INVALID = 0,
+    I_RETURN = 1,
+
+    I_LD,
+    I_IMM,
+    I_ZERO,
+
+    I_CND_LD_TOP,
+
+    I_NEGATE_I,
+    I_NEGATE_F,
+    I_BIT_NOT,
+    I_NOT_ZERO,
+    I_CVT_D_TO_I,
+    I_CVT_F_TO_I,
+    I_CVT_I_TO_D,
+    I_CVT_F_TO_D,
+
+    I_GREATER_POP = I_CVT_F_TO_D,
+
+    I_ADDI,
+    I_MULI,
+    I_DIVI,
+    I_MODI,
+    I_L_SHIFT,
+    I_R_SHIFT,
+
+    I_BIT_AND,
+    I_BIT_OR,
+    I_BIT_XOR,
+
+    I_CMP,
+
+    I_ADDF,
+    I_MULF,
+    I_DIVF,
+
+    I_COUNT
+} InstrCode;
+#endif
 
 #ifdef __cplusplus
 }

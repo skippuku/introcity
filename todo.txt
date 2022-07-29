@@ -1,3 +1,19 @@
+lib:
+    intro_print circular detection
+    accurate type display
+    interface for creating types/contexts
+    sprint/mprint version of everything that uses stdout
+    single header?
+    the preprocessor and parser could be part of the lib?
+    printf-like formatting print with insertions for types and values of types
+
+city:
+    !! way to select which union member to serialize
+    version for "release" without as much information where types are assumed to match
+    attribute to specify allocation function
+    type id's?
+        could also check against type names or maybe name hashes
+
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
     does the string attribute need to exist?
@@ -24,30 +40,12 @@ attribute:
         length: change to expression ex. I(length map_width * map_height)
     parse c++ struct defaults as intro defaults?
 
-city:
-    !! way to select which union member to serialize
-    version for "release" without as much information where types are assumed to match
-    attribute to specify allocation function
-    type id's?
-        could also check against type names or maybe name hashes
-
-config:
-    default program arguments
-    allow config to be appended with another config?
-    handle c type sizes
-    static assert in .intro file if types don't match
-
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
     vector types (__m128, etc)
     Some way to get type location info
-    Allow access to anon struct/union as a struct
     ParseInfo: have everything, strip away unwated stuff at gen
-    parse float expressions (for value attributes)
-        general type awareness in expressions?
-    handle character literals including L'x'
-    handle strings next to each other
     fix bitfield regression
     handle bitfield accessing
     parse globals (for libraries that use extern)
@@ -58,6 +56,14 @@ parse:
         member functions
         ignore templates
         operator overloads?
+
+expr:
+    array subscript
+    parse float expressions (for value attributes)
+        general type awareness in expressions?
+    handle character literals including L'x'
+    handle strings next to each other
+    compound literals
 
 pre:
     FileInfo: add include location
@@ -79,24 +85,21 @@ gen:
     option to create typedefs for structs and enums
     typeof with _Generic?
 
-lib:
-    intro_print circular detection
-    accurate type display
-    interface for creating types/contexts
-    sprint/mprint version of everything that uses stdout
-    single header?
-    the preprocessor and parser could be part of the lib?
-    printf-like formatting print with insertions for types and values of types
+config:
+    default program arguments
+    allow config to be appended with another config?
+    handle c type sizes
+    static assert in .intro file if types don't match
 
 test:
     add sanitized target
     test for errors that should be raised by the parser
     more rigorous tests
 
+doc:
+
 examples:
     !! more of these
-
-doc:
 
 misc:
     idea: some kind of plugin system

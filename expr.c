@@ -4,10 +4,9 @@
 #define EXPR_BUCKET_CAP (1<<12)
 
 typedef enum {
-    OP_NUMBER = 0x00,
+    OP_NUMBER = 0x01,
     OP_OTHER,
-
-    OP_MACCESS = 0x10,
+    OP_MACCESS,
     OP_PTR_MACCESS,
     OP_CONTAINER,
 
@@ -56,59 +55,11 @@ enum ExprOpTypes {
 };
 
 typedef enum {
-    I_INVALID = 0,
-    I_RETURN = 1,
-
-    I_LD,
-    I_IMM,
-    I_ZERO,
-
-    I_CND_LD_TOP,
-
-    I_NEGATE_I,
-    I_NEGATE_F,
-    I_BIT_NOT,
-    I_NOT_ZERO,
-    I_CVT_D_TO_I,
-    I_CVT_F_TO_I,
-    I_CVT_I_TO_D,
-    I_CVT_F_TO_D,
-
-    I_GREATER_POP = I_CVT_F_TO_D,
-
-    I_ADDI,
-    I_MULI,
-    I_DIVI,
-    I_MODI,
-    I_L_SHIFT,
-    I_R_SHIFT,
-
-    I_BIT_AND,
-    I_BIT_OR,
-    I_BIT_XOR,
-
-    I_CMP,
-
-    I_ADDF,
-    I_MULF,
-    I_DIVF,
-
-    I_COUNT
-} InstrCode;
-
-typedef enum {
     I_S8  = 0x00,
     I_S16 = 0x40,
     I_S32 = 0x80,
     I_S64 = 0xC0,
 } InstrExt;
-
-typedef union {
-    uint64_t ui;
-    int64_t  si;
-    float    sf;
-    double   df;
-} RegisterData;
 
 _Static_assert(I_COUNT <= (1 << 6), "Too many bytecode intructions to fit in 6 bits");
 
@@ -129,7 +80,7 @@ struct ExprNode {
     int depth;
     ExprOp op;
     intmax_t value;
-    IntroType * type;
+    const IntroType * type;
     Token tk;
 };
 
@@ -158,10 +109,10 @@ free_expr_context(ExprContext * ectx) {
 }
 
 ExprNode *
-build_expression_tree2(ExprContext * ectx, MemArena * arena, TokenIndex * tidx) {
+build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
     int paren_depth = 0;
     ExprNode * base = NULL;
-    ExprNode * node = arena_alloc(arena, sizeof(*base));
+    ExprNode * node = arena_alloc(ectx->arena, sizeof(*base));
     Token tk;
     bool last_was_value = false;
     while (1) {
@@ -260,7 +211,6 @@ build_expression_tree2(ExprContext * ectx, MemArena * arena, TokenIndex * tidx) 
         if (node->op == OP_TERNARY_2) paren_depth -= 1;
 
         node->depth = paren_depth;
-        if (node->op == OP_CAST) node->depth -= 1;
         node->tk = tk;
 
         if (node->op == OP_TERNARY_1) paren_depth += 1;
@@ -286,23 +236,24 @@ build_expression_tree2(ExprContext * ectx, MemArena * arena, TokenIndex * tidx) 
             }
             p_index = &index->right;
         }
-        node = arena_alloc(arena, sizeof(*node));
+        node = arena_alloc(ectx->arena, sizeof(*node));
     }
 
     return base;
 }
 
 static int32_t
-get_member_offset(const IntroType * type, Token * p_name_tk) {
+get_member_offset(const IntroType * type, const Token * p_name_tk, const IntroType ** o_member_type) {
     for (int i=0; i < type->count; i++) {
         IntroMember member = type->members[i];
         if (member.name) {
             if (tk_equal(p_name_tk, member.name)) {
+                *o_member_type = member.type;
                 return member.offset;
             }
         } else {
             if (intro_has_members(member.type)) {
-                int32_t ret = get_member_offset(member.type, p_name_tk);
+                int32_t ret = get_member_offset(member.type, p_name_tk, o_member_type);
                 if (ret >= 0) {
                     return ret + member.offset;
                 }
@@ -334,7 +285,104 @@ uint8_t *
 build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const IntroContainer * cont) {
     uint8_t * proc = NULL;
 
-    if (node->op != OP_SIZEOF && node->op != OP_ALIGNOF) {
+    if (node->op == OP_OTHER) {
+        ExprNode ** stack = NULL;
+        ExprNode * index = node;
+
+        if (!cont) {
+            goto match_constant;
+        }
+
+        while (index) {
+            arrput(stack, index);
+            index = index->left;
+        }
+
+        size_t offset = 0;
+        const IntroContainer * top_level = cont;
+        while (top_level->parent) {
+            offset += top_level->parent->type->members[top_level->index].offset;
+            top_level = top_level->parent;
+        }
+
+        while (arrlen(stack) > 0) {
+            index = arrpop(stack);
+            switch (index->op) {
+            case OP_CONTAINER:
+                if (!cont->parent) {
+                    parse_error(ectx->ctx, index->tk, "No container to access.");
+                }
+                offset -= cont->parent->type->members[cont->index].offset;
+                cont = cont->parent;
+                index->type = cont->type;
+                // FALLTHROUGH
+            case OP_MACCESS:
+                if (arrlen(stack) <= 0) {
+                    parse_error(ectx->ctx, index->tk, "What are you accessing.");
+                    exit(1);
+                }
+                index = arrpop(stack);
+                // FALLTHROUGH
+            case OP_OTHER: {
+                int32_t moff = get_member_offset(cont->type, &index->tk, &index->type);
+                if (moff < 0) {
+                    if (!node->left) {
+                    match_constant: ;
+                        STACK_TERMINATE(name, index->tk.start, index->tk.length);
+                        ptrdiff_t map_index = shgeti(ectx->constant_map, name);
+                        if (map_index >= 0) {
+                            put_imm_int(&proc, ectx->constant_map[map_index].value);
+                            arrfree(stack);
+                            return proc;
+                        }
+                    }
+                    parse_error(ectx->ctx, index->tk, "Identifier is not member or constant.");
+                    exit(1);
+                }
+                offset += moff;
+                IntroContainer * next_cont = arena_alloc(ectx->arena, sizeof(*next_cont));
+                next_cont->parent = cont;
+                next_cont->type = index->type;
+                cont = next_cont;
+            }break;
+
+            case OP_PTR_MACCESS: {
+                if (arrlen(stack) <= 0) {
+                    parse_error(ectx->ctx, index->tk, "What are you accessing.");
+                    exit(1);
+                }
+                index = arrpop(stack);
+
+                assert(0);
+                // TODO....
+            }break;
+
+            default:
+                db_break();
+                assert(0);
+            }
+        }
+        arrfree(stack);
+
+        if (!intro_is_scalar(index->type)) {
+            parse_error(ectx->ctx, index->tk, "Cannot use non-scalar here.");
+            exit(1);
+        }
+        size_t read_size = index->type->size;
+        uint8_t ext;
+        switch(read_size) {
+        case 1: ext = I_S8;  break;
+        case 2: ext = I_S16; break;
+        case 4: ext = I_S32; break;
+        case 8: ext = I_S64; break;
+        default: assert(0);
+        }
+
+        put_imm_int(&proc, offset);
+        arrput(proc, I_LD | ext);
+
+        return proc;
+    } else if (node->op != OP_SIZEOF && node->op != OP_ALIGNOF) {
         if (node->left) {
             uint8_t * clip = build_expression_procedure_internal(ectx, node->left, cont);
             void * dest = arraddnptr(proc, arrlen(clip));
@@ -366,27 +414,11 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         }
     }break;
 
-    case OP_OTHER: {
-        if (node->tk.type == TK_STRING) break;
-        STACK_TERMINATE(const_name, node->tk.start, node->tk.length);
-        ptrdiff_t map_index = shgeti(ectx->constant_map, const_name);
-        if (map_index >= 0) {
-            intmax_t value = ectx->constant_map[map_index].value;
-            put_imm_int(&proc, value);
-        } else {
-            parse_error(ectx->ctx, node->tk, "Unknown identifier.");
-            exit(1);
-        }
-    }break;
-
-    case OP_MACCESS: {
-    }break;
-
-    case OP_PTR_MACCESS: {
-    }break;
-
-    case OP_CONTAINER: {
-    }break;
+    case OP_MACCESS:
+    case OP_PTR_MACCESS:
+    case OP_CONTAINER:
+    case OP_OTHER:
+        assert(0);
 
     case OP_DEREF: {
     }break;
@@ -553,86 +585,11 @@ build_expression_procedure2(ExprContext * ectx, ExprNode * tree, const IntroCont
     return result;
 }
 
-RegisterData
-intro_run_bytecode(uint8_t * code, uint8_t * data) {
-    RegisterData stack [1024];
-    RegisterData r0, r1, r2;
-    size_t stack_idx = 0;
-    size_t code_idx = 0;
-
-    while (1) {
-        uint8_t byte = code[code_idx++];
-        uint8_t inst = byte & ~0xC0;
-        uint8_t size = 1 << ((byte >> 6) & 0x03);
-
-        if (inst > I_GREATER_POP) {
-            r1 = r0;
-            r0 = stack[--stack_idx];
-        }
-
-        switch ((InstrCode)inst) {
-        case I_RETURN: return r0;
-
-        case I_LD: {
-            stack[stack_idx++] = r0;
-            r0.ui = 0;
-            memcpy(&r0, data + r0.ui, size);
-        }break;
-
-        case I_IMM: {
-            stack[stack_idx++] = r0;
-            r0.ui = 0;
-            memcpy(&r0, &code[code_idx], size);
-            code_idx += size;
-        }break;
-
-        case I_ZERO: {
-            stack[stack_idx++] = r0;
-            r0.ui = 0;
-        }break;
-
-        case I_CND_LD_TOP: {
-            r1 = stack[--stack_idx]; // alternate value
-            r2 = stack[--stack_idx]; // condition
-            if (r2.ui) r0 = r1;
-        }break;
-
-        case I_NEGATE_I:   r0.si = -r0.si; break;
-        case I_NEGATE_F:   r0.df = -r0.df; break;
-        case I_BIT_NOT:    r0.ui = ~r0.ui; break;
-        case I_NOT_ZERO:   r0.ui = !!(r0.ui); break;
-        case I_CVT_D_TO_I: r0.si = (int64_t)r0.df; break;
-        case I_CVT_F_TO_I: r0.si = (int64_t)r0.sf; break;
-        case I_CVT_I_TO_D: r0.df = (double) r0.si; break;
-        case I_CVT_F_TO_D: r0.df = (double) r0.sf; break;
-
-        case I_ADDI: r0.si += r1.si; break;
-        case I_MULI: r0.si *= r1.si; break;
-        case I_DIVI: r0.si /= r1.si; break;
-        case I_MODI: r0.si %= r1.si; break;
-
-        case I_L_SHIFT: r0.ui <<= r1.ui; break;
-        case I_R_SHIFT: r0.ui >>= r1.ui; break;
-
-        case I_BIT_AND: r0.ui &= r1.ui; break;
-        case I_BIT_OR:  r0.ui |= r1.ui; break;
-        case I_BIT_XOR: r0.ui ^= r1.ui; break;
-
-        case I_CMP: r0.ui = ((r0.si < r1.si) << 1) | (r0.si == r1.si); break;
-
-        case I_ADDF: r0.df += r1.df; break;
-        case I_MULF: r0.df *= r1.df; break;
-        case I_DIVF: r0.df /= r1.df; break;
-
-        case I_COUNT: case I_INVALID: assert(0);
-        }
-    }
-}
-
 void
-expr_test() {
+interactive_calculator() {
     char expr_buf [1024];
-    MemArena * arena = new_arena(512);
+    ExprContext expr_ctx = {0};
+    expr_ctx.arena = new_arena(512);
     while (1) {
         printf("expr> ");
         fgets(expr_buf, sizeof(expr_buf), stdin);
@@ -647,19 +604,19 @@ expr_test() {
 
         TokenIndex tidx = {.list = tklist, .index = 0};
 
-        ExprNode * tree = build_expression_tree2(NULL, arena, &tidx);
+        ExprNode * tree = build_expression_tree2(&expr_ctx, &tidx);
         if (tree == NULL) {
             printf("invalid symbol\n");
             arrfree(tklist);
             continue;
         }
         uint8_t * procedure = build_expression_procedure2(NULL, tree, NULL);
-        RegisterData ret = intro_run_bytecode(procedure, NULL);
+        union IntroRegisterData ret = intro_run_bytecode(procedure, NULL);
         printf(" = %i    (expr size: %i)\n", (int)ret.si, (int)arrlen(procedure));
 
-        reset_arena(arena);
+        reset_arena(expr_ctx.arena);
         arrfree(tklist);
         arrfree(procedure);
     }
-    free_arena(arena);
+    free_arena(expr_ctx.arena);
 }

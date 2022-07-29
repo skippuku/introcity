@@ -76,6 +76,11 @@ typedef struct {
     uint32_t value;
 } DeferredDefault;
 
+typedef struct {
+    IntroType * type;
+    int32_t index;
+} ContainerMapValue;
+
 struct ParseContext {
     Token * tk_list;
     MemArena * arena;
@@ -98,10 +103,10 @@ struct ParseContext {
     struct {char * key; int value;}                * attribute_token_map;
     struct {char * key; int value;}                * builtin_map;
 
-    struct {size_t      key; IntroType  ** value;} * arg_list_by_hash;
-    struct {IntroType * key; IntroType  ** value;} * incomplete_typedefs;
-    struct {void      * key; IntroLocation value;} * location_map;
-    struct {IntroType * key; IntroType   * value;} * container_map;
+    struct {size_t      key; IntroType **      value;} * arg_list_by_hash;
+    struct {IntroType * key; IntroType **      value;} * incomplete_typedefs;
+    struct {void *      key; IntroLocation     value;} * location_map;
+    struct {IntroType * key; ContainerMapValue value;} * container_map;
 
     AttributeData * attribute_globals;
     AttributeDirective * attribute_directives;
@@ -313,7 +318,7 @@ is_ignored(int keyword) {
 
 static intmax_t
 parse_constant_expression(ParseContext * ctx, TokenIndex * tidx) {
-    ExprNode * tree = build_expression_tree2(ctx->expr_ctx, ctx->expr_ctx->arena, tidx);
+    ExprNode * tree = build_expression_tree2(ctx->expr_ctx, tidx);
     if (!tree) {
         exit(1);
     }
@@ -444,8 +449,9 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
     }
 
     for (int i=0; i < stored->count; i++) {
-        if (stored->members[i].name == NULL) {
-            hmput(ctx->container_map, stored->members[i].type, stored);
+        if (!stored->members[i].type->name) {
+            ContainerMapValue v = {.type = stored, .index = i};
+            hmput(ctx->container_map, stored->members[i].type, v);
         }
     }
 
@@ -925,6 +931,7 @@ handle_static_assert(ParseContext * ctx, TokenIndex * tidx) {
 static int
 parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     IntroFunction * func = NULL;
+    IntroType * typedef_type = NULL;
     int ret = 0;
     bool attribute_at_start = false;
 
@@ -969,7 +976,6 @@ parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     ret = parse_type_annex(ctx, tidx, decl);
     if (ret < 0) return -1;
 
-    IntroType * typedef_type = NULL;
     if (decl->state == DECL_TYPEDEF) {
         char * name;
         if (decl->name_tk.start) {

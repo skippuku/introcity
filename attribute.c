@@ -206,17 +206,6 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
     return 0;
 }
 
-static bool
-check_id_valid(const IntroType * type, int id) {
-#if 0 // TODO
-    if (id < 0 || ((id & 0xFFFF) != id)) {
-        return false;
-    }
-    // Not sure how to do this yet
-#endif
-    return true;
-}
-
 static char *
 parse_escaped_string(Token * str_tk, size_t * o_length) {
     char * result = NULL;
@@ -619,12 +608,6 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
             return -1;
         }
         data.v.i = (int32_t)result;
-        if (data.id == ctx->builtin.i_id) {
-            if (!check_id_valid(type, data.v.i)) {
-                parse_error(ctx, tk, "This ID is reserved.");
-                return -1;
-            }
-        }
     } break;
 
     case INTRO_AT_FLOAT: {
@@ -691,11 +674,32 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     } break;
 
     case INTRO_AT_EXPR: {
-        ExprNode * tree = build_expression_tree2(ctx->expr_ctx, ctx->expr_ctx->arena, tidx);
+        ExprNode * tree = build_expression_tree2(ctx->expr_ctx, tidx);
         if (!tree) {
             return -1; 
         }
+
+        IntroContainer base_cont = {.type = type};
+        IntroContainer * last_cont = &base_cont;
+        ContainerMapValue v;
+        while ((v = hmget(ctx->container_map, type)).type != NULL) {
+            IntroContainer * next = arena_alloc(ctx->expr_ctx->arena, sizeof(*next));
+            next->type = v.type;
+            last_cont->index = v.index;
+            last_cont->parent = next;
+            last_cont = next;
+            type = v.type;
+        }
+
+        uint8_t * bytecode = build_expression_procedure2(ctx->expr_ctx, tree, &base_cont);
+
+        size_t value_buf_offset = arraddnindex(ctx->value_buffer, arrlen(bytecode));
+        memcpy(ctx->value_buffer + value_buf_offset, bytecode, arrlen(bytecode));
+
+        arrfree(bytecode);
         reset_arena(ctx->expr_ctx->arena);
+
+        data.v.i = value_buf_offset;
     }break;
 
     case INTRO_AT_REMOVE: {
@@ -748,10 +752,6 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
                 return -1;
             }
             data.v.i = (int32_t)result;
-            if (!check_id_valid(directive->type, data.v.i)) {
-                parse_error(ctx, tk, "This ID is reserved.");
-                return -1;
-            }
             arrput(attributes, data);
         } else if (tk.type == TK_EQUAL) {
             data.id = ctx->builtin.i_default;

@@ -1,3 +1,4 @@
+#define INTRO_INCLUDE_INSTR_CODE
 #include "lib/intro.h"
 #include "global.c"
 #include "config.c"
@@ -27,9 +28,8 @@ int
 main(int argc, char * argv []) {
     init_platform();
 
-
     if (argc > 1 && 0==strcmp(argv[1], "--calculator")) {
-        expr_test();
+        interactive_calculator();
         return 0;
     }
     if (argc > 1 && 0==strcmp(argv[1], "--gen-config")) {

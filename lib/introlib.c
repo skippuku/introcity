@@ -1,3 +1,4 @@
+#define INTRO_INCLUDE_INSTR_CODE
 #include "intro.h"
 
 #include <stdlib.h>
@@ -238,6 +239,21 @@ intro_attribute_length_x(IntroContext * ctx, const void * container, const Intro
     }
 }
 
+bool
+intro_attribute_expr_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, const void * cont_data, int64_t * o_result) {
+    ASSERT_ATTR_TYPE(INTRO_AT_EXPR);
+    uint32_t code_offset;
+    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &code_offset);
+    if (has) {
+        uint8_t * code = &ctx->values[code_offset];
+        union IntroRegisterData reg = intro_run_bytecode(code, cont_data);
+        *o_result = reg.si;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 #if 0
 uint32_t
 intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
@@ -261,6 +277,82 @@ intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
     }
 }
 #endif
+
+union IntroRegisterData
+intro_run_bytecode(uint8_t * code, const uint8_t * data) {
+    union IntroRegisterData stack [1024];
+    union IntroRegisterData r0, r1, r2;
+    size_t stack_idx = 0;
+    size_t code_idx = 0;
+
+    memset(&r1, 0, sizeof(r1)); // silence dumb warning
+
+    while (1) {
+        uint8_t byte = code[code_idx++];
+        uint8_t inst = byte & ~0xC0;
+        uint8_t size = 1 << ((byte >> 6) & 0x03);
+
+        if (inst > I_GREATER_POP) {
+            r1 = r0;
+            r0 = stack[--stack_idx];
+        }
+
+        switch ((InstrCode)inst) {
+        case I_RETURN: return r0;
+
+        case I_LD: {
+            memcpy(&r0, data + r0.ui, size);
+        }break;
+
+        case I_IMM: {
+            stack[stack_idx++] = r0;
+            r0.ui = 0;
+            memcpy(&r0, &code[code_idx], size);
+            code_idx += size;
+        }break;
+
+        case I_ZERO: {
+            stack[stack_idx++] = r0;
+            r0.ui = 0;
+        }break;
+
+        case I_CND_LD_TOP: {
+            r1 = stack[--stack_idx]; // alternate value
+            r2 = stack[--stack_idx]; // condition
+            if (r2.ui) r0 = r1;
+        }break;
+
+        case I_NEGATE_I:   r0.si = -r0.si; break;
+        case I_NEGATE_F:   r0.df = -r0.df; break;
+        case I_BIT_NOT:    r0.ui = ~r0.ui; break;
+        case I_NOT_ZERO:   r0.ui = !!(r0.ui); break;
+        case I_CVT_D_TO_I: r0.si = (int64_t)r0.df; break;
+        case I_CVT_F_TO_I: r0.si = (int64_t)r0.sf; break;
+        case I_CVT_I_TO_D: r0.df = (double) r0.si; break;
+        case I_CVT_F_TO_D: r0.df = (double) r0.sf; break;
+
+        case I_ADDI: r0.si += r1.si; break;
+        case I_MULI: r0.si *= r1.si; break;
+        case I_DIVI: r0.si /= r1.si; break;
+        case I_MODI: r0.si %= r1.si; break;
+
+        case I_L_SHIFT: r0.ui <<= r1.ui; break;
+        case I_R_SHIFT: r0.ui >>= r1.ui; break;
+
+        case I_BIT_AND: r0.ui &= r1.ui; break;
+        case I_BIT_OR:  r0.ui |= r1.ui; break;
+        case I_BIT_XOR: r0.ui ^= r1.ui; break;
+
+        case I_CMP: r0.ui = ((r0.si < r1.si) << 1) | (r0.si == r1.si); break;
+
+        case I_ADDF: r0.df += r1.df; break;
+        case I_MULF: r0.df *= r1.df; break;
+        case I_DIVF: r0.df /= r1.df; break;
+
+        case I_COUNT: case I_INVALID: assert(0);
+        }
+    }
+}
 
 static void
 intro_offset_pointers(void * dest, const IntroType * type, void * base) {

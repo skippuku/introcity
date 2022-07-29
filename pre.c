@@ -832,7 +832,7 @@ bool
 parse_expression(PreContext * ctx, TokenIndex * tidx) {
     Token * tks = expand_line(ctx, tidx, false);
     TokenIndex etidx = {.list = tks, .index = 0};
-    ExprNode * tree = build_expression_tree2(ctx->expr_ctx, ctx->expr_ctx->arena, &etidx);
+    ExprNode * tree = build_expression_tree2(ctx->expr_ctx, &etidx);
     if (!tree) {
         preprocess_error(&etidx.list[etidx.index - 1], "Problem token.");
         exit(1);
