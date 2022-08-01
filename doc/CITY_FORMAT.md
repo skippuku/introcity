@@ -10,7 +10,7 @@ A city file has three sections:
 ## Header
 
 | Offset | Type  | Content |
-|--------|------ |---------|
+|--------|-------|---------|
 |0       |char[4]|[Magic number](#magic-number)|
 |4       |u16    |[Version Major](#version)    |
 |6       |u16    |[Version Minor](#version)    |
@@ -18,12 +18,14 @@ A city file has three sections:
 |9       |u8[3]  |Reserved/Unused              |
 |12      |u32    |[Data Offset](#data-offset)  |
 |16      |u32    |[Type Count](#type-count)    |
+|20      |---    |[Type Info](#type-info)      |
+|Data Offset|--- |[Data](#data)                |
 
 ### Magic Number
 This is always ASCII `ICTY` (`0x49 0x42 0x54 0x59`)
 
 ### Version
-For version 0.3, **Version Major** is 0 and **Version Minor** is 4.   
+For version 0.4, **Version Major** is 0 and **Version Minor** is 4.   
 As this system is in infancy, and the format may undergo significant changes, only matching implementation and file versions are supported.   
 
 ### Size Info
@@ -91,8 +93,10 @@ The first byte in a type is the category. This correlates to `IntroCategory`. De
 
 
 ## Data
+At offset 0 in the data section is the data that was passed to `intro_create_city` to create the file. The data is transformed in the following ways:
+ - Structs and arrays are serialiezd packed, with *no* alignment.
+ - Unions have 2 header bytes which specify which member was serialized as a u16. Their size is equal to their largest member + the 2 header bytes.
+ - Pointers are serialized as offsets into the Data section with size `PTR_SIZE`.
+ - Scalars are unchanged.
 
-Structs and arrays are serialiezd with *no* alignment and with pointers truncated `PTR_SIZE`. Pointers are converted to offsets into the DATA section.
-At offset 0 in the data section is the struct that has been serialized. Zeroed pointers are invalid.  
-  
-Following the serialized struct is miscellaneous data such as pointer data and struct member names.  
+The Data section also contains serialized data for pointers and member names.

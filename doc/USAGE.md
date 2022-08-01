@@ -21,7 +21,6 @@ On linux, `sudo make install` will attempt to generate a config using the defaul
 
 ## Parser Output
 The `__intro` namespace is used to avoid any naming conflicts. At the end of the generated file `__intro_ctx` is defined which is used implicitly by most procudures in the library. Also important are the `ITYPE_` and `IATTR_` enum definitions.  
-**NOTE:** The generated header makes use of flexible array memeber initialization. This is not supported by clang in c++ mode. I will probably be changing this in the future.
 
 ## Implicit Context
 Many functions in the library require extra information provided by `__intro_ctx`. It would be cumbersome to manually pass this variable every time, so functions that use the context have associated macros that automatically do this for you. For example `intro_print` is actually a macro:
@@ -45,9 +44,9 @@ Types with no name such as pointers and arrays do not have definitions generated
 ## Using Type Information
 `ITYPE` expands to a pointer to a `IntroType` structure. The layout of this structure is as can be found in ([lib/intro.h](../lib/intro.h)).  
 Some notes about types:  
- - the `of` member is used by pointers as well as arrays. It is also the return type of a function.
- - Not all types have a name. These include pointers, arrays, functions, and anonymous structs or enums.
- - Unions are treated like structs where all the members are at offset 0. This means `i_struct` is used to access union information.
- - c ints such as `int`, `unsigned short`, `char`, `long long unsigned int`, etc. are treated like typedefs of exact width integers `int32_t`, `uint16_6`, `int8_t`, and `uint64_t` respectively. This could be seen as the reverse of actuality, but because *intro/city* is focussed on serialization, this makes sense.
- - `bool` is treated as a type. *intro* disables macro expansion of `bool` to `_Bool` when it parses. If `_Bool` is used directly, it is treated like a typedef of `bool`. This was done for the sake of simplicity since `bool` is a type in c++.
- - Generated information isn't write protected, but you should not ever write to it.
+ - the `of` member is used by both pointers and arrays.
+ - Not all types have a name. These include pointers, arrays, functions, and anonymous structs or enums. You may beed to check a name against NULL.
+ - `members` contains members for both structs and unions. All union member offsets are 0.
+ - c ints such as `int`, `unsigned short`, `char`, `long long unsigned int`, etc. are treated like typedefs of exact width integers `int32_t`, `uint16_6`, `int8_t`, and `uint64_t` respectively. This could be seen as the reverse of actuality. This decision was made because of *intro/city*'s focus on serialization.
+ - `bool` is treated as a type. *intro* disables macro expansion of `bool` to `_Bool` during its parse pass. If `_Bool` is used directly, it is treated as a typedef of `bool`. This was done for the sake of simplicity since `bool` is a type in c++.
+ - Generated information may or may not be write protected. You should not ever write to it anyway.

@@ -17,7 +17,7 @@ The *intro/city* project consists of tooling for effortless introspection and se
  - **Attributes**
     - Attributes provide extra information about a piece of data. They are defined with the `I` macro. They can be used for a variety of purposes, for example the `length` attribute defines a member which is the length of a buffer for serialization.
     - You can create **custom attributes** for your own purposes. This might include information for an interface such as ranges and precision, or alternative defaults for different situations, or anything else you can think of.
-    - There are a variety of attribute types including *int*, *float*, *member*, *string*, and *value*. For more information, see [doc/ATTRIBUTE.md](doc/ATTRIBUTE.md).
+    - There are a variety of attribute types including *int*, *float*, *member*, *value*, and *expr*. For more information, see [doc/ATTRIBUTE.md](doc/ATTRIBUTE.md).
 
 ## Minimal Example
 
@@ -87,26 +87,30 @@ You may want to run `make test` to ensure everything is working correctly.
 `sudo make install` should set you up so you can invoke "intro" from anywhere.
 
 ## Integration
-You can insert *intro* into the build process. For example a Makefile might look like this:
+To integrate *intro/city* in your code, you can use the *intro* parser to generate a C header from a source file then include the generated header somewhere. You will also want to link *introlib*.
+*intro* can trivially be inserted as a step in the build process. For example a Makefile might look like this:
 
 ```Makefile
-program: main.c data_types.h.intro
-    $(CC) main.c $(CFLAGS) -o $@
+INTRO_LIB := path/to/intro/lib/
+
+main: main.c data_types.h.intro introlib.o
+    $(CC) -o $@ main.c introlib.o -I$(INTRO_LIB)
     
 data_types.h.intro: data_types.h
-    intro data_types.h -o data_types.h.intro
+    intro -o $@ data_types.h
+
+introlib.o: $(INTRO_LIB)introlib.c $(INTRO_LIB)intro.h
+    $(CC) -o $@ $<
 ```
 
-`lib/intro.h` must be included *before* your types are declared, and the `*.intro` file must be included *after* all of the types are declared.   
-  
-You will probably want to use the library. The source is at `lib/introlib.c`. You can compile it with something like `cc -c lib/introlib.c`.    
+`lib/intro.h` must be included *before* your types are declared.
 
 ## Disclaimers
 
  - *intro/city* is currently in beta. APIs and implementations are subject to change. If you intend to use this seriously, please be careful about updating. If you run into problems or friction that I am not aware of, please create a new issue on [github](https://github.com/cyman-ide/introcity).
  - *intro/city* currently only supports x86\_64. This may change in the future.
  - the *intro* parser is currently not aware of C++ concepts such as `private` or methods. Only C99 features are fully supported. This may change in the future. You can simply keep relevant types in a seperate file.
- - *intro/city* is not built to be safe with foreign data. Don't use these tools with data from a source you don't trust.
+ - Security against foreign data is not a priority. Don't use these tools with data from a source you don't trust.
 
 ## Documentation
 Documentation is provided in the [doc/](doc/) directory. It may not always be complete, but should cover the important things. It may be useful to look at the tests in [test/](test/) or the library source in [lib/](lib/).    

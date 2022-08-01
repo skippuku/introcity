@@ -2,6 +2,9 @@ lib:
     interface for creating types/contexts
     intro_print circular detection
     accurate type display
+    intro_print options
+        whether to print unnamed members as if their members were within
+        max depth
     sprint/mprint version of everything that uses stdout
     single header?
     the preprocessor and parser could be part of the lib?
@@ -9,7 +12,7 @@ lib:
     bitfield access
 
 city:
-    !! handle allocation
+    !! allocation options
     version for "release" without as much information where types are assumed to match
     attribute to specify allocation function
     type id's?
@@ -17,9 +20,8 @@ city:
 
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
-    does the string attribute need to exist?
-        strings could at least be stored in the values section
-    ability to reference parent structs
+    allow attribute declarations with no namespace
+    allow multiple aliases somehow
     more strict namespacing
         maybe use dot
     allow attributes in more places
@@ -32,8 +34,6 @@ attribute:
         could even be a value, then you could choose what counts as a terminator
     'from' attribute: allow conversion from a type, introlib will have builtin conversion functions for basic types
         some way to specify custom conversion functions
-    allow attribute declarations with no namespace
-    allow multiple aliases somehow
     attribute type: type
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')

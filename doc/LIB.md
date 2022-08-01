@@ -1,7 +1,7 @@
 # intro library reference
 **NOTE:** *intro/city* is in beta. API is subject to change.    
 
-# CITY implementation
+# CITY API
 
 ### `intro_create_city`
 ```C
@@ -45,7 +45,7 @@ void * intro_load_city_file(void * dest, const IntroType * dest_type, const char
 ```
 Convenience function that loads city data from a file. Returns a pointer to the data that should be freed when the object pointed to by `dest` is no longer in use. Returns `NULL` on failure.
 
-# type information
+# Type information
 
 ### `intro_is_scalar`
 ```C
@@ -59,17 +59,23 @@ INTRO_INLINE bool intro_is_int(const IntroType * type);
 ```
 Return true if `type` is an integer.
 
+### `intro_has_members`
+```C
+INTRO_INLINE bool intro_has_members(const IntroType * type);
+```
+Return true if `type` is a struct or union.
+
+### `intro_has_of`
+```C
+INTRO_INLINE bool intro_has_of(const IntroType * type);
+```
+Return true if `type` is an array or a pointer.
+
 ### `intro_is_complex`
 ```C
 INTRO_INLINE bool intro_is_complex(const IntroType * type);
 ```
 Return true if `type` is a struct, union, or enum.
-
-### `intro_size`
-```C
-INTRO_INLINE int intro_size(const IntroType * type);
-```
-Return the size of a type in bytes.
 
 ### `intro_origin`
 ```C
@@ -77,7 +83,29 @@ INTRO_INLINE const IntroType * intro_origin(const IntroType * type);
 ```
 Follow typedefs until the original type is found, then return that type.
 
-# attribute information
+# Container API
+
+Containers are used to preserve context when working on data.
+
+### `intro_container`
+```C
+IntroContainer intro_container(void * data, const IntroType * type);
+```
+Create a container with `data` and `type`.
+
+### `intro_get_attr`
+```C
+uint32_t intro_get_attr(IntroContainer cntr);
+```
+Return the attribute specification value for `cntr`.
+
+### `intro_push`
+```C
+IntroContainer intro_push(const IntroContainer * parent, int32_t index);
+```
+Create a child container with `parent`. `index` is the member index if `parent` is a struct or union, or it is the array index for pointers and arrays.
+
+# Attribute information
 
 **NOTE:** This section assumes you understand attributes. Please read the [attribute documentation](ATTRIBUTE.md).
 **ALSO NOTE:** These are all macros. Use the name of the attribute *with its namespace* to represent the attribute. This gets internally expanded to an enum value.
@@ -102,13 +130,18 @@ for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
 ```C
 bool intro_attribute_value(const IntroMember * member, attribute, IntroVariant * o_var);
 ```
-If `member` has the specified `value` attribute, write the value to o\_var and return true. Otherwise return false.
+If `member` has the specified `value` attribute, write the value to o\_var and return true. Otherwise return false.  
+If the attribute type is not a pointer, var.data will point to the value. If the attribute type is a pointer, var.data will be the value itself.
 
 **example:**
-```C
-IntroVariant speed_var;
-if (intro_attribute_value(member, i_default, &speed_var) {
-    auto speed = intro_var_get(speed_var, float);
+```C++
+IntroVariant var;
+if (intro_attribute_value(member, i_default, &var)) {
+    auto speed = intro_var_get(var, float);
+}
+
+if (intro_attriute_value(member, gui_note, &var)) {
+    auto speed = (char *)var.data;
 }
 ```
 
@@ -156,21 +189,23 @@ for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
 
 ### `intro_attribute_length`
 ```C
-bool intro_attribute_length(const void * struct_data, const IntroType * type, const IntroMember * member, int64_t * o_length);
+bool intro_attribute_length(IntroContainer cntr, int64_t * o_length);
 ```
-If `member` has a [length](#./ATTRIBUTE.md#length) attribute, write the length to `o_length` and return true. Otherwise, return false.
+If `cntr` has a [length](#./ATTRIBUTE.md#length) attribute, write the length to `o_length` and return true. Otherwise, return false.
 
 **example:**
 ```C
 Object obj = create_object();
-IntroType * type = ITYPE(Object);
-for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
-    const IntroMember * member = &type->i_struct->members[m_index];
-    if (member->type->category == INTRO_S32) {
+IntroContainer struct_cntr = intro_container(&obj, ITYPE(Object));
+
+for (int m_index=0; m_index < ITYPE(Object)->count; m_index++) {
+    IntroContainer m_cntr = intro_push(&struct_cntr, m_index);
+    IntroMember member = ITYPE(Object)->members[m_index];
+    if (m_cntr.type->category == INTRO_POINTER && m_cntr.type->of->category == INTRO_S32) {
         int64_t length;
-        if (intro_attribute(&obj, type, member, &length)) {
-            printf("%s has ints: ");
-            int32_t * arr = *(int32_t **)(&obj + member->offset);
+        if (intro_attribute_length(m_cntr, &length)) {
+            printf("%s has %i ints: ", member.name, (int)length);
+            int32_t * arr = *(int32_t **)(&obj + member.offset);
             for (int i=0; i < length; i++) {
                 printf("%i ", arr[i]);
             }
@@ -179,6 +214,12 @@ for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
     }
 }
 ```
+
+### `intro_attribute_run_expr`
+```C
+bool intro_attribute_run_expr(IntroContainer cntr, int32_t attribute, int64_t * o_result)
+```
+If `cntr` has a [expr](#./ATTRIBUTE.md#expr) attribute, run the expression and write the result to `o_result` and return true. Otherwise, return false.
 
 ### `intro_set_defaults`
 ```C
@@ -220,7 +261,7 @@ intro_set_member_value(&obj, ITYPE(Object), 2, MY_ATTR_VALUE);
 ```
 **See also:** [intro\_set\_values](#intro_set_values), [intro\_set\_defaults](#intro_set_defaults)
 
-# printers
+# Printers
 
 ### `intro_print`
 ```C

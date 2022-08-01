@@ -1,14 +1,7 @@
 CHANGELOG
 
 0.2 (Beta)
-	- Simplified types
-		- Removed IntroStruct, IntroEnum, and IntroTypePtrList
-		- Removed all usage of flexible array members in introlib
-		- IntroFunction changes:
-			func->type->args->count       => func.count_args
-			func->type->args->types       => func.arg_types
-			func->type->of                => func.return_type
-
+	API SIMPLIFICATION
 		- IntroType changes:
 			type->i_struct->count_members => type->count
 			type->i_struct->members       => type->members
@@ -24,50 +17,66 @@ CHANGELOG
 			<unavailable>                 => type->align
 
 			if (type->of)                 => if (intro_has_of(type))
-			/* 'of' now shares storage with other fields */
+			('of' now shares storage with other fields)
 
-	- Struct member offsets are now known at parse time.
-		- Value attributes now support structs (including C99 style initialization)
-		- Generated headers are much more concise (no more offsetof's)
-		- NOTE: pack(x), __attribute__((aligned(x))), etc. are not yet implemented
+		- IntroFunction changes:
+			func->type->args->count       => func.count_args
+			func->type->args->types       => func.arg_types
+			func->type->of                => func.return_type
 
-	- New "expr" attribute type generates bytecode for expressions
-	that can access struct/union members.
+		- Removed IntroStruct, IntroEnum, and IntroTypePtrList
+		- Removed all usage of flexible array members in introlib
 
-	- The "length" attriubte is now an expression. This is useful if the size
-	of data is dependent on multiple variables, for example: I(length map_width * map_height)
+		- New IntroContainer system provides a simple API for recursively working
+		on data while retaining context for how the data was accessed.
 
-	- New builtin attribute "when" for using an expression to dynamically
-	determine when a struct/union member is valid.
-
-	- Major city improvemets
+	CITY IMPROVEMENTS
 		- support for unions (using the "when" attribute)
 		- much better handling of pointers
 		- city file data can now be discarded after load
 		- reduction in serialized data size
 
-	- New IntroContainer system provides a simple API for recursively working
-	on data while retaining context for how the data was accessed.
+	ATTRIBUTES
+		- New "expr" attribute type generates bytecode for expressions
+		that can access struct/union members.
 
-	- '#prama intro' can be used to control what parts of a file should have
-	information generated
-		- push, pop
-		- enable [x], disable [x] where x is either omitted or one of the
-		following: functions, macros, all, includes, system
+		- The "length" attriubte is now an expression. This is useful if the size
+		of data is dependent on multiple variables, for example 
+		"I(length map_width * map_height)" could be used to define the size of
+		a tilemap buffer.
 
-	- Macro information generation (use pragma "enable macros")
+		- New builtin attribute "when" for using an expression to dynamically
+		determine when a struct/union member is valid.
 
-	- Files are now tokenized all at once. Previously, the preprocessor and
-	parser would tokenize as needed. This simplifies the preprocessor and
-	parser.
+		- The "string" attribute type has been removed. Use "value(char *)" instead.
 
-	- intro_print() improvements
+	NEW PARSER FEATURES
+		- '#prama intro' can be used to control what parts of a file should have
+		information generated
+			- push, pop
+			- enable [x], disable [x] where x is either omitted or one of the
+			following: functions, macros, all, includes, system
 
-	- Vim syntax generation with --gen-vim-syntax
+		- Macro information generation (use pragma "enable macros")
 
-	- intro parser performance metrics report with option '-V'
+		- Vim syntax generation with --gen-vim-syntax
 
-	- Miscellaneous fixes and improvements
+		- Performance metrics report with option '-V'
+
+	IMPLEMENTATION CHANGES
+		- Struct member offsets are now known at parse time.
+			- Enables more features in the parser.
+			- NOTE: pack(x), __attribute__((aligned(x))), etc. are not yet implemented
+		- Generated headers are much more concise (no more offsetof's)
+
+		- Files are now tokenized all at once. Previously, the preprocessor and
+		parser would tokenize as needed. This simplifies the preprocessor and
+		parser.
+
+	OTHER
+		- intro_print() improvements
+
+		- Miscellaneous fixes and improvements
 
 0.1 (Beta)
 	first public release
