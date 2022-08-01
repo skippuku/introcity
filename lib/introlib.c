@@ -204,6 +204,10 @@ intro_attribute_value_x(IntroContext * ctx, const IntroType * type, uint32_t att
     o_var->data = ctx->values + value_offset;
     uint32_t type_id = ctx->attr.available[attr_id].type_id;
     o_var->type = (type_id != 0)? &ctx->types[type_id] : type;
+    if (o_var->type->category == INTRO_POINTER) {
+        uintptr_t val = *(uintptr_t *)o_var->data;
+        o_var->data = ctx->values + val;
+    }
 
     return true;
 }
@@ -244,18 +248,6 @@ intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_
         return true;
     } else {
         return false;
-    }
-}
-
-const char *
-intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
-    ASSERT_ATTR_TYPE(INTRO_AT_STRING);
-    uint32_t value_offset;
-    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
-    if (has) {
-        return ctx->strings[value_offset];
-    } else {
-        return NULL;
     }
 }
 
@@ -381,7 +373,7 @@ intro_run_bytecode(uint8_t * code, const uint8_t * data) {
 }
 
 static void
-intro_offset_pointers(void * dest, const IntroType * type, void * base) {
+intro__offset_pointers(void * dest, const IntroType * type, void * base) {
     if (type->category == INTRO_ARRAY) {
         if (type->of->category == INTRO_POINTER) {
             for (uint32_t i=0; i < type->count; i++) {
@@ -403,13 +395,10 @@ intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * stru
         assert(var.type == m->type);
         void * value_ptr = var.data;
         if (m->type->category == INTRO_POINTER) {
-            size_t data_offset;
-            memcpy(&data_offset, value_ptr, sizeof(size_t));
-            void * data = ctx->values + data_offset;
-            memcpy((u8 *)dest + m->offset, &data, sizeof(size_t));
+            memcpy((u8 *)dest + m->offset, &value_ptr, sizeof(size_t));
         } else {
             memcpy((u8 *)dest + m->offset, value_ptr, size);
-            intro_offset_pointers((u8 *)dest + m->offset, m->type, ctx->values);
+            intro__offset_pointers((u8 *)dest + m->offset, m->type, ctx->values);
         }
     } else if (m->type->category == INTRO_STRUCT) {
         intro_set_values_x(ctx, (u8 *)dest + m->offset, m->type, value_attribute);
@@ -508,7 +497,11 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     } else {
         attr = type->attr;
     }
-    const char * fmt = intro_attribute_string_x(ctx, attr, ctx->attr.builtin.gui_format);
+    const char * fmt = NULL;
+    IntroVariant var;
+    if (intro_attribute_value_x(ctx, NULL, attr, ctx->attr.builtin.gui_format, &var)) {
+        fmt = (char *)var.data;
+    }
 
     switch(type->category) {
     case INTRO_U8: case INTRO_U16: case INTRO_U32: case INTRO_U64:
@@ -1183,8 +1176,9 @@ city__load_into(
             }
 
             arrput(aliases, dm->name);
-            const char * alias;
-            if ((alias = intro_attribute_string_x(ctx, dm->attr, ctx->attr.builtin.i_alias)) != NULL) {
+            IntroVariant var;
+            if (intro_attribute_value_x(ctx, NULL, dm->attr, ctx->attr.builtin.i_alias, &var)) {
+                char * alias = (char *)var.data;
                 arrput(aliases, alias);
             }
 

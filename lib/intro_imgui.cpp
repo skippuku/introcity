@@ -56,12 +56,12 @@ get_scalar_params(IntroContext * ctx, const IntroType * type, uint32_t attr) {
     result.scale = 1.0f;
     intro_attribute_float_x(ctx, attr, GUIATTR(scale), &result.scale);
             
-    IntroVariant max_var = {0}, min_var = {0};
+    IntroVariant max_var = {0}, min_var = {0}, var;
     intro_attribute_value_x(ctx, type, attr, GUIATTR(min), &min_var);
     intro_attribute_value_x(ctx, type, attr, GUIATTR(max), &max_var);
     result.min = min_var.data;
     result.max = max_var.data;
-    result.format = intro_attribute_string_x(ctx, attr, GUIATTR(format));
+    result.format = (intro_attribute_value_x(ctx, NULL, attr, GUIATTR(format), &var))? (const char *)var.data : NULL;
 
     return result;
 }
@@ -171,7 +171,9 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
     }
 
     const char * note = NULL;
-    if (m && (note = intro_attribute_string_x(ctx, m->attr, GUIATTR(note))) != NULL) {
+    IntroVariant var;
+    if (m && intro_attribute_value_x(ctx, NULL, m->attr, GUIATTR(note), &var)) {
+        note = (char *)var.data;
         do_note(note);
     }
 
@@ -187,7 +189,8 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
     } else {
         ImGui::TextColored(type_color, "%s", type_buf);
     }
-    if ((note = intro_attribute_string_x(ctx, type->attr, GUIATTR(note))) != NULL) {
+    if (intro_attribute_value_x(ctx, NULL, type->attr, GUIATTR(note), &var)) {
+        note = (char *)var.data;
         do_note(note);
     }
 

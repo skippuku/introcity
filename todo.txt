@@ -6,6 +6,7 @@ lib:
     single header?
     the preprocessor and parser could be part of the lib?
     printf-like formatting print with insertions for types and values of types
+    bitfield access
 
 city:
     !! handle allocation
@@ -21,12 +22,14 @@ attribute:
     ability to reference parent structs
     more strict namespacing
         maybe use dot
-    attributes on enum values
+    allow attributes in more places
+        enum values
+        functions
+        function arguments
     impl: cache matching data
     @repress trait, disable propagation
     general 'terminated' attribute?
         could even be a value, then you could choose what counts as a terminator
-    value(*@inherit): inherit base of type?
     'from' attribute: allow conversion from a type, introlib will have builtin conversion functions for basic types
         some way to specify custom conversion functions
     allow attribute declarations with no namespace
@@ -36,6 +39,7 @@ attribute:
             (or maybe just a general 'as')
     members of complex type can specify an attribute as a value: I(default default)
     parse c++ struct defaults as intro defaults?
+    value(*@inherit): inherit base of type?
 
 parse:
     !! GNU and MS alignment attributes
@@ -44,7 +48,6 @@ parse:
     Some way to get type location info
     ParseInfo: have everything, strip away unwated stuff at gen
     fix bitfield regression
-    handle bitfield accessing
     parse globals (for libraries that use extern)
     const flag?
     rudimentary C++ support
@@ -55,14 +58,13 @@ parse:
         operator overloads?
 
 expr:
+    support using const globals
     implement float math
     array subscript
-    parse float expressions (for value attributes)
-        general type awareness in expressions?
+    ability to return a value of any type
+    compound literals
     handle character literals including L'x'
     handle strings next to each other
-    compound literals
-    ability to return complex types?
 
 pre:
     FileInfo: add include location

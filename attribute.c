@@ -22,7 +22,6 @@ attribute_parse_init(ParseContext * ctx) {
         {"float",   INTRO_AT_FLOAT},
         {"value",   INTRO_AT_VALUE},
         {"member",  INTRO_AT_MEMBER},
-        {"string",  INTRO_AT_STRING},
         {"type",    INTRO_AT_TYPE},
         {"expr",    INTRO_AT_EXPR},
         {"__remove",INTRO_AT_REMOVE},
@@ -271,8 +270,8 @@ store_value(ParseContext * ctx, const void * value, size_t value_size) {
 
 ptrdiff_t
 store_ptr(ParseContext * ctx, void * data, size_t size) {
-    static const uint8_t nothing [sizeof(size_t)] = {0};
-    ptrdiff_t offset = store_value(ctx, &nothing, sizeof(size_t));
+    static const uint8_t nothing [sizeof(void *)] = {0};
+    ptrdiff_t offset = store_value(ctx, &nothing, sizeof(void *));
     PtrStore ptr_store = {0};
     ptr_store.value_offset = offset;
     ptr_store.data = data;
@@ -621,28 +620,21 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         data.v.f = result;
     } break;
 
-    case INTRO_AT_STRING: {
-        tk = next_token(tidx);
-        char * result = NULL;
-        if (data.id == ctx->builtin.i_alias && tk.type == TK_IDENTIFIER) {
-            result = copy_and_terminate(ctx->arena, tk.start, tk.length);
-        } else {
-            if (tk.type != TK_STRING) {
-                parse_error(ctx, tk, "Expected string.");
-                return -1;
-            }
-            result = copy_and_terminate(ctx->arena, tk.start+1, tk.length-2);
-        }
-        int32_t index = arrlen(ctx->string_set);
-        arrput(ctx->string_set, result);
-        data.v.i = index;
-    } break;
-
     // TODO: error check: member used as length can't have a value if the member it is the length of has a value
     // TODO: error check: if multiple members use the same member for length, values can't have different lengths
     // NOTE: the previous 2 todo's do not apply if the values are for different attributes
     case INTRO_AT_VALUE: {
-        if (handle_value_attribute(ctx, tidx, type, member_index, &data, &tk)) return -1;
+        if (data.id == ctx->builtin.i_alias && tk_at(tidx).type == TK_IDENTIFIER) {
+            tk = next_token(tidx);
+            char * name = malloc(tk.length + 1);
+            memcpy(name, tk.start, tk.length);
+            name[tk.length] = 0;
+            ptrdiff_t result = store_ptr(ctx, name, tk.length + 1);
+            store_deferred_ptrs(ctx);
+            data.v.i = result;
+        } else {
+            if (handle_value_attribute(ctx, tidx, type, member_index, &data, &tk)) return -1;
+        }
     } break;
 
     case INTRO_AT_MEMBER: {

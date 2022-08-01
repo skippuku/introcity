@@ -149,7 +149,9 @@ main() {
                           *m_v1   = &ITYPE(AttributeTest)->members[1],
                           *m_v2   = &ITYPE(AttributeTest)->members[2];
 
-        note = intro_attribute_string(m_name, gui_note);
+        IntroVariant var;
+        assert(intro_attribute_value(m_name, gui_note, &var));
+        note = (char *)var.data;
         assert(note);
         assert(0==strcmp(note, "this is the name"));
 
@@ -170,7 +172,8 @@ main() {
         assert(test.v2 == 0.0f);
         assert(intro_has_attribute(m_v2, my_exp));
         assert(intro_attribute_member(m_v2, my_friend, &i) && i == 1);
-        note = intro_attribute_string(m_v2, gui_note);
+        assert(intro_attribute_value(m_v2, gui_note, &var));
+        note = (char *)var.data;
         assert(note);
         assert(0==strcmp(note, "i don't know what to put in here guys"));
 

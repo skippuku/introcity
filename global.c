@@ -196,7 +196,6 @@ typedef struct ParseInfo {
     IndexByPtrMap * index_by_ptr_map;
     uint8_t * value_buffer;
     IntroFunction ** functions;
-    char ** string_set;
     struct IntroAttributeContext attr;
     uint32_t count_types;
     uint32_t count_functions;

@@ -225,12 +225,6 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     }
     strputf(&s, "};\n\n");
 
-    strputf(&s, "const char * __intro_strings [%i] = {\n", (int)arrlen(info->string_set));
-    for (int i=0; i < arrlen(info->string_set); i++) {
-        strputf(&s, "\"%s\",\n", info->string_set[i]);
-    }
-    strputf(&s, "};\n\n");
-
     strputf(&s, "enum {\n");
     for (int i=0; i < info->attr.count_available; i++) {
         strputf(&s, "IATTR_%s = %i,\n", info->attr.available[i].name, i);
@@ -294,13 +288,11 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     // context
     strputf(&s, "IntroContext __intro_ctx = {\n");
     strputf(&s, "__intro_t,\n");
-    strputf(&s, "__intro_strings,\n");
     strputf(&s, "__intro_values,\n");
     strputf(&s, "__intro_fn,\n");
     strputf(&s, "__intro_macros,\n");
 
     strputf(&s, "%u,", info->count_types);
-    strputf(&s, "%i,", (int)arrlenu(info->string_set));
     strputf(&s, "%i,", (int)arrlenu(info->value_buffer));
     strputf(&s, "%u,", info->count_functions);
     strputf(&s, "%u,", (uint32_t)arrlen(pre_info->macros));

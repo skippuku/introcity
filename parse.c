@@ -112,7 +112,6 @@ struct ParseContext {
     AttributeDirective * attribute_directives;
     AttributeDataMap * attribute_data_map;
     IntroBuiltinAttributeIds builtin;
-    char ** string_set;
     uint32_t attribute_id_counter;
     ParseInfo * p_info;
 };
@@ -1293,7 +1292,6 @@ parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
     o_info->value_buffer = ctx->value_buffer;
     o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
-    o_info->string_set = ctx->string_set;
 
     g_metrics.count_parse_types = hmlen(ctx->type_set);
     g_metrics.count_gen_types = o_info->count_types;

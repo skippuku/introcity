@@ -145,7 +145,6 @@ typedef enum IntroAttributeType {
     INTRO_AT_FLOAT,
     INTRO_AT_VALUE,
     INTRO_AT_MEMBER,
-    INTRO_AT_STRING,
     INTRO_AT_TYPE, // unimplemented
     INTRO_AT_EXPR,
     INTRO_AT_REMOVE,
@@ -208,13 +207,11 @@ typedef struct IntroMacro {
 
 typedef struct IntroContext {
     IntroType * types     I(length count_types);
-    const char ** strings I(length count_strings);
     uint8_t * values      I(length size_values);
     IntroFunction * functions I(length count_functions);
     IntroMacro * macros   I(length count_macros);
 
     uint32_t count_types;
-    uint32_t count_strings;
     uint32_t size_values;
     uint32_t count_functions;
     uint32_t count_macros;
@@ -241,13 +238,16 @@ union IntroRegisterData {
     double   df;
 };
 
+I(apply_to (char *) (cstring))
+I(apply_to (void *) (~city))
+
 I(attribute i_ (
     id:       int,
     btfld:    int,
     default:  value(@inherit),
     length:   expr,
     when:     expr,
-    alias:    string,
+    alias:    value(char *),
     city:     flag @global,
     cstring:  flag,
     type:     flag,
@@ -255,11 +255,11 @@ I(attribute i_ (
 ))
 
 I(attribute gui_ (
-    note:   string,
-    name:   string,
+    note:   value(char *),
+    name:   value(char *),
     min:    value(@inherit),
     max:    value(@inherit),
-    format: string,
+    format: value(char *),
     scale:  float,
     vector: flag,
     color:  value(IntroGuiColor),
@@ -268,9 +268,6 @@ I(attribute gui_ (
     edit_color: flag,
     edit_text:  flag,
 ))
-
-I(apply_to (char *) (cstring))
-I(apply_to (void *) (~city))
 
 #define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
 #define intro_var_ptr(var, T) ((type->of == ITYPE(T))? (T *)var.data : (T *)0)
@@ -364,8 +361,6 @@ bool intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr
 bool intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, int32_t * o_int);
 #define intro_attribute_float(m, a, out) intro_attribute_float_x(INTRO_CTX, m->attr, IATTR_##a, out)
 bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, float * o_float);
-#define intro_attribute_string(m, a) intro_attribute_string_x(INTRO_CTX, m->attr, IATTR_##a)
-const char * intro_attribute_string_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id);
 #define intro_attribute_length(container, out) intro_attribute_length_x(INTRO_CTX, container, out)
 bool intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t * o_length);
 union IntroRegisterData intro_run_bytecode(uint8_t * code, const uint8_t * data);
