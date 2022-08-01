@@ -1,4 +1,3 @@
-INTROLIB := ../build/debug/introlib.o
 INTRO_PARSE := ../build/debug/intro
 CPPFLAGS += -I../lib
 CFLAGS = -g -MMD -MT '$@'
@@ -7,6 +6,8 @@ INTERACTIVE := interactive_test
 EXE := $(SRC:%.c=db_%)
 TESTS := $(filter-out db_$(INTERACTIVE),$(EXE))
 ICFG := ../intro.cfg
+
+INTRO_SHARED := libintro.dll
 
 export ASAN_OPTIONS = detect_leaks=0
 
@@ -23,9 +24,6 @@ run: $(TESTS)
 $(INTRO_PARSE): FORCE
 	@$(MAKE) -C .. debug
 
-$(INTROLIB): FORCE
-	@$(MAKE) -C .. debug
-
 $(ICFG):
 	@$(MAKE) -C .. config
 
@@ -37,14 +35,17 @@ intro.h.intro: ../lib/intro.h $(INTRO_PARSE) FORCE
 
 FORCE:
 
-$(EXE): db_%: %.c $(INTROLIB)
-	$(CC) $(CFLAGS) $(CPPFLAGS) $< $(INTROLIB) -o $@
+$(EXE): db_%: %.c $(INTRO_SHARED)
+	$(CC) $< -o $@ $(CFLAGS) $(CPPFLAGS) -L. -lintro
 
 clean:
-	rm -f *.intro *.o *.d $(EXE)
+	rm -f *.intro *.o *.d $(EXE) $(INTRO_SHARED)
 
 %.d:
 	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) -MM -MG -MT 'db_$*' $*.c > $@
+
+$(INTRO_SHARED): ../lib/introlib.c ../lib/intro.h
+	$(CC) $< -o $@ -g -shared -fpic
 
 DEPS := $(SRC:.c=.d)
 ifeq (,$(filter clean,$(MAKECMDGOALS)))

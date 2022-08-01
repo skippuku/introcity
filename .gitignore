@@ -13,3 +13,5 @@ intro.cfg
 .syntax.vim
 tags
 .ctags
+test/libintro.dll
+test/libintro.so
