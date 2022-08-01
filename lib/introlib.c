@@ -1,4 +1,4 @@
-#define INTRO_INCLUDE_INSTR_CODE
+#define INTRO_INCLUDE_EXTRA
 #include "intro.h"
 
 #include <stdlib.h>
@@ -69,11 +69,50 @@ static const char * tab = "    ";
 
 typedef uint8_t u8;
 
-struct IntroPool {
-    void ** ptrs;
-    uint32_t count;
-    uint32_t capacity;
-};
+void *
+arena_alloc(MemArena * arena, size_t amount) {
+    if (arena->current_used + amount > arena->capacity) {
+        if (amount <= arena->capacity) {
+            if (arena->buckets[++arena->current].data == NULL) {
+                arena->buckets[arena->current].data = calloc(1, arena->capacity);
+            }
+            arena->current_used = 0;
+        } else {
+            arena->current++;
+            arena->buckets[arena->current].data = realloc(arena->buckets[arena->current].data, amount);
+            memset(arena->buckets[arena->current].data, 0, amount - arena->capacity);
+        }
+    }
+    void * result = arena->buckets[arena->current].data + arena->current_used;
+    arena->current_used += amount;
+    arena->current_used += 16 - (arena->current_used & 15);
+    return result;
+}
+
+MemArena *
+new_arena(int capacity) {
+    MemArena * arena = calloc(1, sizeof(MemArena));
+    arena->capacity = capacity;
+    arena->buckets[0].data = calloc(1, arena->capacity);
+    return arena;
+}
+
+void
+reset_arena(MemArena * arena) {
+    for (int i=0; i <= arena->current; i++) {
+        memset(arena->buckets[i].data, 0, arena->capacity);
+    }
+    arena->current = 0;
+    arena->current_used = 0;
+}
+
+void
+free_arena(MemArena * arena) {
+    for (int i=0; i < LENGTH(arena->buckets); i++) {
+        if (arena->buckets[i].data) free(arena->buckets[i].data);
+    }
+    free(arena);
+}
 
 const char *
 intro_enum_name(const IntroType * type, int value) {
@@ -405,13 +444,13 @@ intro_sprint_type_name(char * dest, const IntroType * type) {
             *dest++ = '*';
             type = type->of;
         } else if (type->category == INTRO_ARRAY) {
-            dest += 1 + stbsp_sprintf(dest, "[%u]", type->count) - 1;
+            dest += stbsp_sprintf(dest, "[%u]", type->count);
             type = type->of;
         } else if (type->name) {
-            dest += 1 + stbsp_sprintf(dest, "%s", type->name) - 1;
+            dest += stbsp_sprintf(dest, "%s", type->name);
             break;
         } else {
-            dest += 1 + stbsp_sprintf(dest, "<anon>");
+            dest += stbsp_sprintf(dest, "<anon>");
             break;
         }
     }
@@ -1050,7 +1089,6 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     shdefault(city->name_cache, CITY_INVALID_CACHE);
     city->ictx = ictx;
 
-    // TODO: base on actual data size
     city->type_size = 2;
     city->ptr_size = 3;
     header.size_info = ((city->type_size-1) << 4) | (city->ptr_size-1);
@@ -1102,13 +1140,13 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
 static int
 city__load_into(
     CityContext * city,
-    void * restrict dest,
-    const IntroType * restrict d_type,
+    IntroContainer d_cont,
     void * restrict src,
-    const IntroType * restrict s_type,
-    uint32_t count_elements
+    const IntroType * restrict s_type
 ) {
     IntroContext * ctx = city->ictx;
+    const IntroType * d_type = d_cont.type;
+    u8 * dest = d_cont.data;
 
     uint16_t union_selection = 0;
     if (s_type->category == INTRO_UNION) {
@@ -1155,7 +1193,6 @@ city__load_into(
 
             uint32_t iter_start, iter_end;
             if (s_type->category == INTRO_UNION) {
-                printf("HERE.\n");
                 iter_start = union_selection;
                 iter_end = union_selection + 1;
             } else {
@@ -1182,6 +1219,7 @@ city__load_into(
                     }
                 }
                 if (match) {
+                    found_match = true;
                     if (dm->type->category != sm->type->category) {
                         char from [128];
                         char to [128];
@@ -1193,33 +1231,11 @@ city__load_into(
                         return -1;
                     }
 
-                    uint32_t length = 1;
-                    if (dm->type->category == INTRO_POINTER) {
-                        const u8 * ptr_loc = (u8 *)src + sm->offset;
-                        uintptr_t offset = next_uint(&ptr_loc, city->ptr_size);
-                        if (offset == 0) break;
-                        memcpy(&length, city->data + offset - 4, 4);
-                    #if 0 // TODO...
-                        int32_t length_member_index;
-                        if (intro_attribute_member_x(ctx, dm->attr, ctx->attr.builtin.i_length, &length_member_index)) {
-                            const IntroMember * lm = &d_type->members[length_member_index];
-                            size_t wr_size = lm->type->size;
-                            if (wr_size > 4) wr_size = 4;
-                            memcpy((u8 *)dest + lm->offset, &length, wr_size);
-                            if ((uint32_t)length_member_index > dm_i) {
-                                arrput(skip_members, length_member_index);
-                            }
-                        }
-                    #endif
-                    }
-
                     int ret = city__load_into(city,
-                        (u8 *)dest + dm->offset, dm->type,
-                        (u8 *)src + sm->offset, sm->type,
-                        length
+                        intro_push(&d_cont, dm_i),
+                        (u8 *)src + sm->offset, sm->type
                     );
                     if (ret < 0) return ret;
-                    found_match = true;
                     if (d_type->category == INTRO_UNION) {
                         return 0;
                     } else {
@@ -1237,31 +1253,44 @@ city__load_into(
     }break;
 
     case INTRO_POINTER: {
+    #if 0 // TODO...
+        int32_t length_member_index;
+        if (intro_attribute_member_x(ctx, dm->attr, ctx->attr.builtin.i_length, &length_member_index)) {
+            const IntroMember * lm = &d_type->members[length_member_index];
+            size_t wr_size = lm->type->size;
+            if (wr_size > 4) wr_size = 4;
+            memcpy((u8 *)dest + lm->offset, &length, wr_size);
+            if ((uint32_t)length_member_index > dm_i) {
+                arrput(skip_members, length_member_index);
+            }
+        }
+    #endif
         const u8 * b = (u8 *)src;
         uintptr_t offset = next_uint(&b, city->ptr_size);
         if (offset != 0) {
+            uint32_t length = 1;
+            memcpy(&length, city->data + offset - 4, 4); // TODO: remove
+
             u8 * src_ptr = city->data + offset;
 
-            u8 * dest_ptr = (u8 *)malloc(d_type->of->size * count_elements); // TODO: track
+            u8 * dest_ptr = (u8 *)malloc(d_type->of->size * length); // TODO: track
+            memcpy(dest, &dest_ptr, sizeof(void *));
+
             if (intro_is_scalar(d_type->of)) {
-                memcpy(dest_ptr, src_ptr, count_elements * d_type->of->size);
+                memcpy(dest_ptr, src_ptr, length * d_type->of->size);
             } else {
-                for (uint32_t i=0; i < count_elements; i++) {
-                    size_t s_size = packed_size(city, s_type->of);
-                    city__load_into(city, dest_ptr + (i * d_type->of->size), d_type->of, src_ptr + (i * s_size), s_type->of, 1);
+                for (uint32_t i=0; i < length; i++) {
+                    city__load_into(city, intro_push(&d_cont, i), src_ptr + (i * s_type->of->size), s_type->of);
                 }
             }
-
-            memcpy(dest, &dest_ptr, sizeof(void *));
         } else {
-            memset(dest, 0, sizeof(void *));
+            intro_set_member_value_x(ctx, d_cont.parent->data, d_cont.parent->type, d_cont.index, ctx->attr.builtin.i_default);
         }
     }break;
 
     case INTRO_ARRAY: {
         for (uint32_t i=0; i < s_type->count; i++) {
-            size_t s_size = packed_size(city, s_type->of);
-            city__load_into(city, dest + (i * d_type->of->size), d_type->of, src + (i * s_size), s_type->of, 1);
+            city__load_into(city, intro_push(&d_cont, i), src + (i * s_type->of->size), s_type->of);
         }
     }break;
 
@@ -1296,8 +1325,8 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
         city__error("warning: some features will be unsupported.");
     }
 
-    city->type_size   = 1 + ((header->size_info >> 4) & 0x0f);
-    city->ptr_size = 1 + ((header->size_info) & 0x0f) ;
+    city->type_size = 1 + ((header->size_info >> 4) & 0x0f);
+    city->ptr_size  = 1 + ((header->size_info) & 0x0f);
 
     struct {
         uint32_t key;
@@ -1315,8 +1344,10 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
     } TypePtrOf;
     TypePtrOf * deferred_pointer_ofs = NULL;
 
+    MemArena * arena = new_arena(4096);
+
     for (uint32_t i=0; i < header->count_types; i++) {
-        IntroType * type = (IntroType *)malloc(sizeof(*type)); // TODO: use arena allocator
+        IntroType * type = (IntroType *)arena_alloc(arena, sizeof(*type));
         memset(type, 0, sizeof(*type));
 
         type->category = next_uint(&b, 1);
@@ -1331,7 +1362,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
                 return -1;
             }
 
-            IntroMember * members = NULL;
+            IntroMember * members = arena_alloc(arena, type->count * sizeof(members[0]));
             int32_t current_offset = 0;
             for (uint32_t m=0; m < type->count; m++) {
                 IntroMember member = {0};
@@ -1354,7 +1385,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
                     member.name = (char *)(city->data + next);
                 }
 
-                arrput(members, member);
+                members[m] = member;
             }
             type->members = members;
             if (type->category == INTRO_UNION) {
@@ -1412,16 +1443,10 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
 
     const IntroType * s_type = info_by_id[hmlen(info_by_id) - 1].value;
 
-    int copy_result = city__load_into(city, dest, d_type, city->data, s_type, 1);
+    int copy_result = city__load_into(city, intro_container(dest, d_type), city->data, s_type);
 
-    for (int i=0; i < hmlen(info_by_id); i++) {
-        IntroType * type = info_by_id[i].value;
-        if (intro_has_members(type)) {
-            arrfree(type->members);
-        }
-        free(type);
-    }
     hmfree(info_by_id);
+    free_arena(arena);
 
     return copy_result;
 }

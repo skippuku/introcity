@@ -410,7 +410,7 @@ int64_t intro_int_value(const void * data, const IntroType * type);
 #define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 
-#ifdef INTRO_INCLUDE_INSTR_CODE
+#ifdef INTRO_INCLUDE_EXTRA
 typedef enum {
     I_INVALID = 0,
     I_RETURN = 1,
@@ -451,6 +451,20 @@ typedef enum {
 
     I_COUNT
 } InstrCode;
+
+typedef struct {
+    int current;
+    int current_used;
+    int capacity;
+    struct {
+        void * data;
+    } buckets [256]; // should be enough for anyone
+} MemArena;
+
+void * arena_alloc(MemArena * arena, size_t amount);
+MemArena * new_arena(int capacity);
+void reset_arena(MemArena * arena);
+void free_arena(MemArena * arena);
 #endif
 
 #ifdef __cplusplus

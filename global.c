@@ -111,15 +111,6 @@ static const struct { const char * key; int value; } g_builtin_attributes [] = {
 #undef DEF_BUILTIN
 
 typedef struct {
-    int current;
-    int current_used;
-    int capacity;
-    struct {
-        void * data;
-    } buckets [256]; // should be enough for anyone
-} MemArena;
-
-typedef struct {
     char * filename;
     Token * tk_list;
     char * buffer;
@@ -352,51 +343,6 @@ strputf(char ** pstr, const char * format, ...) {
     (*pstr)[arrlen(*pstr)] = '\0'; // terminator does not add to length, so it is overwritten by subsequent calls
 
     va_end(args);
-}
-
-static void *
-arena_alloc(MemArena * arena, size_t amount) {
-    if (arena->current_used + amount > arena->capacity) {
-        if (amount <= arena->capacity) {
-            if (arena->buckets[++arena->current].data == NULL) {
-                arena->buckets[arena->current].data = calloc(1, arena->capacity);
-            }
-            arena->current_used = 0;
-        } else {
-            arena->current++;
-            arena->buckets[arena->current].data = realloc(arena->buckets[arena->current].data, amount);
-            memset(arena->buckets[arena->current].data, 0, amount - arena->capacity);
-        }
-    }
-    void * result = arena->buckets[arena->current].data + arena->current_used;
-    arena->current_used += amount;
-    arena->current_used += 16 - (arena->current_used & 15);
-    return result;
-}
-
-static MemArena *
-new_arena(int capacity) {
-    MemArena * arena = calloc(1, sizeof(MemArena));
-    arena->capacity = capacity;
-    arena->buckets[0].data = calloc(1, arena->capacity);
-    return arena;
-}
-
-static void
-reset_arena(MemArena * arena) {
-    for (int i=0; i <= arena->current; i++) {
-        memset(arena->buckets[i].data, 0, arena->capacity);
-    }
-    arena->current = 0;
-    arena->current_used = 0;
-}
-
-static void
-free_arena(MemArena * arena) {
-    for (int i=0; i < LENGTH(arena->buckets); i++) {
-        if (arena->buckets[i].data) free(arena->buckets[i].data);
-    }
-    free(arena);
 }
 
 static char *

@@ -1,4 +1,4 @@
-#define INTRO_INCLUDE_INSTR_CODE
+#define INTRO_INCLUDE_EXTRA
 #include "lib/intro.h"
 #include "global.c"
 #include "config.c"
