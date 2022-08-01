@@ -32,6 +32,22 @@ typedef struct {
 } StuffLoad;
 
 typedef struct {
+    enum {
+        SEL_NONE = 0,
+        SEL_STR,
+        SEL_INT,
+        SEL_FLOAT,
+    } which I(0);
+
+    I(1) union {
+        size_t __data     I(~city, ~gui_show);
+        const char * str  I(when <-which == SEL_STR);
+        int int_value     I(when <-which == SEL_INT);
+        float float_value I(when <-which == SEL_FLOAT);
+    };
+} Selection;
+
+typedef struct {
     char * name;
     int32_t a, b;
     uint8_t array [8];
@@ -60,6 +76,8 @@ typedef struct {
     } text;
 
     LinkNodeSave * linked I(11);
+
+    Selection selections [4] I(12);
 } Basic;
 
 typedef struct LinkNodeLoad LinkNodeLoad;
@@ -110,6 +128,8 @@ typedef struct {
     int * _internal I(10, ~city);
 
     LinkNodeLoad * linked I(11);
+
+    Selection selections [4] I(12);
 } BasicPlus;
 
 #define GEN_LINK_REPORT(TYPE) \
@@ -150,7 +170,6 @@ main() {
     obj_save.cool_number = 102928348;
     obj_save.character = "bingus";
     obj_save._internal = &obj_save.b;
-
     obj_save.text.buffer = "Long ago, 4 nations ruled over the earth in harmony, but everything changed when the fire nation attacked.";
     obj_save.text.bookmark = obj_save.text.buffer + 53;
 
@@ -191,6 +210,11 @@ main() {
     obj_save.stuffs[4].id = 2;
     obj_save.stuffs[4].name = NULL;
 
+    obj_save.selections[0] = (Selection){.which = SEL_INT,   .int_value = 45};
+    obj_save.selections[1] = (Selection){.which = SEL_FLOAT, .float_value = -8.5};
+    obj_save.selections[2] = (Selection){.which = SEL_STR,   .str = "Tom Meyers, Greatest ever comedian"};
+    obj_save.selections[3] = (Selection){.which = SEL_FLOAT, .float_value = 9.75};
+
     printf("obj_save: Basic = ");
     intro_print(&obj_save, ITYPE(Basic), NULL);
     printf("\n");
@@ -211,13 +235,13 @@ main() {
 
 #define CHECK_EQUAL(member) \
     if (0!=memcmp(&obj_load.member, &obj_save.member, sizeof(obj_save.member))) { \
-        fprintf(stderr, "NOT EQUAL (%s:%i): " #member, __FILE__, __LINE__); \
+        fprintf(stderr, "NOT EQUAL (%s:%i): " #member "\n", __FILE__, __LINE__); \
         exit(1); \
     }
 
 #define CHECK_STR_EQUAL(member) \
     if (0 != strcmp(obj_load.member, obj_save.member)) { \
-        fprintf(stderr, "NOT EQUAL (%s:%i): " #member, __FILE__, __LINE__); \
+        fprintf(stderr, "NOT EQUAL (%s:%i): " #member "\n", __FILE__, __LINE__); \
         exit(1); \
     }
 
@@ -234,6 +258,21 @@ main() {
     CHECK_STR_EQUAL(character);
     CHECK_STR_EQUAL(long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file);
     assert(obj_load._internal == NULL);
+    for (int i=0; i < LENGTH(obj_save.selections); i++) {
+        CHECK_EQUAL(selections[i].which);
+        switch(obj_load.selections[i].which) {
+        case SEL_STR:
+            CHECK_STR_EQUAL(selections[i].str);
+            break;
+        case SEL_INT:
+            CHECK_EQUAL(selections[i].int_value);
+            break;
+        case SEL_FLOAT:
+            CHECK_EQUAL(selections[i].float_value);
+            break;
+        default: break;
+        }
+    }
 
     LinkNodeSave * save_node = obj_save.linked;
     LinkNodeLoad * load_node = obj_load.linked;

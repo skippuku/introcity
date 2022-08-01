@@ -364,7 +364,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         }
         arrfree(stack);
 
-        if (!intro_is_scalar(index->type)) {
+        if (!(intro_is_scalar(index->type) || index->type->category == INTRO_ENUM)) {
             parse_error(ectx->ctx, index->tk, "Cannot use non-scalar here.");
             exit(1);
         }

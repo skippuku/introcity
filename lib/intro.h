@@ -331,6 +331,15 @@ intro_container(void * data, const IntroType * type) {
     return container;
 }
 
+INTRO_API_INLINE uint32_t
+intro_get_attr(IntroContainer cont) {
+    if (cont.parent && intro_has_members(cont.parent->type)) {
+        return cont.parent->type->members[cont.index].attr;
+    } else {
+        return cont.type->attr;
+    }
+}
+
 INTRO_API_INLINE const void *
 intro_expr_data(const IntroContainer * cont) {
     if (cont->parent) cont = cont->parent;

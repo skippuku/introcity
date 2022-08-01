@@ -40,7 +40,8 @@ CHANGELOG
 	- New builtin attribute "when" for using an expression to dynamically
 	determine when a struct/union member is valid.
 
-	- City is now much more reliable
+	- Major city improvemets
+		- support for unions (using the "when" attribute)
 		- much better handling of pointers
 		- city file data can now be discarded after load
 		- reduction in serialized data size

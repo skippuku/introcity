@@ -1,15 +1,13 @@
 lib:
-    !! use IntroContainer where possible, especially for city and imgui
+    interface for creating types/contexts
     intro_print circular detection
     accurate type display
-    interface for creating types/contexts
     sprint/mprint version of everything that uses stdout
     single header?
     the preprocessor and parser could be part of the lib?
     printf-like formatting print with insertions for types and values of types
 
 city:
-    !! way to select which union member to serialize
     !! handle allocation
     version for "release" without as much information where types are assumed to match
     attribute to specify allocation function
