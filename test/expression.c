@@ -50,10 +50,12 @@ main() {
     test.count_collected_ids = 2;
 
     int64_t value;
-    assert(intro_attribute_expr_x(INTRO_CTX, ITYPE(AttrTest)->members[1].attr, IATTR_i_when, &test, &value) && value == 1);
-    assert(intro_attribute_expr_x(INTRO_CTX, ITYPE(AttrTest)->members[4].attr, IATTR_i_when, &test, &value) && value == 1);
-    assert(intro_attribute_expr_x(INTRO_CTX, ITYPE(AttrTest)->members[0].type->members[0].attr, IATTR_i_when, &test, &value) && value == 0);
-    assert(intro_attribute_expr_x(INTRO_CTX, ITYPE(AttrTest)->members[5].attr, IATTR_i_when, &test, &value) && value == (test.stat.hp * 15 - 3));
+    IntroContainer cntr = intro_container(&test, ITYPE(AttrTest));
+    IntroContainer stat_cntr = intro_push(&cntr, 0);
+    assert(intro_attribute_expr_x(INTRO_CTX, intro_push(&cntr, 1),      IATTR_i_when, &value) && value == 1);
+    assert(intro_attribute_expr_x(INTRO_CTX, intro_push(&cntr, 4),      IATTR_i_when, &value) && value == 1);
+    assert(intro_attribute_expr_x(INTRO_CTX, intro_push(&stat_cntr, 0), IATTR_i_when, &value) && value == 0);
+    assert(intro_attribute_expr_x(INTRO_CTX, intro_push(&cntr, 5),      IATTR_i_when, &value) && value == (test.stat.hp * 15 - 3));
 
     return 0;
 }

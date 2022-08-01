@@ -252,19 +252,31 @@ intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_
 }
 
 bool
-intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t * o_length) {
-    assert(cont.parent && intro_has_members(cont.parent->type));
-    return intro_attribute_expr_x(ctx, cont.parent->type->members[cont.index].attr, ctx->attr.builtin.i_length, intro_expr_data(&cont), o_length);
+intro_attribute_length_x(IntroContext * ctx, IntroContainer cntr, int64_t * o_length) {
+    assert(cntr.parent && intro_has_members(cntr.parent->type));
+    return intro_attribute_expr_x(ctx, cntr, ctx->attr.builtin.i_length, o_length);
+}
+
+static const void *
+intro_expr_data(const IntroContainer * pcntr) {
+    if (pcntr->parent) {
+        pcntr = pcntr->parent;
+    }
+    while (pcntr->parent && (pcntr->type->flags & INTRO_EMBEDDED_DEFINITION)) {
+        pcntr = pcntr->parent;
+    }
+    return pcntr->data;
 }
 
 bool
-intro_attribute_expr_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, const void * cont_data, int64_t * o_result) {
+intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, uint32_t attr_id, int64_t * o_result) {
     ASSERT_ATTR_TYPE(INTRO_AT_EXPR);
     uint32_t code_offset;
-    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &code_offset);
+    const void * data = intro_expr_data(&cntr);
+    bool has = get_attribute_value_offset(ctx, intro_get_attr(cntr), attr_id, &code_offset);
     if (has) {
         uint8_t * code = &ctx->values[code_offset];
-        union IntroRegisterData reg = intro_run_bytecode(code, cont_data);
+        union IntroRegisterData reg = intro_run_bytecode(code, data);
         *o_result = reg.si;
         return true;
     } else {
@@ -522,15 +534,14 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     case INTRO_UNION: {
         printf("%s {\n", (type->category == INTRO_STRUCT)? "struct" : "union");
 
-        const void * expr_data = intro_expr_data(&container);
-        int64_t expr_result;
-
         for (uint32_t m_index = 0; m_index < type->count; m_index++) {
             const IntroMember * m = &type->members[m_index];
+            IntroContainer m_cntr = intro_push(&container, m_index);
 
+            int64_t expr_result;
             if (
                 !intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.gui_show)
-              ||(intro_attribute_expr_x(ctx, m->attr, ctx->attr.builtin.i_when, expr_data, &expr_result) && !expr_result)
+              ||(intro_attribute_expr_x(ctx, m_cntr, ctx->attr.builtin.i_when, &expr_result) && !expr_result)
                )
             {
                 continue;
@@ -541,13 +552,12 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
             printf("%s: ", m->name);
             intro_print_type_name(m->type);
             printf(" = ");
-            IntroContainer next_container = intro_push(&container, m_index);
             if (intro_is_scalar(m->type)) {
-                intro_print_x(ctx, next_container, opt);
+                intro_print_x(ctx, m_cntr, opt);
             } else {
                 switch(m->type->category) {
                 case INTRO_ARRAY: {
-                    intro_print_x(ctx, next_container, opt);
+                    intro_print_x(ctx, m_cntr, opt);
                 }break;
 
                 case INTRO_POINTER: {
@@ -557,7 +567,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
                         break;
                     }
                     if (ptr) {
-                        intro_print_x(ctx, next_container, opt);
+                        intro_print_x(ctx, m_cntr, opt);
                     } else {
                         printf("<null>");
                     }
@@ -567,11 +577,11 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
                 case INTRO_UNION: {
                     IntroPrintOptions opt2 = *opt;
                     opt2.indent++;
-                    intro_print_x(ctx, next_container, &opt2);
+                    intro_print_x(ctx, m_cntr, &opt2);
                 }break;
 
                 case INTRO_ENUM: {
-                    intro_print_x(ctx, next_container, opt);
+                    intro_print_x(ctx, m_cntr, opt);
                 }break;
 
                 default: {
@@ -981,11 +991,11 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
         memset(city->data + data_offset, 0, packed_size(city, type));
         for (int i=0; i < type->count; i++) {
             int64_t is_valid;
-            IntroMember member = type->members[i];
-            if (intro_attribute_expr_x(city->ictx, member.attr, city->ictx->attr.builtin.i_when, intro_expr_data(&cont), &is_valid) && is_valid) {
+            IntroContainer m_cntr = intro_push(&cont, i);
+            if (intro_attribute_expr_x(city->ictx, m_cntr, city->ictx->attr.builtin.i_when, &is_valid) && is_valid) {
                 uint16_t selection_index = i;
                 memcpy(city->data + data_offset, &selection_index, 2);
-                city__serialize(city, data_offset + 2, intro_push(&cont, i));
+                city__serialize(city, data_offset + 2, m_cntr);
                 break;
             }
         }

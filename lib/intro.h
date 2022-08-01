@@ -206,10 +206,10 @@ typedef struct IntroMacro {
 } IntroMacro;
 
 typedef struct IntroContext {
-    IntroType * types     I(length count_types);
-    uint8_t * values      I(length size_values);
+    IntroType * types         I(length count_types);
+    uint8_t * values          I(length size_values);
     IntroFunction * functions I(length count_functions);
-    IntroMacro * macros   I(length count_macros);
+    IntroMacro * macros       I(length count_macros);
 
     uint32_t count_types;
     uint32_t size_values;
@@ -270,7 +270,6 @@ I(attribute gui_ (
 ))
 
 #define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)
-#define intro_var_ptr(var, T) ((type->of == ITYPE(T))? (T *)var.data : (T *)0)
 
 INTRO_API_INLINE bool
 intro_is_scalar(const IntroType * type) {
@@ -337,15 +336,6 @@ intro_get_attr(IntroContainer cont) {
     }
 }
 
-INTRO_API_INLINE const void *
-intro_expr_data(const IntroContainer * cont) {
-    if (cont->parent) cont = cont->parent;
-    while (cont->parent && (cont->type->flags & INTRO_EMBEDDED_DEFINITION)) {
-        cont = cont->parent;
-    }
-    return cont->data;
-}
-
 typedef struct {
     int indent;
 } IntroPrintOptions;
@@ -363,8 +353,8 @@ bool intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec, uint32_t a
 bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, float * o_float);
 #define intro_attribute_length(container, out) intro_attribute_length_x(INTRO_CTX, container, out)
 bool intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t * o_length);
-union IntroRegisterData intro_run_bytecode(uint8_t * code, const uint8_t * data);
-bool intro_attribute_expr_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, const void * cont_data, int64_t * o_result);
+#define intro_attribute_run_expr(C, A, OUT) intro_attribute_expr_x(INTRO_CTX, C, A, OUT)
+bool intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, uint32_t attr_id, int64_t * o_result);
 
 // INITIALIZERS
 void intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);
@@ -404,6 +394,7 @@ const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
 #define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
+union IntroRegisterData intro_run_bytecode(uint8_t * code, const uint8_t * data);
 
 #ifdef INTRO_INCLUDE_EXTRA
 typedef enum {

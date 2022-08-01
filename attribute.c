@@ -259,8 +259,6 @@ parse_escaped_string(Token * str_tk, size_t * o_length) {
     return ret;
 }
 
-// NOTE: value storing is fairly similar to some of what the city implementation does,
-// maybe some code can be resued between those two systems
 ptrdiff_t
 store_value(ParseContext * ctx, const void * value, size_t value_size) {
     void * storage = arraddnptr(ctx->value_buffer, value_size);
