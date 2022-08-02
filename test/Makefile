@@ -7,7 +7,7 @@ EXE := $(SRC:%.c=db_%)
 TESTS := $(filter-out db_$(INTERACTIVE),$(EXE))
 ICFG := ../intro.cfg
 
-INTRO_SHARED := libintro.dll
+INTRO_SHARED := libintro.so
 
 export ASAN_OPTIONS = detect_leaks=0
 
@@ -36,7 +36,7 @@ intro.h.intro: ../lib/intro.h $(INTRO_PARSE) FORCE
 FORCE:
 
 $(EXE): db_%: %.c $(INTRO_SHARED)
-	$(CC) $< -o $@ $(CFLAGS) $(CPPFLAGS) -L. -lintro
+	$(CC) $< -o $@ $(CFLAGS) $(CPPFLAGS) -L. -Wl,-rpath=. -lintro
 
 clean:
 	rm -f *.intro *.o *.d $(EXE) $(INTRO_SHARED)
