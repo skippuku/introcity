@@ -5,8 +5,13 @@ db_*
 *.o
 *.d
 intro
-test/interactive_test
 test/log.txt
 test/intro.odin
 build/
 intro.cfg
+*.lz4
+.syntax.vim
+tags
+.ctags
+test/libintro.dll
+test/libintro.so

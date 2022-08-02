@@ -78,6 +78,10 @@
   #define COMPILER_STR "compiler"
 #endif
 
+#include "lexer.c"
+
+static uint64_t g_timer_freq = 0;
+
 #define DEF_BUILTIN(name) {#name, offsetof(IntroBuiltinAttributeIds, name)}
 static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(i_id),
@@ -88,6 +92,7 @@ static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(i_city),
     DEF_BUILTIN(i_cstring),
     DEF_BUILTIN(i_type),
+    DEF_BUILTIN(i_when),
     DEF_BUILTIN(i_remove),
 
     DEF_BUILTIN(gui_note),
@@ -106,21 +111,12 @@ static const struct { const char * key; int value; } g_builtin_attributes [] = {
 #undef DEF_BUILTIN
 
 typedef struct {
-    int current;
-    int current_used;
-    int capacity;
-    struct {
-        void * data;
-    } buckets [256]; // should be enough for anyone
-} MemArena;
-
-typedef struct {
     char * filename;
+    Token * tk_list;
     char * buffer;
     size_t buffer_size;
     time_t mtime;
     bool once;
-    bool gen; // whether type info should be generated for types declared in this file
 } FileInfo;
 
 typedef enum {
@@ -130,38 +126,60 @@ typedef enum {
     LOC_POP,
 } LocationEnum;
 
+typedef enum {
+    NOTICE_NONE = 0,
+    NOTICE_ENABLED = 0x01,
+    NOTICE_FUNCTIONS = 0x02,
+    NOTICE_MACROS = 0x04,
+
+    NOTICE_INCLUDES = 0x0100,
+    NOTICE_SYS_HEADERS = 0x0200,
+
+    NOTICE_DEFAULT = NOTICE_ENABLED | NOTICE_INCLUDES,
+
+    NOTICE_ALL = 0x00FF,
+} NoticeState;
+
 typedef struct {
     size_t offset;
     size_t file_offset;
     FileInfo * file;
     char * macro_name;
     LocationEnum mode;
+    NoticeState notice;
 } FileLoc;
 
 typedef struct {
     FileInfo ** file_buffers;
     FileLoc * list;
+    Token * tk_list;
     int64_t count;
     int64_t index;
     FileInfo * file;
     int * stack;
-    int line_num;
-    char * pos;
+    NoticeState notice;
 } LocationContext;
 
 void
 reset_location_context(LocationContext * lctx) {
     lctx->index = 0;
     arrsetlen(lctx->stack, 0);
-    lctx->line_num = 0;
-    lctx->pos = NULL;
 }
 
+enum GenMode {
+    GEN_HEADER = 0,
+    GEN_CITY,
+    GEN_VIM_SYNTAX,
+};
+
 typedef struct {
-    char * result_buffer;
+    Token * result_list;
     char * output_filename;
+    IntroMacro * macros;
     LocationContext loc;
     int ret;
+    enum GenMode gen_mode;
+    bool show_metrics;
 } PreInfo;
 
 typedef struct {
@@ -173,30 +191,18 @@ typedef struct {
     int32_t value;
 } IndexByPtrMap;
 
-typedef struct {
-    void * key;
-    IntroType * container_type;
-    int member_index_in_container;
-    int indirection_level;
-    char * member_name_in_container;
-    const char * top_level_name;
-} NestInfo;
-
-typedef struct IntroInfo {
+typedef struct ParseInfo {
     IntroType ** types;
     IndexByPtrMap * index_by_ptr_map;
-    NestInfo * nest_map;
     uint8_t * value_buffer;
-    IntroTypePtrList ** arg_lists;
     IntroFunction ** functions;
-    char ** string_set;
     struct IntroAttributeContext attr;
     uint32_t count_types;
-    uint32_t count_arg_lists;
     uint32_t count_functions;
-} IntroInfo;
+} ParseInfo;
 
 enum ReturnCode {
+    RET_FAILED_FILE_WRITE = -2,
     RET_IRRELEVANT_ERROR = -1,
     RET_OK = 0,
 
@@ -279,7 +285,29 @@ typedef struct {
     CTypeInfo type_info;
 } Config;
 
-static int parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl);
+typedef struct {
+    uint64_t start;
+    uint64_t last;
+
+    uint64_t pre_time;
+    uint64_t lex_time;
+
+    uint64_t parse_time;
+    uint64_t attribute_time;
+
+    uint64_t gen_time;
+
+    uint64_t count_pre_files;
+    uint64_t count_pre_lines;
+    uint64_t count_pre_tokens;
+
+    uint64_t count_parse_tokens;
+    uint64_t count_parse_types;
+    uint64_t count_gen_types;
+} Metrics;
+static Metrics g_metrics = {0};
+
+static int parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl);
 
 static char *
 strput_callback(const char * buf, void * user, int len) {
@@ -314,51 +342,6 @@ strputf(char ** pstr, const char * format, ...) {
     (*pstr)[arrlen(*pstr)] = '\0'; // terminator does not add to length, so it is overwritten by subsequent calls
 
     va_end(args);
-}
-
-static void *
-arena_alloc(MemArena * arena, size_t amount) {
-    if (arena->current_used + amount > arena->capacity) {
-        if (amount <= arena->capacity) {
-            if (arena->buckets[++arena->current].data == NULL) {
-                arena->buckets[arena->current].data = calloc(1, arena->capacity);
-            }
-            arena->current_used = 0;
-        } else {
-            arena->current++;
-            arena->buckets[arena->current].data = realloc(arena->buckets[arena->current].data, amount);
-            memset(arena->buckets[arena->current].data, 0, amount - arena->capacity);
-        }
-    }
-    void * result = arena->buckets[arena->current].data + arena->current_used;
-    arena->current_used += amount;
-    arena->current_used += 16 - (arena->current_used & 15);
-    return result;
-}
-
-static MemArena *
-new_arena(int capacity) {
-    MemArena * arena = calloc(1, sizeof(MemArena));
-    arena->capacity = capacity;
-    arena->buckets[0].data = calloc(1, arena->capacity);
-    return arena;
-}
-
-static void
-reset_arena(MemArena * arena) {
-    for (int i=0; i <= arena->current; i++) {
-        memset(arena->buckets[i].data, 0, arena->capacity);
-    }
-    arena->current = 0;
-    arena->current_used = 0;
-}
-
-static void
-free_arena(MemArena * arena) {
-    for (int i=0; i < LENGTH(arena->buckets); i++) {
-        if (arena->buckets[i].data) free(arena->buckets[i].data);
-    }
-    free(arena);
 }
 
 static char *
@@ -465,6 +448,32 @@ path_extension(char * dest, const char * path) {
 
     return strcpy(dest, period);
 }
+
+static uint64_t
+nanotime() {
+#if _WIN32
+    LARGE_INTEGER li;
+    QueryPerformanceCounter(&li);
+    return li.QuadPart;
+#elif defined _POSIX_TIMERS
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+#else
+#pragma message ("No nanotime implementation for this platform")
+    return 0;
+#endif
+}
+
+static uint64_t
+nanointerval() {
+    uint64_t now = nanotime();
+    uint64_t result = now - g_metrics.last;
+    g_metrics.last = now;
+    return result;
+}
+
+static void parse_error(ParseContext * ctx, Token tk, char * message);
 
 #ifdef DEBUG
 // this is so i can get array and map length in gdb

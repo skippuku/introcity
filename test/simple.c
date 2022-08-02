@@ -73,10 +73,9 @@ main(int argc, char ** argv) {
     intro_print(&dumb, ITYPE(Dumb), NULL);
     printf("\n\n");
 
-    const IntroType * dumb_array_type = ITYPE(Dumb)->i_struct->members[0].type;
-    fprintf(stderr, "dumb_array_size: %i\n", dumb_array_type->array_size);
-    assert(dumb_array_type->category == INTRO_ARRAY);
-    assert(dumb_array_type->array_size == LENGTH(dumb.strange_array));
+    const IntroType * strange_array_type = ITYPE(Dumb)->members[0].type;
+    assert(strange_array_type->category == INTRO_ARRAY);
+    assert(strange_array_type->count == LENGTH(dumb.strange_array));
     for (int i=0; i < LENGTH(dumb.strange_array); i++) {
         assert(dumb.strange_array[i] == 0);
     }
@@ -86,6 +85,23 @@ main(int argc, char ** argv) {
         assert(dumb.anon_struct_array[i].b == 4);
         assert(dumb.anon_struct_array[i].u == 5);
     }
+
+    /*====================*/
+
+    bool it_showed_up = false;
+    for (int i=INTRO_CTX->count_types - 1; i >= 0; i--) {
+        const IntroType * type = &INTRO_CTX->types[i];
+        if (type->name) {
+            if (0==strcmp(type->name, "ThisShouldNotShowUp")) {
+                assert(0 && "type was not ignored");
+            }
+            if (0==strcmp(type->name, "ThisShouldShowUp")) {
+                it_showed_up = true;
+            }
+        }
+    }
+
+    assert(it_showed_up);
 
     return 0;
 }

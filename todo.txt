@@ -1,44 +1,55 @@
+lib:
+    interface for creating types/contexts
+    intro_print circular detection
+    accurate type display
+    intro_print options
+        whether to print unnamed members as if their members were within
+        max depth
+    sprint/mprint version of everything that uses stdout
+    single header?
+    the preprocessor and parser could be part of the lib?
+    printf-like formatting print with insertions for types and values of types
+    bitfield access
+
+city:
+    !! allocation options
+    version for "release" without as much information where types are assumed to match
+    attribute to specify allocation function
+    type id's?
+        could also check against type names or maybe name hashes
+
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
-    !! struct/union values (see: the struct layout precipice)
+    allow attribute declarations with no namespace
+    allow multiple aliases somehow
     more strict namespacing
         maybe use dot
+    allow attributes in more places
+        enum values
+        functions
+        function arguments
     impl: cache matching data
     @repress trait, disable propagation
     general 'terminated' attribute?
         could even be a value, then you could choose what counts as a terminator
-    value(*@inherit): inherit base of type?
     'from' attribute: allow conversion from a type, introlib will have builtin conversion functions for basic types
         some way to specify custom conversion functions
-    allow attribute declarations with no namespace
-    allow multiple aliases somehow
     attribute type: type
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
     members of complex type can specify an attribute as a value: I(default default)
-    expression attribute type
-        select: attribute describes when a member is valid, ex. unions
-        length: change to expression ex. I(length map_width * map_height)
-    attributes on enum values?
     parse c++ struct defaults as intro defaults?
-
-city:
-
-config:
-    allow config to be appended with another config?
-    handle c type sizes
-    static assert in .intro file if types don't match
+    value(*@inherit): inherit base of type?
 
 parse:
-    !! handle sizeof struct/union in expression (see: the struct layout precipce)
-    handle character literals including L'x'
+    !! GNU and MS alignment attributes
+    !! GNU and MS pack attributes/pragma
+    vector types (__m128, etc)
+    Some way to get type location info
+    ParseInfo: have everything, strip away unwated stuff at gen
     fix bitfield regression
-    handle bit field accessing
-    handle strings next to each other
-    const flag?
-    parse float expressions (for value attributes)
-        general type awareness in expressions?
     parse globals (for libraries that use extern)
+    const flag?
     rudimentary C++ support
         function overloads
         namespaces
@@ -46,43 +57,50 @@ parse:
         ignore templates
         operator overloads?
 
+expr:
+    support using const globals
+    implement float math
+    array subscript
+    ability to return a value of any type
+    compound literals
+    handle character literals including L'x'
+    handle strings next to each other
+
 pre:
-    !! more options for what parts have information generated
-        option to exclude by default, enable with #if __INTRO__
-        option to ignore functions
-    errors are fucked (again)
-        location system is just bad, replace it
-    stop after a .intro include as to not depend on types defined later
-    don't evaluate location line until it is known the type will be in info
-    save location of includes and defines
+    FileInfo: add include location
+    pragma that adds a file to make dependencies
     parse #line directives
-    parse comments for documentation?
     create #line directives?
+    parse comments for documentation?
+    fix -E spacing
     trim big newline gaps
 
 gen:
-    !! clang doesn't like flexible array initialization in c++
-        might be a good idea to not use flexible arrays at the interface level anyway as it can complicate interfacing in other languages
-    include macros in introspection data (optionally)
+    !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
+    c header: write protect?
+    idea: use type infomation to generate the header
+        some kind of create_c_constant function or something
+    idea: stop using type information to generate anything because changing anything in intro.h can be a nightmare
+    allow multiple outputs at once ex. header + city
+    vector types (__m128, etc)
     option to create typedefs for structs and enums
-    place all data in one big buffer accessible only through the context, write protect the buffer
     typeof with _Generic?
 
-lib:
-    accurate type display
-    a little dubious and evil: ability to create types at runtime
-    sprint/mprint version of everything that uses stdout
-    single header?
+config:
+    default program arguments
+    allow config to be appended with another config?
+    handle c type sizes
+    static assert in .intro file if types don't match
 
 test:
-    !! add sanitized target
+    add sanitized target
     test for errors that should be raised by the parser
     more rigorous tests
 
+doc:
+
 examples:
     !! more of these
-
-doc:
 
 misc:
     idea: some kind of plugin system
@@ -90,31 +108,7 @@ misc:
           instead of compiling another program.
         these plugins could be inserted at different parts of the process, simplest case being, just run something with the type information before gen
         could be used to add checking to attributes, and maybe other kinds of enforcement
+    idea: use parser to generate system headers with types only, no functions
+        if we are to have our own system headers, we may as well also parse them into a binary format as well
     memory cleanup
     parse program options and pass only relevant ones to sub-processes
-    preprocessor should output tokens instead of text
-
-The struct layout precipice:
-    Struct layout is dependent on the platform ABI.
-    In addition to this there are many ways a struct layout can be altered (push(pack), __attribute__((aligned)), etc.)
-    
-    Right now, intro just generates offsetof's in the header.
-
-    Ideally, C would have actual layout specifications, and we could easily generate all of the type information in a binary format.
-    (Of course C would also ideally have introspection, but here we are.)
-
-    The options are:
-
-    Continue to use offsetof
-        + guaranteed correct
-        + easiest to implement (already done)
-        - Only useful in C/C++
-        - generated header is big and redundant
-        - parser is limited in capability due to incomplete type information:
-            struct value attributes are difficult (currently just unimplemented)
-            certain expressions cannot be evaluated
-
-    Calculate the correct layout information based on platform
-        + generated information can be in binary form
-        + language agnostic
-        - incorrect generation is difficult/impossible to mitigate

@@ -16,13 +16,14 @@ int
 main() {
     SaveData save;
 
-    void * city_data_handle = intro_load_city_file(&save, ITYPE(SaveData), "save.cty");
-    if (!city_data_handle) {
+    bool from_file = intro_load_city_file(&save, ITYPE(SaveData), "save.cty");
+    if (!from_file) {
         intro_set_defaults(&save, ITYPE(SaveData));
     }
 
     printf("Save file contents:\n");
     intro_print(&save, ITYPE(SaveData), NULL);
+    if (from_file) free(save.message);
 
     char new_message [128];
     printf("\nEnter a new message: ");
@@ -35,6 +36,5 @@ main() {
 
     intro_create_city_file("save.cty", &save, ITYPE(SaveData));
 
-    if (city_data_handle) free(city_data_handle);
     return 0;
 }

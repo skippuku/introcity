@@ -99,6 +99,16 @@ typedef struct {
 } TestUndefined;
 
 typedef struct {
+    float x,y,z;
+} Vector3;
+
+typedef struct {
+    uint8_t a;
+    short b;
+    double c;
+} DefaultAlignTest;
+
+typedef struct {
     int v_int I(default 123);
     uint8_t v_u8 I(=1);
     int64_t v_s64 I(=-54321);
@@ -107,12 +117,15 @@ typedef struct {
     char * name I(= "Brian");
 
     uint8_t numbers [8] I(= {4, 5, 8, 9, 112, 9});
-    char * words [5] I(= {"apple", "banana", "mango", "pineapple", "newline\ntest"});
+    char * words [5] I(= {[3] = "apple", [1] = "banana", "mango", [0] = "pineapple", [4] = "newline\ntest"});
 
     float * speeds I(length count_speeds, default {3.4, 5.6, 1.7, 8.2, 0.002});
-    uint32_t count_speeds I(remove gui_show);
+    uint32_t count_speeds I(= 5, remove gui_show);
 
     Skills skills I(= SKILL_MUSICIAN | SKILL_PROGRAMMER);
+
+    Vector3 v3 I(= {3.5, -0.75, 12.25});
+    DefaultAlignTest align I(= {.b = 2001, .a = 15, .c = 100456.12});
 } TestDefault;
 
 typedef struct {
@@ -128,12 +141,24 @@ typedef enum {
     SIZEOF_SHORT = sizeof(short),
 } EvilEnum;
 
-// commented out because gcc doesn't enabled MS extensions by default
+// commented out because gcc doesn't enable MS extensions by default
 #if 0
 typedef struct {
     char * name;
     Forward;
 } MsExt;
 #endif
+
+#pragma intro push, disable
+typedef struct {
+    int uh_oh;
+    char asdf;
+} ThisShouldNotShowUp;
+#pragma intro pop
+
+typedef struct {
+    int yay;
+    bool yeah;
+} ThisShouldShowUp;
 
 #include "test.h.intro"

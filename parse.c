@@ -3,19 +3,20 @@
 #include "global.c"
 
 static const IntroType known_types [] = {
-    {INTRO_UNKNOWN, 0, {}, 0, 0, "void"},
-    {INTRO_U8, 0, {}, 0, 0, "uint8_t"},
-    {INTRO_U16, 0, {}, 0, 0, "uint16_t"},
-    {INTRO_U32, 0, {}, 0, 0, "uint32_t"},
-    {INTRO_U64, 0, {}, 0, 0, "uint64_t"},
-    {INTRO_S8, 0, {}, 0, 0, "int8_t"},
-    {INTRO_S16, 0, {}, 0, 0, "int16_t"},
-    {INTRO_S32, 0, {}, 0, 0, "int32_t"},
-    {INTRO_S64, 0, {}, 0, 0, "int64_t"},
-    {INTRO_F32, 0, {}, 0, 0, "float"},
-    {INTRO_F64, 0, {}, 0, 0, "double"},
-    {INTRO_U8, 0, {}, 0, 0, "bool"},
-    {INTRO_VA_LIST, 0, {}, 0, 0, "va_list"},
+    {{}, 0, "void",     0, 0, 0, 0, 0, INTRO_UNKNOWN},
+    {{}, 0, "uint8_t",  0, 0, 1, 0, 1, INTRO_U8},
+    {{}, 0, "uint16_t", 0, 0, 2, 0, 2, INTRO_U16},
+    {{}, 0, "uint32_t", 0, 0, 4, 0, 4, INTRO_U32},
+    {{}, 0, "uint64_t", 0, 0, 8, 0, 8, INTRO_U64},
+    {{}, 0, "int8_t",   0, 0, 1, 0, 1, INTRO_S8},
+    {{}, 0, "int16_t",  0, 0, 2, 0, 2, INTRO_S16},
+    {{}, 0, "int32_t",  0, 0, 4, 0, 4, INTRO_S32},
+    {{}, 0, "int64_t",  0, 0, 8, 0, 8, INTRO_S64},
+    {{}, 0, "float",    0, 0, 4, 0, 4, INTRO_F32},
+    {{}, 0, "double",   0, 0, 8, 0, 8, INTRO_F64},
+    {{}, 0, "bool",     0, 0, 1, 0, 1, INTRO_U8},
+    {{}, 0, "va_list",  0, 0, 0, 0, 0, INTRO_VA_LIST},
+    {{}, 0, "__builtin_va_list", 0, 0, 0, 0, 0, INTRO_VA_LIST},
 };
 
 typedef struct {
@@ -47,7 +48,7 @@ typedef struct {
 
 typedef struct {
     IntroType * type;
-    char * location;
+    int32_t location;
     int32_t member_index;
     uint32_t count;
     AttributeData * attr_data;
@@ -75,15 +76,19 @@ typedef struct {
     uint32_t value;
 } DeferredDefault;
 
+typedef struct {
+    IntroType * type;
+    int32_t index;
+} ContainerMapValue;
+
 struct ParseContext {
-    char * buffer;
+    Token * tk_list;
     MemArena * arena;
     NameSet * ignore_typedefs;
-    struct{char * key; IntroType * value;} * type_map;
-    struct{IntroType key; IntroType * value;} * type_set;
+    struct {char    * key; IntroType * value;} * type_map;
+    struct {IntroType key; IntroType * value;} * type_set;
     NameSet * keyword_set;
     NameSet * enum_name_set;
-    NestInfo * nest_map;
 
     uint8_t * value_buffer;
     PtrStore * ptr_stores;
@@ -93,34 +98,35 @@ struct ParseContext {
     ExprContext * expr_ctx;
     LocationContext loc;
 
-    struct {size_t key; IntroTypePtrList * value;} * arg_list_by_hash;
-    struct {char * key; IntroFunction * value;} * function_map;
-    struct {IntroType * key; IntroType ** value;} * incomplete_typedefs;
+    struct {char * key; IntroFunction * value;}    * function_map;
+    struct {char * key; AttributeParseInfo value;} * attribute_map;
+    struct {char * key; int value;}                * attribute_token_map;
+    struct {char * key; int value;}                * builtin_map;
 
-    struct{ char * key; AttributeParseInfo value; } * attribute_map;
-    struct{ char * key; int value; } * attribute_token_map;
-    struct{ char * key; int value; } * builtin_map;
+    struct {size_t      key; IntroType **      value;} * arg_list_by_hash;
+    struct {IntroType * key; IntroType **      value;} * incomplete_typedefs;
+    struct {void *      key; IntroLocation     value;} * location_map;
+    struct {IntroType * key; ContainerMapValue value;} * container_map;
+
     AttributeData * attribute_globals;
     AttributeDirective * attribute_directives;
     AttributeDataMap * attribute_data_map;
     IntroBuiltinAttributeIds builtin;
-    char ** string_set;
     uint32_t attribute_id_counter;
-    uint32_t attribute_flag_id_counter;
-    IntroInfo * p_info;
+    ParseInfo * p_info;
 };
 
 static void
-parse_error(ParseContext * ctx, Token * tk, char * message) {
-    parse_msg_internal(&ctx->loc, ctx->buffer, tk, message, 0);
+parse_error(ParseContext * ctx, Token tk, char * message) {
+    parse_msg_internal(&ctx->loc, tk.index, message, 0);
 }
 
 static void UNUSED
-parse_warning(ParseContext * ctx, Token * tk, char * message) {
-    parse_msg_internal(&ctx->loc, ctx->buffer, tk, message, 1);
+parse_warning(ParseContext * ctx, Token tk, char * message) {
+    parse_msg_internal(&ctx->loc, tk.index, message, 1);
 }
 
-static intmax_t parse_constant_expression(ParseContext * ctx, char ** o_s);
+static intmax_t parse_constant_expression(ParseContext * ctx, TokenIndex * tidx);
 
 #include "attribute.c"
 
@@ -133,19 +139,18 @@ register_enum_name(ParseContext * ctx, Token tk) {
         index = shtemp(ctx->enum_name_set);
         return ctx->enum_name_set[index].key;
     } else {
-        parse_error(ctx, &tk, "Enum name is reserved.");
+        parse_error(ctx, tk, "Enum name is reserved.");
         exit(1);
     }
 }
 
 static bool
 funcs_are_equal(const IntroType * a, const IntroType * b) {
-    if (intro_origin(a->of) != intro_origin(b->of)) return false;
-    if (a->args->count != b->args->count) return false;
-    for (int i=0; i < a->args->count; i++) {
-        const IntroType * a_arg = intro_origin(a->args->types[i]);
-        const IntroType * b_arg = intro_origin(b->args->types[i]);
-        while (a_arg->of) {
+    if (a->count != b->count) return false;
+    for (int i=0; i < a->count; i++) {
+        const IntroType * a_arg = intro_origin(a->arg_types[i]);
+        const IntroType * b_arg = intro_origin(b->arg_types[i]);
+        while (intro_has_of(a_arg)) {
             if (a_arg->category == b_arg->category) {
                 a_arg = a_arg->of;
                 b_arg = b_arg->of;
@@ -162,47 +167,41 @@ funcs_are_equal(const IntroType * a, const IntroType * b) {
     return true;
 }
 
-static IntroTypePtrList *
+static IntroType **
 store_arg_type_list(ParseContext * ctx, IntroType ** list) {
     static const size_t hash_seed = 0xF58D6349C6431963; // this is just some random number
 
     size_t count_bytes = arrlen(list) * sizeof(list[0]);
     size_t hash = (count_bytes > 0)? stbds_hash_bytes(list, count_bytes, hash_seed) : 0;
-    IntroTypePtrList * stored = hmget(ctx->arg_list_by_hash, hash);
+    IntroType ** stored = hmget(ctx->arg_list_by_hash, hash);
     if (stored) {
         // TODO: actually handle this somehow instead of aborting
         if (count_bytes > 0) {
-            assert(0 == memcmp(stored->types, list, count_bytes));
+            assert(0 == memcmp(stored, list, count_bytes));
         }
+        arrfree(list);
     } else {
-        stored = arena_alloc(ctx->arena, sizeof(*stored) + count_bytes);
-        stored->count = arrlen(list);
-        if (count_bytes > 0) {
-            memcpy(stored->types, list, count_bytes);
-        }
-        hmput(ctx->arg_list_by_hash, hash, stored);
+        hmput(ctx->arg_list_by_hash, hash, list);
+        stored = list;
     }
 
     return stored;
 }
 
 static IntroType *
-store_type(ParseContext * ctx, IntroType type, char * pos) {
+store_type(ParseContext * ctx, IntroType type, int32_t tk_index) {
     IntroType * stored = NULL;
     bool replaced = false;
 
-    if (pos) {
-        IntroLocation loc = {0};
-        char * start_of_line;
-        FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
-        if (file->gen) {
+    IntroLocation loc = {0};
+    if (tk_index >= 0) {
+        NoticeState notice;
+        FileInfo * file = get_location_info(&ctx->loc, tk_index, &notice);
+        if ((notice & NOTICE_ENABLED)) {
             type.flags |= INTRO_EXPLICITLY_GENERATED;
         }
         loc.path = file->filename;
-        loc.column = pos - start_of_line;
-        db_assert(loc.line >= 0);
-        db_assert(loc.column >= 0);
-        type.location = loc;
+        loc.offset = ctx->tk_list[tk_index].start - file->buffer;
     }
 
     if (type.name) {
@@ -237,46 +236,56 @@ store_type(ParseContext * ctx, IntroType type, char * pos) {
         if (typedef_deps) {
             for (int i=0; i < stbds_header(typedef_deps)->length; i++) {
                 IntroType * t = typedef_deps[i];
-                t->category = type.category;
-                t->i_struct = type.i_struct; // covers i_enum
+                const char * temp_name = t->name;
+                *t = type;
+                t->name = temp_name;
             }
             arrfree(typedef_deps);
             (void) hmdel(ctx->incomplete_typedefs, stored);
         }
     }
 
+    if (loc.path != NULL) {
+        hmput(ctx->location_map, stored, loc);
+    }
+
     return stored;
 }
 
 bool
-maybe_expect_attribute(ParseContext * ctx, char ** o_s, int32_t member_index, Token * o_tk) {
+maybe_expect_attribute(ParseContext * ctx, TokenIndex * tidx, int32_t member_index, Token * o_tk) {
     bool had_application = false;
     while (o_tk->type == TK_IDENTIFIER && tk_equal(o_tk, "I")) {
-        Token paren = next_token(o_s);
+        int32_t paren_index = tidx->index;
+        Token paren = next_token(tidx);
         if (paren.type != TK_L_PARENTHESIS) {
-            parse_error(ctx, &paren, "Expected '('.");
+            parse_error(ctx, paren, "Expected '('.");
             exit(1);
         }
 
-        *o_tk = next_token(o_s);
+        *o_tk = next_token(tidx);
         if (tk_equal(o_tk, "attribute") || tk_equal(o_tk, "apply_to")) {
-            *o_s = paren.start;
-            parse_global_directive(ctx, o_s);
-            *o_tk = next_token(o_s);
+            tidx->index = paren_index;
+
+            g_metrics.parse_time += nanointerval();
+            parse_global_directive(ctx, tidx);
+            g_metrics.attribute_time += nanointerval();
+
+            *o_tk = next_token(tidx);
         } else {
             AttributeDirective directive = {
                 .type = NULL,
-                .location = paren.start,
+                .location = paren_index,
                 .member_index = member_index,
             };
             arrput(ctx->attribute_directives, directive);
-            char * closing = find_closing(paren.start);
-            if (!closing) {
-                parse_error(ctx, &paren, "Missing closing ')'.");
+            int32_t closing = find_closing((TokenIndex){.list = tidx->list, .index = paren_index});
+            if (closing == 0) {
+                parse_error(ctx, paren, "Missing closing ')'.");
                 exit(1);
             }
-            *o_s = closing + 1;
-            *o_tk = next_token(o_s);
+            tidx->index = closing;
+            *o_tk = next_token(tidx);
 
             had_application = true;
         }
@@ -307,48 +316,23 @@ is_ignored(int keyword) {
 }
 
 static intmax_t
-parse_constant_expression(ParseContext * ctx, char ** o_s) {
-    Token * tks = NULL;
-    Token tk;
-    int depth = 0;
-    while (1) {
-        tk = next_token(o_s);
-        if (tk.type == TK_END) {
-            parse_error(ctx, &tk, "End reached unexpectedly.");
-            exit(1);
-        }
-        if (tk.type == TK_L_PARENTHESIS) {
-            depth += 1;
-        } else if (tk.type == TK_R_PARENTHESIS) {
-            depth -= 1;
-            if (depth < 0) {
-                *o_s = tk.start;
-                break;
-            }
-        } else if (tk.type == TK_COMMA || tk.type == TK_R_BRACE || tk.type == TK_SEMICOLON || tk.type == TK_R_BRACKET) {
-            *o_s = tk.start;
-            break;
-        }
-        arrput(tks, tk);
-    }
-    ExprNode * tree = build_expression_tree(ctx->expr_ctx, tks, arrlen(tks), &tk);
-    arrfree(tks);
+parse_constant_expression(ParseContext * ctx, TokenIndex * tidx) {
+    ExprNode * tree = build_expression_tree2(ctx->expr_ctx, tidx);
     if (!tree) {
-        parse_error(ctx, &tk, "Unknown value in expression.");
         exit(1);
     }
-    ExprProcedure * expr = build_expression_procedure(tree);
-    intmax_t result = run_expression(expr);
+    uint8_t * bytecode = build_expression_procedure2(ctx->expr_ctx, tree, NULL);
+    intmax_t result = intro_run_bytecode(bytecode, NULL).si;
 
-    free(expr);
+    arrfree(bytecode);
     reset_arena(ctx->expr_ctx->arena);
 
     return result;
 }
 
 static int
-parse_struct(ParseContext * ctx, char ** o_s) {
-    Token tk = next_token(o_s), name_tk = {0};
+parse_struct(ParseContext * ctx, TokenIndex * tidx) {
+    Token tk = next_token(tidx), name_tk = {0};
 
     bool is_union;
     if (tk_equal(&tk, "struct")) {
@@ -358,13 +342,13 @@ parse_struct(ParseContext * ctx, char ** o_s) {
     } else {
         return -1;
     }
-    char * position = tk.start;
+    Token pos_tk = tk;
 
     char * complex_type_name = NULL;
-    tk = next_token(o_s);
+    tk = next_token(tidx);
     if (tk.type == TK_IDENTIFIER) {
         name_tk = tk;
-        tk = next_token(o_s);
+        tk = next_token(tidx);
 
         strputf(&complex_type_name, "%s %.*s",
                 (is_union)? "union" : "struct", name_tk.length, name_tk.start);
@@ -373,7 +357,7 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         if (!stored) {
             IntroType temp_type = {0};
             temp_type.name = complex_type_name;
-            store_type(ctx, temp_type, NULL);
+            store_type(ctx, temp_type, -1);
         }
     }
 
@@ -382,97 +366,77 @@ parse_struct(ParseContext * ctx, char ** o_s) {
             arrfree(complex_type_name);
             return RET_NOT_DEFINITION;
         }
-        parse_error(ctx, &tk, "Expected '{'.");
+        parse_error(ctx, tk, "Expected '{'.");
         return -1;
     }
 
     int start_attribute_directives = arrlen(ctx->attribute_directives);
     IntroMember * members = NULL;
-    NestInfo * nests = NULL;
     DeclState decl = {
         .state = DECL_MEMBERS,
     };
+    uint32_t total_size = 0, total_align = 1;
     while (1) {
         decl.member_index = arrlen(members);
-        int ret = parse_declaration(ctx, o_s, &decl);
+        int ret = parse_declaration(ctx, tidx, &decl);
         if (ret != RET_DECL_CONTINUE) {
             if (ret == RET_DECL_FINISHED) {
                 break;
             }
             if (ret >= 0 && decl.base_tk.start) {
-                parse_error(ctx, &decl.base_tk, "Invalid.");
+                parse_error(ctx, decl.base_tk, "Invalid.");
             }
             return -1;
         }
         if (decl.type->category == INTRO_UNKNOWN) {
-            parse_error(ctx, &decl.base_tk, "Unknown type.");
+            parse_error(ctx, decl.base_tk, "Unknown type.");
             return -1;
         }
 
         IntroMember member = {0};
-        if (!decl.name_tk.start) {
-            if (decl.type->category == INTRO_STRUCT || decl.type->category == INTRO_UNION) {
-                IntroStruct * s = decl.base->i_struct;
-                int member_index_offset = arrlen(members);
-                for (int i=0; i < s->count_members; i++) {
-                    arrput(members, s->members[i]);
-                }
-                for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
-                    AttributeDirective * p_directive = &ctx->attribute_directives[i];
-                    if (p_directive->type == decl.base) {
-                        p_directive->type = NULL;
-                        p_directive->member_index += member_index_offset; 
-                    }
-                }
-                continue;
-            } else {
-                parse_error(ctx, &tk, "Struct member has no name, or type is unknown.");
-                return -1;
-            }
-        }
-
-        member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
         member.type = decl.type;
         //member.bitfield = decl.bitfield; // TODO
 
-        if (decl.base->name == NULL) {
-            NestInfo info = {0};
-            info.key = decl.base;
-            info.member_index_in_container = arrlen(members);
-            IntroType * tt = decl.type;
-            while ((tt->category == INTRO_POINTER || tt->category == INTRO_ARRAY)) {
-                tt = tt->of;
-                info.indirection_level++;
+        assert(member.type->align != 0);
+        if (total_align < member.type->align) {
+            total_align = member.type->align;
+        }
+        if (!is_union) {
+            total_size += (member.type->align - (total_size % member.type->align)) % member.type->align;
+            member.offset = total_size;
+            total_size += member.type->size;
+        } else {
+            if (total_size < member.type->size) {
+                total_size = member.type->size;
             }
-            arrput(nests, info);
+            member.offset = 0;
+        }
+
+        if (decl.name_tk.start) {
+            member.name = copy_and_terminate(ctx->arena, decl.name_tk.start, decl.name_tk.length);
+        } else {
+            member.name = NULL;
         }
 
         arrput(members, member);
     }
 
-    IntroStruct * result = arena_alloc(ctx->arena, sizeof(IntroStruct) + sizeof(IntroMember) * arrlen(members));
-    result->count_members = arrlen(members);
-    result->is_union = is_union;
-    memcpy(result->members, members, sizeof(IntroMember) * arrlen(members));
-    arrfree(members);
+    total_size += (total_align - (total_size % total_align)) % total_align;
 
     IntroType * stored;
-    {
-        IntroType type = {0};
-        type.name = complex_type_name;
-        type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
-        type.i_struct = result;
-        
-        stored = store_type(ctx, type, position);
-        arrfree(complex_type_name);
+    IntroType type = {0};
+    type.members = arena_alloc(ctx->arena, sizeof(members[0]) * arrlen(members));
+    type.count = arrlen(members);
+    memcpy(type.members, members, sizeof(members[0]) * arrlen(members));
+    arrfree(members);
 
-        for (int i=0; i < arrlen(nests); i++) {
-            NestInfo info = nests[i];
-            info.container_type = stored;
-            hmputs(ctx->nest_map, info);
-        }
-        arrfree(nests);
-    }
+    type.name = complex_type_name;
+    type.category = (is_union)? INTRO_UNION : INTRO_STRUCT;
+    type.size = total_size;
+    type.align = total_align;
+    
+    stored = store_type(ctx, type, pos_tk.index);
+    arrfree(complex_type_name);
 
     if (arrlen(ctx->attribute_directives) > start_attribute_directives) {
         for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
@@ -483,18 +447,25 @@ parse_struct(ParseContext * ctx, char ** o_s) {
         }
     }
 
+    for (int i=0; i < stored->count; i++) {
+        IntroType * m_type = stored->members[i].type;
+        if (intro_has_members(m_type) && !m_type->name) {
+            ContainerMapValue v = {.type = stored, .index = i};
+            hmput(ctx->container_map, m_type, v);
+            m_type->flags |= INTRO_EMBEDDED_DEFINITION;
+        }
+    }
+
     return 0;
 }
 
 static int
-parse_enum(ParseContext * ctx, char ** o_s) {
-    IntroEnum enum_ = {0};
-
-    char * position = *o_s;
+parse_enum(ParseContext * ctx, TokenIndex * tidx) {
+    int32_t pos_index = tidx->index;
     char * complex_type_name = NULL;
-    Token tk = next_token(o_s), name_tk = {0};
+    Token tk = next_token(tidx), name_tk = {0};
     if (tk.type == TK_IDENTIFIER) {
-        Token next = next_token(o_s);
+        Token next = next_token(tidx);
         if (next.type != TK_L_PARENTHESIS) {
             name_tk = tk;
             strputf(&complex_type_name, "enum %.*s", name_tk.length, name_tk.start);
@@ -502,47 +473,48 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             if (shgeti(ctx->type_map, complex_type_name) < 0) {
                 IntroType temp_type = {0};
                 temp_type.name = complex_type_name;
-                store_type(ctx, temp_type, NULL);
+                store_type(ctx, temp_type, -1);
             }
             tk = next;
         } else {
-            *o_s = next.start;
+            tidx->index--;
         }
     }
 
     if (tk.type != TK_L_BRACE) {
         if (tk.type == TK_IDENTIFIER || tk.type == TK_STAR || tk.type == TK_SEMICOLON) return RET_NOT_DEFINITION;
-        parse_error(ctx, &tk, "Expected '{'.");
+        parse_error(ctx, tk, "Expected '{'.");
         return -1;
     }
 
-    enum_.is_flags = true;
-    enum_.is_sequential = true;
-    IntroEnumValue * members = NULL;
+    bool is_flags = true;
+    bool is_sequential = true;
+    IntroEnumValue * values = NULL;
+    arrsetcap(values, 8);
     int next_int = 0;
     int mask = 0;
     while (1) {
         IntroEnumValue v = {0};
-        Token name = next_token(o_s);
+        Token name = next_token(tidx);
         if (name.type == TK_R_BRACE) {
             break;
         }
         if (name.type != TK_IDENTIFIER) {
-            parse_error(ctx, &name, "Expected identifier.");
+            parse_error(ctx, name, "Expected identifier.");
             return -1;
         }
 
         v.name = register_enum_name(ctx, name);
 
-        tk = next_token(o_s);
+        tk = next_token(tidx);
         bool set = false;
         bool is_last = false;
         if (tk.type == TK_COMMA) {
             v.value = next_int++;
         } else if (tk.type == TK_EQUAL) {
-            v.value = (int)parse_constant_expression(ctx, o_s);
+            v.value = (int)parse_constant_expression(ctx, tidx);
             if (v.value != next_int) {
-                enum_.is_sequential = false;
+                is_sequential = false;
             }
             next_int = (v.value < INT32_MAX)? v.value + 1 : 0;
             set = true;
@@ -550,51 +522,52 @@ parse_enum(ParseContext * ctx, char ** o_s) {
             v.value = next_int;
             is_last = true;
         } else {
-            parse_error(ctx, &tk, "Unexpected symbol.");
+            parse_error(ctx, tk, "Unexpected symbol.");
             return -1;
         }
 
-        if (mask & v.value) enum_.is_flags = false;
+        if (mask & v.value) is_flags = false;
         mask |= v.value;
 
-        arrput(members, v);
+        arrput(values, v);
         shput(ctx->expr_ctx->constant_map, v.name, (intmax_t)v.value);
 
         if (is_last) break;
 
         if (set) {
-            tk = next_token(o_s);
+            tk = next_token(tidx);
             if (tk.type == TK_COMMA) {
             } else if (tk.type == TK_R_BRACE) {
                 break;
             } else {
-                parse_error(ctx, &tk, "Unexpected symbol.");
+                parse_error(ctx, tk, "Unexpected symbol.");
                 return -1;
             }
         }
     }
-    enum_.count_members = arrlen(members);
 
-    IntroEnum * result = arena_alloc(ctx->arena, sizeof(IntroEnum) + sizeof(*members) * arrlen(members));
-    memcpy(result, &enum_, sizeof(IntroEnum));
-    memcpy(result->members, members, sizeof(*members) * arrlen(members));
-    arrfree(members);
+    IntroType type = {0};
+    type.count = arrlen(values);
+    type.values = arena_alloc(ctx->arena, sizeof(values[0]) * arrlen(values));
+    memcpy(type.values, values, sizeof(values[0]) * arrlen(values));
+    arrfree(values);
 
-    {
-        IntroType type = {0};
-        type.name = complex_type_name;
-        type.category = INTRO_ENUM;
-        type.i_enum = result;
+    if (is_flags) type.flags |= INTRO_IS_FLAGS;
+    if (is_sequential) type.flags |= INTRO_IS_SEQUENTIAL;
 
-        store_type(ctx, type, position);
-        arrfree(complex_type_name);
-    }
+    type.name = complex_type_name;
+    type.category = INTRO_ENUM;
+    type.size = 4; // TODO: this could be other things in C++
+    type.align = type.size;
+
+    store_type(ctx, type, pos_index);
+    arrfree(complex_type_name);
 
     return 0;
 }
 
 int
-parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
+parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     IntroType type = {0};
     char * type_name = NULL;
     bool is_typedef = false;
@@ -602,7 +575,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
 
     Token first;
     while (1) {
-        first = next_token(o_s);
+        first = next_token(tidx);
         if (first.type == TK_IDENTIFIER) {
             first_keyword = get_keyword(ctx, first);
             if (!is_ignored(first_keyword)) {
@@ -618,12 +591,13 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             break;
         }
     }
+    int32_t first_index = tidx->index - 1;
     if (first.type != TK_IDENTIFIER) {
         if (decl->state == DECL_ARGS && first.type == TK_PERIOD) {
             for (int i=0; i < 2; i++) {
-                Token next = next_token(o_s);
+                Token next = next_token(tidx);
                 if (next.type != TK_PERIOD) {
-                    parse_error(ctx, &first, "Invalid symbol in parameter list.");
+                    parse_error(ctx, first, "Invalid symbol in parameter list.");
                     return -1;
                 }
             }
@@ -636,7 +610,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             decl->base_tk.length = 3;
             return RET_DECL_VA_LIST;
         }
-        *o_s = first.start;
+        tidx->index = first_index;
         return RET_NOT_TYPE;
     }
     decl->base_tk = first;
@@ -645,17 +619,17 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     if (first_keyword == KEYW_STRUCT
       ||first_keyword == KEYW_UNION
       ||first_keyword == KEYW_ENUM) {
-        char * after_keyword = *o_s;
+        int32_t after_keyword = tidx->index;
         int error;
         if (first_keyword == KEYW_STRUCT || first_keyword == KEYW_UNION) {
-            *o_s = first.start;
-            error = parse_struct(ctx, o_s);
+            tidx->index = first_index;
+            error = parse_struct(ctx, tidx);
         } else {
-            error = parse_enum(ctx, o_s);
+            error = parse_enum(ctx, tidx);
         }
         if (error == RET_NOT_DEFINITION) {
-            *o_s = after_keyword;
-            Token tk = next_token(o_s);
+            tidx->index = after_keyword;
+            Token tk = next_token(tidx);
             strputf(&type_name, " %.*s", tk.length, tk.start);
 
             decl->base_tk.length = tk.start - first.start + tk.length;
@@ -671,7 +645,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     } else {
 #define CHECK_INT(x) \
     if (x) { \
-        parse_error(ctx, &tk, "Invalid."); \
+        parse_error(ctx, tk, "Invalid."); \
         return -1; \
     }
         Token tk = first, ltk = first;
@@ -692,17 +666,20 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
 
             case KEYW_LONG: {
                 CHECK_INT((type.category & 0x0f));
-                Token tk2 = next_token(o_s);
+                int32_t tk2_index = tidx->index;
+                Token tk2 = next_token(tidx);
                 if (tk_equal(&tk2, "long")) {
                     strputf(&type_name, " long");
                     tk = tk2;
                 } else if (tk_equal(&tk2, "double")) {
                     type.category = INTRO_F128;
+                    type.size = 16;
+                    type.align = 16;
                     tk = tk2;
                     strputf(&type_name, " %.*s", tk.length, tk.start);
                     break;
                 } else {
-                    *o_s = tk2.start;
+                    tidx->index = tk2_index;
                 }
                 type.category |= 0x08;
             }break;
@@ -737,7 +714,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             }break;
 
             default: {
-                if (add_to_name) *o_s = tk.start;
+                if (add_to_name) tidx->index--;
                 tk = ltk;
                 break_loop = true;
                 add_to_name = false;
@@ -746,7 +723,7 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             if (add_to_name) strputf(&type_name, " %.*s", tk.length, tk.start);
             if (break_loop) break;
             ltk = tk;
-            tk = next_token(o_s);
+            tk = next_token(tidx);
         }
 #undef CHECK_INT
 
@@ -769,7 +746,11 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
             case INTRO_S64: parent_index = 8; break;
             default: break;
             }
-            type.parent = ctx->type_set[parent_index].value;
+            if (parent_index) {
+                type.parent = ctx->type_set[parent_index].value;
+                type.size  = type.parent->size;
+                type.align = type.parent->align;
+            }
         }
 
         decl->base_tk.length = tk.start - first.start + tk.length;
@@ -784,37 +765,41 @@ parse_type_base(ParseContext * ctx, char ** o_s, DeclState * decl) {
     } else {
         if (type.category || is_typedef) {
             type.name = type_name;
-            IntroType * stored = store_type(ctx, type, NULL);
+            IntroType * stored = store_type(ctx, type, -1);
             arrfree(type_name);
             decl->base = stored;
         } else {
-            parse_error(ctx, &decl->base_tk, "Undeclared type.");
-            return -1;
+            if (decl->state == DECL_CAST) {
+                return RET_NOT_TYPE;
+            } else {
+                parse_error(ctx, decl->base_tk, "Undeclared type.");
+                return -1;
+            }
         }
     }
     return 0;
 }
 
-static IntroType ** parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_decl);
+static IntroType ** parse_function_arguments(ParseContext * ctx, TokenIndex * tidx, DeclState * parent_decl);
 
 static int
-parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
+parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     int32_t * indirection = NULL;
     int32_t * temp = NULL;
     IntroType *** func_args_stack = NULL;
-    char * paren;
+    int32_t paren;
 
     const int32_t POINTER = -1;
     const int32_t FUNCTION = -2;
     Token tk;
-    char * end = *o_s;
+    int32_t end = tidx->index;
     memset(&decl->name_tk, 0, sizeof(decl->name_tk));
     do {
-        paren = NULL;
+        paren = -1;
 
         int pointer_level = 0;
         while (1) {
-            tk = next_token(o_s);
+            tk = next_token(tidx);
             if (tk.type == TK_STAR) {
                 pointer_level += 1;
             } else if (is_ignored(get_keyword(ctx, tk))) {
@@ -825,43 +810,52 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
         }
 
         if (tk.type == TK_L_PARENTHESIS) {
-            paren = tk.start + 1;
-            *o_s = find_closing(tk.start) + 1;
-            tk = next_token(o_s);
+            paren = tidx->index;
+            tidx->index = find_closing((TokenIndex){.list = tidx->list, .index = tidx->index - 1});
+            if (tidx->index == 0) {
+                parse_error(ctx, tk, "No closing ')'.");
+                return -1;
+            }
+            tk = next_token(tidx);
         }
 
         if (tk.type == TK_IDENTIFIER) {
             decl->name_tk = tk;
-            tk = next_token(o_s);
+            tk = next_token(tidx);
         }
 
         arrsetlen(temp, 0);
         if (tk.type == TK_L_PARENTHESIS) {
-            IntroType ** arg_types = parse_function_arguments(ctx, o_s, decl);
+            IntroType ** arg_types = parse_function_arguments(ctx, tidx, decl);
             arrpush(func_args_stack, arg_types);
             arrput(temp, FUNCTION);
             decl->func_specifies_args = true;
-            tk = next_token(o_s);
+            tk = next_token(tidx);
         }
 
         while (tk.type == TK_L_BRACKET) {
-            char * closing_bracket = find_closing(tk.start);
+            TokenIndex tempidx = {.list = tidx->list, .index = tidx->index - 1};
+            int32_t closing_bracket = find_closing(tempidx) - 1;
+            if (closing_bracket == 0) {
+                parse_error(ctx, tk, "No closing ')'.");
+                return -1;
+            }
             int32_t num;
-            if (closing_bracket == tk.start + 1) {
+            if (closing_bracket == tidx->index) {
                 num = 0;
             } else {
-                num = (int32_t)parse_constant_expression(ctx, o_s);
+                num = (int32_t)parse_constant_expression(ctx, tidx);
                 if (num < 0) {
-                    parse_error(ctx, &tk, "Invalid array size.");
+                    parse_error(ctx, tk, "Invalid array size.");
                     return -1;
                 }
             }
             arrput(temp, num);
-            *o_s = closing_bracket + 1;
-            tk = next_token(o_s);
+            tidx->index = closing_bracket + 1;
+            tk = next_token(tidx);
         }
 
-        if (tk.start > end) end = tk.start;
+        if (tidx->index > end) end = tidx->index;
 
         for (int i=0; i < pointer_level; i++) {
             arrput(indirection, POINTER);
@@ -869,7 +863,7 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
         for (int i = arrlen(temp) - 1; i >= 0; i--) {
             arrput(indirection, temp[i]);
         }
-    } while ((*o_s = paren) != NULL);
+    } while ((tidx->index = paren) != -1);
     arrfree(temp);
 
     IntroType * last_type = decl->base;
@@ -880,69 +874,109 @@ parse_type_annex(ParseContext * ctx, char ** o_s, DeclState * decl) {
         if (it == POINTER) {
             new_type.category = INTRO_POINTER;
             new_type.of = last_type;
+            new_type.size = 8; // TODO: base on architecture
+            new_type.align = 8;
         } else if (it == FUNCTION) {
             IntroType ** arg_types = arrpop(func_args_stack);
-            IntroTypePtrList * stored_args = store_arg_type_list(ctx, arg_types);
-            arrfree(arg_types);
+            if (last_type == NULL) last_type = ctx->type_set[0].value;
+            arrins(arg_types, 0, last_type); // first type is return, rest are args
+            IntroType ** stored_args = store_arg_type_list(ctx, arg_types);
 
-            new_type.of = (IntroType *)intro_origin(last_type); // return type
             new_type.category = INTRO_FUNCTION;
-            new_type.args = stored_args;
+            new_type.arg_types = stored_args;
+            new_type.count = arrlen(stored_args);
         } else {
             new_type.category = INTRO_ARRAY;
             new_type.of = last_type;
-            new_type.array_size = it;
+            new_type.count = it;
+            new_type.size = last_type->size * new_type.count;
+            new_type.align = last_type->align;
         }
-        last_type = store_type(ctx, new_type, NULL);
+        last_type = store_type(ctx, new_type, -1);
     }
     arrfree(indirection);
     arrfree(func_args_stack);
 
-    *o_s = end;
+    tidx->index = end - 1;
     decl->type = last_type;
     return 0;
 }
 
 static int
-parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
+handle_static_assert(ParseContext * ctx, TokenIndex * tidx) {
+    Token tk;
+    int assert_keyword_index = tidx->index - 1;
+    EXPECT('(');
+    bool ok = !!parse_constant_expression(ctx, tidx);
+
+    EXPECT(',');
+    tk = next_token(tidx);
+    if (tk.type != TK_STRING) {
+        parse_error(ctx, tk, "Expected string.");
+        return -1;
+    }
+
+    if (!ok) {
+        char * msg = NULL;
+        strputf(&msg, "Assertion failed: %.*s\n", tk.length, tk.start);
+        parse_error(ctx, tidx->list[assert_keyword_index], msg);
+        arrfree(msg);
+        return -1;
+    }
+
+    EXPECT(')');
+
+    return 0;
+}
+
+static int
+parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     IntroFunction * func = NULL;
+    IntroType * typedef_type = NULL;
     int ret = 0;
     bool attribute_at_start = false;
 
     if (decl->state != DECL_MEMBERS) {
         decl->member_index = MIDX_TYPE;
     }
-    Token tk = next_token(o_s);
-    attribute_at_start = maybe_expect_attribute(ctx, o_s, decl->member_index, &tk);
-    *o_s = tk.start;
+    Token tk = next_token(tidx);
 
-    if (!decl->reuse_base) ret = parse_type_base(ctx, o_s, decl);
+    if (tk_equal(&tk, "_Static_assert")) {
+        ret = handle_static_assert(ctx, tidx);
+        if (ret < 0) return -1;
+        goto find_end;
+    }
+
+    attribute_at_start = maybe_expect_attribute(ctx, tidx, decl->member_index, &tk);
+
+    tidx->index--;
+    if (!decl->reuse_base) ret = parse_type_base(ctx, tidx, decl);
     if (ret < 0 || ret == RET_FOUND_END) return ret;
     if (ret == RET_NOT_TYPE) {
-        Token tk = next_token(o_s);
-        if ((tk.type == TK_R_PARENTHESIS)
-         || (tk.type == TK_SEMICOLON)
-         || (tk.type == TK_R_BRACE)) {
-            return RET_DECL_FINISHED;
-        } else if (decl->state == DECL_CAST) {
+        tk = next_token(tidx);
+        bool finished = (tk.type == TK_R_PARENTHESIS)
+                     || (tk.type == TK_SEMICOLON)
+                     || (tk.type == TK_R_BRACE);
+        if (decl->state == DECL_CAST) {
             return RET_NOT_TYPE;
+        } else if (finished) {
+            return RET_DECL_FINISHED;
         } else {
-            parse_error(ctx, &tk, "Invalid type.");
+            parse_error(ctx, tk, "Invalid type.");
             return -1;
         }
     } else if (ret == RET_DECL_VA_LIST) {
-        Token tk = next_token(o_s);
+        tk = next_token(tidx);
         if (tk.type != TK_R_PARENTHESIS) {
-            parse_error(ctx, &tk, "Expected ')' after va_list.");
+            parse_error(ctx, tk, "Expected ')' after va_list.");
             return -1;
         }
         return RET_DECL_FINISHED;
     }
 
-    ret = parse_type_annex(ctx, o_s, decl);
+    ret = parse_type_annex(ctx, tidx, decl);
     if (ret < 0) return -1;
 
-    IntroType * typedef_type = NULL;
     if (decl->state == DECL_TYPEDEF) {
         char * name;
         if (decl->name_tk.start) {
@@ -963,9 +997,10 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
                                   && og_prev->of == og_this->of
                                   && og_prev->__data == og_this->__data;
             if (!effectively_equal) {
-                parse_error(ctx, &decl->name_tk, "Redefinition does not match previous definition.");
-                if (prev->location.path) {
-                    location_note(&ctx->loc, prev->location, "Previous definition here.");
+                parse_error(ctx, decl->name_tk, "Redefinition does not match previous definition.");
+                IntroLocation loc = hmget(ctx->location_map, prev);
+                if (loc.path) {
+                    location_note(&ctx->loc, loc, "Previous definition here.");
                 }
                 return -1;
             }
@@ -973,7 +1008,7 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
             IntroType new_type = *decl->type;
             new_type.name = name;
             new_type.parent = decl->type;
-            IntroType * stored = store_type(ctx, new_type, decl->name_tk.start);
+            IntroType * stored = store_type(ctx, new_type, decl->name_tk.index);
             if (decl->type->category == INTRO_UNKNOWN) {
                 IntroType ** list = hmget(ctx->incomplete_typedefs, decl->type);
                 arrput(list, stored);
@@ -986,43 +1021,46 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
     if (decl->type->category == INTRO_FUNCTION) {
         STACK_TERMINATE(terminated_name, decl->name_tk.start, decl->name_tk.length);
         IntroFunction * prev = shget(ctx->function_map, terminated_name);
-        int32_t count_args = decl->type->args->count;
+        int32_t count_args = decl->type->count;
         if (decl->func_specifies_args) {
             if (prev) {
                 if (!funcs_are_equal(decl->type, prev->type)) {
-                    parse_error(ctx, &decl->name_tk, "Function declaration does not match previous.");
+                    parse_error(ctx, decl->name_tk, "Function declaration does not match previous.");
                     if (prev->location.path) {
                         location_note(&ctx->loc, prev->location, "Previous definition here.");
+                    } else {
+                        fprintf(stderr, "Previous definition has no location information...\n");
                     }
                     return -1;
                 } else {
-                    //if (prev->has_body) {
-                    //    parse_warning(ctx, &decl->name_tk, "Function is redeclared after definition.");
+                    //if ((prev->flags & INTRO_HAS_BODY)) {
+                    //    parse_warning(ctx, decl->name_tk, "Function is redeclared after definition.");
                     //}
                     func = prev;
                 }
             } else {
-                func = calloc(1, sizeof(*func) + count_args * sizeof(func->arg_names[0]));
+                func = arena_alloc(ctx->arena, sizeof(*func));
+                func->arg_names = arena_alloc(ctx->arena, count_args * sizeof(func->arg_names[0]));
+                func->count_args = decl->type->count - 1;
                 func->name = copy_and_terminate(ctx->arena, decl->name_tk.start, decl->name_tk.length);
                 func->type = decl->type;
+                func->return_type = func->type->arg_types[0];
+                func->arg_types = &func->type->arg_types[1];
                 {
                     IntroLocation loc = {0};
-                    char * pos = decl->name_tk.start;
-                    char * start_of_line;
-                    FileInfo * file = get_line(&ctx->loc, ctx->buffer, &pos, &loc.line, &start_of_line);
-                    if (file->gen) {
+                    NoticeState notice;
+                    FileInfo * file = get_location_info(&ctx->loc, decl->name_tk.index, &notice);
+                    if ((notice & NOTICE_ENABLED) && (notice & NOTICE_FUNCTIONS)) {
                         func->flags |= INTRO_EXPLICITLY_GENERATED;
                     }
                     loc.path = file->filename;
-                    loc.column = pos - start_of_line;
-                    assert(loc.line >= 0);
-                    assert(loc.column >= 0);
+                    loc.offset = decl->name_tk.start - file->buffer;
                     func->location = loc;
                 }
                 shput(ctx->function_map, func->name, func);
             }
             if (count_args > 0 && decl->arg_names) {
-                memcpy(func->arg_names, decl->arg_names, count_args * sizeof(func->arg_names[0]));
+                memcpy(func->arg_names, decl->arg_names, (count_args - 1) * sizeof(func->arg_names[0]));
                 arrfree(decl->arg_names);
             }
         } else {
@@ -1033,11 +1071,11 @@ parse_declaration(ParseContext * ctx, char ** o_s, DeclState * decl) {
 find_end: ;
     bool in_expr = false;
     while (1) {
-        Token tk = next_token(o_s);
+        tk = next_token(tidx);
         if (decl->state == DECL_MEMBERS) {
-            maybe_expect_attribute(ctx, o_s, decl->member_index, &tk);
+            maybe_expect_attribute(ctx, tidx, decl->member_index, &tk);
         } else if (typedef_type) {
-            if (maybe_expect_attribute(ctx, o_s, MIDX_TYPE, &tk) || attribute_at_start) {
+            if (maybe_expect_attribute(ctx, tidx, MIDX_TYPE, &tk) || attribute_at_start) {
                 arrlast(ctx->attribute_directives).type = typedef_type;
             }
         }
@@ -1053,13 +1091,13 @@ find_end: ;
         } else if (tk.type == TK_EQUAL) {
             in_expr = true;
         } else if (tk.type == TK_COLON && decl->state == DECL_MEMBERS) {
-            UNUSED intmax_t bitfield = parse_constant_expression(ctx, o_s);
+            UNUSED intmax_t bitfield = parse_constant_expression(ctx, tidx);
             continue;
         } else {
             bool do_find_closing = false;
             bool func_body = false;
             if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {
-                *o_s = tk.start;
+                tidx->index--;
                 return RET_DECL_CONTINUE;
             }
             if (in_expr) {
@@ -1073,48 +1111,46 @@ find_end: ;
                 assert(func != NULL);
                 do_find_closing = true;
                 func_body = true;
-                func->has_body = true;
+                func->flags |= INTRO_HAS_BODY;
             }
             if (do_find_closing) {
-                *o_s = find_closing(tk.start);
-                if (!*o_s) {
+                tidx->index = find_closing((TokenIndex){.list = tidx->list, .index = tidx->index - 1});
+                if (tidx->index == 0) {
                     if (func_body) {
-                        parse_error(ctx, &tk, "No closing '}' for function body.");
+                        parse_error(ctx, tk, "No closing '}' for function body.");
                         if (decl->name_tk.start) {
-                            parse_warning(ctx, &decl->name_tk, "Function name here.");
+                            parse_warning(ctx, decl->name_tk, "Function name here.");
                         }
                     } else {
-                        parse_error(ctx, &tk, "Parenthesis, bracket, or brace is not closed.");
+                        parse_error(ctx, tk, "Parenthesis, bracket, or brace is not closed.");
                     }
                     return -1;
                 }
-                *o_s += 1;
-                tk = next_token(o_s);
+                tk = next_token(tidx);
                 if (tk.type == TK_END) {
                     return RET_FOUND_END;
                 } else if (tk.type == TK_SEMICOLON || tk.type == TK_COMMA) {
                 } else {
-                    *o_s = tk.start;
+                    tidx->index -= 1;
                 }
                 int state = decl->state;
                 memset(decl, 0, sizeof(*decl));
                 decl->state = state;
-                *o_s = tk.start;
                 return RET_DECL_CONTINUE;
             }
-            parse_error(ctx, &tk, "Invalid symbol in declaration. Expected ',' or ';'.");
+            parse_error(ctx, tk, "Invalid symbol in declaration. Expected ',' or ';'.");
             return -1;
         }
     }
 }
 
 static IntroType **
-parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_decl) {
+parse_function_arguments(ParseContext * ctx, TokenIndex * tidx, DeclState * parent_decl) {
     IntroType ** arg_types = NULL;
 
     DeclState decl = {.state = DECL_ARGS};
     while (1) {
-        int ret = parse_declaration(ctx, o_s, &decl);
+        int ret = parse_declaration(ctx, tidx, &decl);
         if (ret == RET_DECL_FINISHED || ret == RET_FOUND_END) {
             break;
         } else if (ret < 0) {
@@ -1137,7 +1173,7 @@ parse_function_arguments(ParseContext * ctx, char ** o_s, DeclState * parent_dec
 }
 
 static void
-add_to_gen_info(ParseContext * ctx, IntroInfo * info, IntroType * type) {
+add_to_gen_info(ParseContext * ctx, ParseInfo * info, IntroType * type) {
     ptrdiff_t map_index = hmgeti(info->index_by_ptr_map, type);
     if (map_index < 0) {
         arrput(info->types, type);
@@ -1146,39 +1182,39 @@ add_to_gen_info(ParseContext * ctx, IntroInfo * info, IntroType * type) {
         if (type->parent) {
             add_to_gen_info(ctx, info, type->parent);
         }
-        if (type->of) {
+        if (intro_has_of(type)) {
             add_to_gen_info(ctx, info, type->of);
         }
         if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
-            for (int mi=0; mi < type->i_struct->count_members; mi++) {
-                const IntroMember * m = &type->i_struct->members[mi];
+            for (int mi=0; mi < type->count; mi++) {
+                const IntroMember * m = &type->members[mi];
                 add_to_gen_info(ctx, info, m->type);
             }
         } else if (type->category == INTRO_FUNCTION) {
-            for (int arg_i=0; arg_i < type->args->count; arg_i++) {
-                add_to_gen_info(ctx, info, type->args->types[arg_i]);
-                arrput(info->arg_lists, type->args);
+            for (int arg_i=0; arg_i < type->size; arg_i++) {
+                add_to_gen_info(ctx, info, type->arg_types[arg_i]);
             }
         }
     }
 }
 
 int
-parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
+parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
     ParseContext * ctx = calloc(1, sizeof(ParseContext));
-    ctx->buffer = pre_info->result_buffer;
+    ctx->tk_list = pre_info->result_list;
     ctx->arena = new_arena((1 << 20)); // 1mb buckets
     ctx->expr_ctx = calloc(1, sizeof(ExprContext));
     ctx->expr_ctx->arena = new_arena(EXPR_BUCKET_CAP);
     ctx->expr_ctx->mode = MODE_PARSE;
     ctx->expr_ctx->ctx = ctx;
     ctx->loc = pre_info->loc;
+    ctx->loc.tk_list = pre_info->result_list;
 
     sh_new_arena(ctx->type_map);
     sh_new_arena(ctx->enum_name_set);
 
     for (int i=0; i < LENGTH(known_types); i++) {
-        store_type(ctx, known_types[i], NULL);
+        store_type(ctx, known_types[i], -1);
         shputs(ctx->ignore_typedefs, (NameSet){known_types[i].name});
     }
 
@@ -1215,9 +1251,9 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
 
     DeclState decl = {.state = DECL_GLOBAL};
 
-    char * s = pre_info->result_buffer;
+    TokenIndex _tidx = {.list = pre_info->result_list, .index = 0}, * tidx = &_tidx;
     while (1) {
-        int ret = parse_declaration(ctx, &s, &decl);
+        int ret = parse_declaration(ctx, tidx, &decl);
 
         if (ret == RET_FOUND_END) {
             break;
@@ -1246,17 +1282,19 @@ parse_preprocessed_text(PreInfo * pre_info, IntroInfo * o_info) {
         }
     }
 
+    g_metrics.parse_time += nanointerval();
     ctx->p_info = o_info;
-
     reset_location_context(&ctx->loc);
     handle_attributes(ctx, o_info);
+    g_metrics.attribute_time += nanointerval();
 
     o_info->count_types = arrlen(o_info->types);
-    o_info->nest_map = ctx->nest_map;
     o_info->value_buffer = ctx->value_buffer;
-    o_info->count_arg_lists = arrlen(o_info->arg_lists);
     o_info->count_functions = count_gen_functions;
     o_info->functions = functions;
-    o_info->string_set = ctx->string_set;
+
+    g_metrics.count_parse_types = hmlen(ctx->type_set);
+    g_metrics.count_gen_types = o_info->count_types;
+
     return 0;
 }

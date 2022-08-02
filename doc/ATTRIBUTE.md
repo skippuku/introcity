@@ -100,7 +100,7 @@ You can also use an equal sign `=` instead of the word default, for convenience.
 ```
 
 ### length
-**type:** [member](#member)   
+**type:** [expr](#expr)   
 Defines a sibling member which will be used to determine the length of a buffer during serialization in [intro\_create\_city][intro_create_city].
 ```C
     Tile * tiles I(length count_tiles);
@@ -108,10 +108,10 @@ Defines a sibling member which will be used to determine the length of a buffer 
 ```
 
 ### alias
-**type:** [string](#string)   
+**type:** [value(char \*)](#value)   
 Defines a name which will be treated like a match by [intro\_load\_city][intro_load_city].    
 Use this if you are using member names for serialization and you change a name.    
-While this attribute is of type *string*, quotation marks `"` can be omitted for convenience.
+While this attribute is of type *char \**, a single identifier without quotation marks is also accepted.
 ```C
     int health_points I(alias "hp");
     float speed I(alias velocity);
@@ -150,11 +150,11 @@ typedef struct {
 Attributes in the `gui_` namespace are used by [intro\_imgui\_edit](../lib/intro_imgui.cpp).
 
 ### note
-**type:** [string](#string)   
+**type:** [value(char \*)](#value)   
 Defines a "help" note to be displayed with a member.
 
 ### name
-**type:** [string](#string)
+**type:** [value(char \*)](#value)
 Defines an alternative "friendly name" for a member.
 
 ### min
@@ -204,9 +204,6 @@ Attribute is defined as an integer of type `int32_t`.
 ### float
 Attribute is defined as a number of type `float`.
 
-### string
-Attribute is defined as a null-terminated string.
-
 ### member
 Attribute is defined as a sibling member.
 
@@ -219,6 +216,24 @@ Attribute is defined as a value of a specific type. The type is determined with 
 The type can also be defined as the type of the member or type it is applied to using @inherit.
 ```C
     some_default: value(@inherit),
+```
+
+### expr
+Attribute is defined as an expression that is converted to bytecode. Currently the expression can only use integer values.   
+The following is an example using the builtin "when" attribute which is of the expr type.
+```C
+struct Variant {
+    union {
+        int i   I(when <-type == T_INT);   // the <- operator accesses the parent
+        float f I(when <-type == T_FLOAT);
+    } value;
+
+    enum {
+        T_NONE,
+        T_INT,
+        T_FLOAT,
+    } type;
+};
 ```
 
 ### flag

@@ -5,7 +5,7 @@
 #endif
 
 #include "../lib/intro.h"
-#include "../lib/intro.h.intro"
+#include "intro.h.intro"
 
 static const char * tab = "  ";
 
@@ -37,7 +37,7 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
             }
         } else if (type->category == INTRO_ARRAY) {
             // I don't know how you are supposed to deal with zero-length arrays in Odin...
-            fprintf(out, "[%u]", type->array_size);
+            fprintf(out, "[%u]", type->count);
         } else {
             const char * name = NULL;
             bool raw_union = false;
@@ -64,8 +64,8 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
             case INTRO_STRUCT: {
                 if (depth == 0 || !type->name) {
                     fprintf(out, "struct %s{\n", (raw_union)? "#raw_union " : "");
-                    for (int mi=0; mi < type->i_struct->count_members; mi++) {
-                        IntroMember * m = &type->i_struct->members[mi];
+                    for (int mi=0; mi < type->count; mi++) {
+                        IntroMember * m = &type->members[mi];
                         do_indent(out, depth + 1);
                         fprintf(out, "%s: ", m->name);
                         int m_flags = 0;
@@ -90,12 +90,12 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
                 if (depth == 0) {
                     // try to detect namespace
                     int len_prefix = 1;
-                    if (type->i_enum->count_members > 1) {
+                    if (type->count > 1) {
                         while (1) {
                             bool break_outer = false;
-                            const char * first = type->i_enum->members[0].name;
-                            for (int i=1; i < type->i_enum->count_members; i++) {
-                                IntroEnumValue v = type->i_enum->members[i];
+                            const char * first = type->values[0].name;
+                            for (int i=1; i < type->count; i++) {
+                                IntroEnumValue v = type->values[i];
                                 if (0 != memcmp(first, v.name, len_prefix)) {
                                     len_prefix -= 1;
                                     break_outer = true;
@@ -107,8 +107,8 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
                         }
                     }
                     fprintf(out, "enum i32 {\n");
-                    for (int i=0; i < type->i_enum->count_members; i++) {
-                        IntroEnumValue v = type->i_enum->members[i];
+                    for (int i=0; i < type->count; i++) {
+                        IntroEnumValue v = type->values[i];
                         do_indent(out, depth + 1);
                         const char * ename;
                         fprintf(out, "%s = %i,\n", &v.name[len_prefix], (int)v.value);
@@ -133,12 +133,12 @@ fprint_odin_type(FILE * out, const IntroType * type, int depth, int flags) {
 int
 main() {
     int count_functions = __intro_ctx.count_functions;
-    IntroFunction ** functions = __intro_ctx.functions;
+    IntroFunction * functions = INTRO_CTX->functions;
 
     FILE * out = fopen("intro.odin", "wb");
 
     for (int type_i=0; type_i < __intro_ctx.count_types; type_i++) {
-        const IntroType * type = &__intro_types[type_i];
+        const IntroType * type = &INTRO_CTX->types[type_i];
         if (type->name && 0==memcmp(type->name, "Intro", 5)) {
             fprintf(out, "%s :: ", &type->name[5]);
             fprint_odin_type(out, type, 0, 0);
@@ -149,21 +149,21 @@ main() {
     fprintf(out, "@(link_prefix=\"intro_\")\n");
     fprintf(out, "foreign intro {\n");
     for (int func_i=0; func_i < count_functions; func_i++) {
-        const IntroFunction * func = functions[func_i];
+        IntroFunction func = functions[func_i];
 
-        if (0 != memcmp(func->name, "intro_", 6)) continue;
+        if (0 != memcmp(func.name, "intro_", 6)) continue;
 
-        fprintf(out, "%s%s :: proc(", tab, &func->name[6]);
-        for (int arg_i=0; arg_i < func->type->args->count; arg_i++) {
+        fprintf(out, "%s%s :: proc(", tab, &func.name[6]);
+        for (int arg_i=0; arg_i < func.count_args; arg_i++) {
             if (arg_i > 0) fprintf(out, ", ");
-            const char * name = func->arg_names[arg_i];
-            const IntroType * type = func->type->args->types[arg_i];
+            const char * name = func.arg_names[arg_i];
+            const IntroType * type = func.arg_types[arg_i];
             fprintf(out, "%s: ", name);
             fprint_odin_type(out, type, 1, 0);
         }
-        if (func->type->of && func->type->of->category != INTRO_UNKNOWN) {
+        if (func.return_type && func.return_type->category != INTRO_UNKNOWN) {
             fprintf(out, ") -> ");
-            fprint_odin_type(out, func->type->of, 1, 0);
+            fprint_odin_type(out, func.return_type, 1, 0);
             fprintf(out, " ---\n");
         } else {
             fprintf(out, ") ---\n");

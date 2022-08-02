@@ -27,9 +27,9 @@ define PROFILE.release
   MAGIC_TARGET := build
 endef
 
-PROFILE_FLAGS := -fprofile-instr-generate -fcoverage-mapping
+PROFILE_FLAGS :=
 define PROFILE.profile
-  CFLAGS += -O2 $(PROFILE_FLAGS)
+  CFLAGS += -O2 -g $(PROFILE_FLAGS)
   LDFLAGS += $(PROFILE_FLAGS)
   MAGIC_TARGET := build
 endef
@@ -61,6 +61,12 @@ define PROFILE.install
   MAGIC_NODEP := 1
 endef
 
+define PROFILE.vim_syntax
+  $(PROFILE.release)
+  PROFILEDIR := release
+  MAGIC_TARGET := .syntax.vim
+endef
+
 define PROFILE.clean
   MAGIC_NODEP := 1
 endef
@@ -84,6 +90,9 @@ build: $(EXE)
 $(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
+lib/intro.h.intro: lib/intro.h
+	intro $< -o $@
+
 test:
 	@$(MAKE) --no-print-directory --directory=test/ run
 
@@ -98,6 +107,9 @@ else ifeq (Windows_NT,$(OS))
 	./scripts/install_msys2.sh
 	@echo "install successful, enjoy!"
 endif
+
+.syntax.vim: $(OBJDIR)/intro.o
+	./$(EXE) --gen-vim-syntax intro.c -o $@
 
 clean:
 	rm -rf $(BUILDDIR)/*
