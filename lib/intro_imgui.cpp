@@ -97,7 +97,7 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
     int64_t expr_result;
     if (
         !intro_has_attribute_x(ctx, attr, GUIATTR(show))
-      ||(intro_attribute_expr_x(ctx, attr, ctx->attr.builtin.i_when, intro_expr_data(&cont), &expr_result) && !expr_result)
+      ||(intro_attribute_expr_x(ctx, cont, ctx->attr.builtin.i_when, &expr_result) && !expr_result)
        )
     {
         return;
