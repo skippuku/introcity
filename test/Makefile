@@ -36,7 +36,7 @@ intro.h.intro: ../lib/intro.h $(INTRO_PARSE) FORCE
 FORCE:
 
 $(EXE): db_%: %.c $(INTRO_SHARED)
-	$(CC) $< -o $@ $(CFLAGS) $(CPPFLAGS) -L. -Wl,-rpath=. -lintro
+	$(CC) $< -o $@ $(CFLAGS) $(CPPFLAGS) -L. -Wl,-rpath=. -l:$(INTRO_SHARED)
 
 clean:
 	rm -f *.intro *.o *.d $(EXE) $(INTRO_SHARED)
@@ -44,8 +44,8 @@ clean:
 %.d:
 	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) -MM -MG -MT 'db_$*' $*.c > $@
 
-$(INTRO_SHARED): ../lib/introlib.c ../lib/intro.h
-	$(CC) $< -o $@ -g -shared -fpic
+$(INTRO_SHARED): ../lib/introlib.c ../lib/vm.S ../lib/intro.h
+	$(CC) $< ../lib/vm.S -o $@ -g -shared -fpic
 
 DEPS := $(SRC:.c=.d)
 ifeq (,$(filter clean,$(MAKECMDGOALS)))

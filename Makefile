@@ -1,4 +1,5 @@
 IMGUI_PATH := ../modules/imgui/
+COMPILE.S = gcc -c $(DEPGENFLAGS) $(CFLAGS)
 
 ifeq (,$(OS))
   UNAME := $(shell uname -s)
@@ -18,7 +19,7 @@ else
 endif
 CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
 
-SRC := intro.c lib/introlib.c
+SRC := intro.c lib/introlib.c lib/vm.S
 MAGIC_DEFAULT_PROFILE := debug
 
 define PROFILE.release
@@ -87,7 +88,7 @@ EXE := $(OBJDIR)/intro
 build: $(EXE)
 	@echo "Build complete for $(PROFILE)."
 
-$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
+$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o $(OBJDIR)/vm.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 lib/intro.h.intro: lib/intro.h

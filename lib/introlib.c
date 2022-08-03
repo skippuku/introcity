@@ -64,6 +64,8 @@ intro_bsr(uint64_t x) {
   #define restrict
 #endif
 
+extern  __attribute__((sysv_abi)) int64_t intro__vm(void * bytecode, const void * data);
+
 const static int MAX_EXPOSED_LENGTH = 64;
 static const char * tab = "    ";
 
@@ -310,6 +312,7 @@ intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
 
 union IntroRegisterData
 intro_run_bytecode(uint8_t * code, const uint8_t * data) {
+#if 0
     union IntroRegisterData stack [1024];
     union IntroRegisterData r0, r1, r2;
     size_t stack_idx = 0;
@@ -382,6 +385,11 @@ intro_run_bytecode(uint8_t * code, const uint8_t * data) {
         case I_COUNT: case I_INVALID: assert(0);
         }
     }
+#else
+    union IntroRegisterData reg;
+    reg.si = intro__vm(code, data);
+    return reg;
+#endif
 }
 
 static void
