@@ -22,11 +22,13 @@ intro__vm:
 .skip_pop:
     cmp    cl, 23
     jg     .I_INVALID
-    mov    rcx, .jmptbl[0 + rcx*8]
+    lea    r9, .jmptbl
+    mov    ecx, dword ptr [.jmptbl + rcx*4]
+    add    rcx, r9
     jmp    rcx
 
-#define INST(name) .quad .name
-    .align 8
+#define INST(name) .long .name-.jmptbl
+    .align 4
 .jmptbl:
     INST(I_INVALID)
     INST(I_RETURN)
