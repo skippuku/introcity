@@ -385,18 +385,22 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
     } else if (node->op != OP_SIZEOF && node->op != OP_ALIGNOF) {
         if (node->left) {
             uint8_t * clip = build_expression_procedure_internal(ectx, node->left, cont);
-            void * dest = arraddnptr(proc, arrlen(clip));
-            memcpy(dest, clip, arrlen(clip));
-            arrfree(clip);
-            if (node->op == OP_BOOL_OR || node->op == OP_BOOL_AND) {
-                arrput(proc, I_NOT_ZERO);
+            if (clip) {
+                void * dest = arraddnptr(proc, arrlen(clip));
+                memcpy(dest, clip, arrlen(clip));
+                arrfree(clip);
+                if (node->op == OP_BOOL_OR || node->op == OP_BOOL_AND) {
+                    arrput(proc, I_NOT_ZERO);
+                }
             }
         }
         if (node->right) {
             uint8_t * clip = build_expression_procedure_internal(ectx, node->right, cont);
-            void * dest = arraddnptr(proc, arrlen(clip));
-            memcpy(dest, clip, arrlen(clip));
-            arrfree(clip);
+            if (clip) {
+                void * dest = arraddnptr(proc, arrlen(clip));
+                memcpy(dest, clip, arrlen(clip));
+                arrfree(clip);
+            }
         }
     }
 
