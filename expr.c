@@ -264,19 +264,21 @@ get_member_offset(const IntroType * type, const Token * p_name_tk, const IntroTy
 }
 
 static void
-put_imm_int(uint8_t ** pproc, size_t val) {
-    int ext;
+put_imm_int(uint8_t ** pproc, uint64_t val) {
+    int size;
     if ((val & UINT8_MAX) == val) {
-        ext = I_S8;
+        size = 1;
+        arrput(*pproc, I_IMM8);
     } else if ((val & UINT16_MAX) == val) {
-        ext = I_S16;
+        size = 2;
+        arrput(*pproc, I_IMM16);
     } else if ((val & UINT32_MAX) == val) {
-        ext = I_S32;
+        size = 4;
+        arrput(*pproc, I_IMM32);
     } else {
-        ext = I_S64;
+        size = 8;
+        arrput(*pproc, I_IMM64);
     }
-    arrput(*pproc, I_IMM | ext);
-    size_t size = 1 << (ext >> 6);
     void * dest = arraddnptr(*pproc, size);
     memcpy(dest, &val, size);
 }
@@ -369,17 +371,17 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
             exit(1);
         }
         size_t read_size = index->type->size;
-        uint8_t ext;
+        uint8_t inst;
         switch(read_size) {
-        case 1: ext = I_S8;  break;
-        case 2: ext = I_S16; break;
-        case 4: ext = I_S32; break;
-        case 8: ext = I_S64; break;
-        default: assert(0), ext = 0;
+        case 1: inst = I_LD8;  break;
+        case 2: inst = I_LD16; break;
+        case 4: inst = I_LD32; break;
+        case 8: inst = I_LD64; break;
+        default: assert(0), inst = 0;
         }
 
         put_imm_int(&proc, offset);
-        arrput(proc, I_LD | ext);
+        arrput(proc, inst);
 
         return proc;
     } else if (node->op != OP_SIZEOF && node->op != OP_ALIGNOF) {
@@ -390,7 +392,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
                 memcpy(dest, clip, arrlen(clip));
                 arrfree(clip);
                 if (node->op == OP_BOOL_OR || node->op == OP_BOOL_AND) {
-                    arrput(proc, I_NOT_ZERO);
+                    arrput(proc, I_BOOL);
                 }
             }
         }
@@ -409,9 +411,8 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         Token ntk = node->tk;
         if (memcmp(ntk.start, "0x", 2)!=0 && memchr(ntk.start, '.', ntk.length)) {
             double val = strtod(ntk.start, NULL);
-            arrput(proc, I_IMM | I_S64);
-            void * dest = arraddnptr(proc, 8);
-            memcpy(dest, &val, 8);
+            arrput(proc, I_IMM64);
+            put_imm_int(&proc, *(uint64_t *)&val);
         } else {
             long long val = strtoll(ntk.start, NULL, 0);
             put_imm_int(&proc, val);
@@ -482,10 +483,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         arrput(proc, I_BIT_NOT);
         break;
     case OP_BOOL_NOT:
-        arrput(proc, I_NOT_ZERO);
-        arrput(proc, I_IMM | I_S8);
-        arrput(proc, 1);
-        arrput(proc, I_BIT_XOR);
+        arrput(proc, I_BOOL_NOT);
         break;
 
     case OP_MUL:
@@ -515,43 +513,31 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
 
     case OP_LESS:
         arrput(proc, I_CMP);
-        arrput(proc, I_IMM | I_S8);
-        arrput(proc, (1 << 1));
-        arrput(proc, I_BIT_AND);
-        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_SETL);
         break;
     case OP_LESS_OR_EQUAL:
         arrput(proc, I_CMP);
-        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_SETLE);
         break;
     case OP_GREATER:
         arrput(proc, I_CMP);
-        arrput(proc, I_NOT_ZERO);
-        arrput(proc, I_IMM | I_S8);
-        arrput(proc, 1);
-        arrput(proc, I_BIT_XOR);
+        arrput(proc, I_SETLE);
+        arrput(proc, I_BOOL_NOT);
         break;
     case OP_GREATER_OR_EQUAL:
         arrput(proc, I_CMP);
-        arrput(proc, I_BIT_NOT);
-        arrput(proc, I_IMM | I_S8);
-        arrput(proc, (1 << 1));
-        arrput(proc, I_BIT_AND);
-        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_SETL);
+        arrput(proc, I_BOOL_NOT);
         break;
 
     case OP_EQUAL:
         arrput(proc, I_CMP);
-        arrput(proc, I_IMM | I_S8);
-        arrput(proc, 1);
-        arrput(proc, I_BIT_AND);
+        arrput(proc, I_SETE);
         break;
     case OP_NOT_EQUAL:
         arrput(proc, I_CMP);
-        arrput(proc, I_BIT_NOT);
-        arrput(proc, I_IMM | I_S8);
-        arrput(proc, 1);
-        arrput(proc, I_BIT_AND);
+        arrput(proc, I_SETE);
+        arrput(proc, I_BOOL_NOT);
         break;
 
     case OP_BIT_AND:
@@ -564,11 +550,11 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         arrput(proc, I_BIT_OR);
         break;
     case OP_BOOL_AND:
-        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_BOOL);
         arrput(proc, I_BIT_AND);
         break;
     case OP_BOOL_OR:
-        arrput(proc, I_NOT_ZERO);
+        arrput(proc, I_BOOL);
         arrput(proc, I_BIT_OR);
         break;
 

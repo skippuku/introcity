@@ -310,20 +310,28 @@ intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
 }
 #endif
 
+#ifndef INTRO_USE_ASM_VM
+  #if defined(__GNUC__) && defined(__x86_64__)
+    #define INTRO_USE_ASM_VM 1
+  #else
+    #define INTRO_USE_ASM_VM 0
+  #endif
+#endif
+
 union IntroRegisterData
 intro_run_bytecode(uint8_t * code, const uint8_t * data) {
-#if 0
+#if INTRO_USE_ASM_VM == 0
     union IntroRegisterData stack [1024];
     union IntroRegisterData r0, r1, r2;
     size_t stack_idx = 0;
     size_t code_idx = 0;
+    bool flag_l = 0, flag_e = 0;
 
     memset(&r1, 0, sizeof(r1)); // silence dumb warning
 
     while (1) {
         uint8_t byte = code[code_idx++];
-        uint8_t inst = byte & ~0xC0;
-        uint8_t size = 1 << ((byte >> 6) & 0x03);
+        uint8_t inst = byte;
 
         if (inst > I_GREATER_POP) {
             r1 = r0;
@@ -333,32 +341,44 @@ intro_run_bytecode(uint8_t * code, const uint8_t * data) {
         switch ((InstrCode)inst) {
         case I_RETURN: return r0;
 
-        case I_LD: {
-            memcpy(&r0, data + r0.ui, size);
-        }break;
+        case I_LD8 : r0.ui = *(uint8_t  *)(data + r0.ui); break;
+        case I_LD16: r0.ui = *(uint16_t *)(data + r0.ui); break;
+        case I_LD32: r0.ui = *(uint32_t *)(data + r0.ui); break;
+        case I_LD64: r0.ui = *(uint64_t *)(data + r0.ui); break;
 
-        case I_IMM: {
-            stack[stack_idx++] = r0;
-            r0.ui = 0;
-            memcpy(&r0, &code[code_idx], size);
-            code_idx += size;
-        }break;
+        case I_IMM8:  stack[stack_idx++] = r0;
+                      r0.ui = code[code_idx];
+                      code_idx += 1;
+                      break;
+        case I_IMM16: stack[stack_idx++] = r0;
+                      memcpy(&r0, code + code_idx, 2);
+                      code_idx += 2;
+                      break;
+        case I_IMM32: stack[stack_idx++] = r0;
+                      memcpy(&r0, code + code_idx, 4);
+                      code_idx += 4;
+                      break;
+        case I_IMM64: stack[stack_idx++] = r0;
+                      memcpy(&r0, code + code_idx, 8);
+                      code_idx += 8;
+                      break;
+        case I_ZERO:  stack[stack_idx++] = r0;
+                      r0.ui = 0;
+                      break;
 
-        case I_ZERO: {
-            stack[stack_idx++] = r0;
-            r0.ui = 0;
-        }break;
-
-        case I_CND_LD_TOP: {
-            r1 = stack[--stack_idx]; // alternate value
-            r2 = stack[--stack_idx]; // condition
-            if (r2.ui) r0 = r1;
-        }break;
+        case I_CND_LD_TOP: r1 = stack[--stack_idx]; // alternate value
+                           r2 = stack[--stack_idx]; // condition
+                           if (r2.ui) r0 = r1;
+                           break;
 
         case I_NEGATE_I:   r0.si = -r0.si; break;
         case I_NEGATE_F:   r0.df = -r0.df; break;
         case I_BIT_NOT:    r0.ui = ~r0.ui; break;
-        case I_NOT_ZERO:   r0.ui = !!(r0.ui); break;
+        case I_BOOL:       r0.ui = !!r0.ui; break;
+        case I_BOOL_NOT:   r0.ui = ! r0.ui; break;
+        case I_SETE:       r0.ui = flag_e; break;
+        case I_SETL:       r0.ui = flag_l; break;
+        case I_SETLE:      r0.ui = flag_e || flag_l; break;
         case I_CVT_D_TO_I: r0.si = (int64_t)r0.df; break;
         case I_CVT_F_TO_I: r0.si = (int64_t)r0.sf; break;
         case I_CVT_I_TO_D: r0.df = (double) r0.si; break;
@@ -376,7 +396,12 @@ intro_run_bytecode(uint8_t * code, const uint8_t * data) {
         case I_BIT_OR:  r0.ui |= r1.ui; break;
         case I_BIT_XOR: r0.ui ^= r1.ui; break;
 
-        case I_CMP: r0.ui = ((r0.si < r1.si) << 1) | (r0.si == r1.si); break;
+        case I_CMP  : flag_l = r0.si < r1.si;
+                      flag_e = r0.si == r1.si;
+                      break;
+        case I_CMP_F: flag_l = r0.df < r1.df;
+                      flag_e = r0.df == r1.df;
+                      break;
 
         case I_ADDF: r0.df += r1.df; break;
         case I_MULF: r0.df *= r1.df; break;

@@ -400,37 +400,39 @@ union IntroRegisterData intro_run_bytecode(uint8_t * code, const uint8_t * data)
 typedef enum {
     I_INVALID = 0,
     I_RETURN = 1,
-
-    I_LD,
-    I_IMM,
+    I_LD8,
+    I_LD16,
+    I_LD32,
+    I_LD64,
+    I_IMM8,
+    I_IMM16,
+    I_IMM32,
+    I_IMM64,
     I_ZERO,
-
     I_CND_LD_TOP,
-
     I_NEGATE_I,
     I_NEGATE_F,
     I_BIT_NOT,
-    I_NOT_ZERO,
+    I_BOOL,
+    I_BOOL_NOT,
+    I_SETL,
+    I_SETE,
+    I_SETLE,
     I_CVT_D_TO_I,
     I_CVT_F_TO_I,
     I_CVT_I_TO_D,
-    I_CVT_F_TO_D,
-
-    I_GREATER_POP = I_CVT_F_TO_D,
-
+    I_CVT_F_TO_D,    I_GREATER_POP = I_CVT_F_TO_D,
     I_ADDI,
     I_MULI,
     I_DIVI,
     I_MODI,
     I_L_SHIFT,
     I_R_SHIFT,
-
     I_BIT_AND,
     I_BIT_OR,
     I_BIT_XOR,
-
     I_CMP,
-
+    I_CMP_F,
     I_ADDF,
     I_MULF,
     I_DIVF,

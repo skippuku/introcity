@@ -65,6 +65,8 @@ expr:
     compound literals
     handle character literals including L'x'
     handle strings next to each other
+    optimise pass
+        opt out constant parts
 
 pre:
     FileInfo: add include location
