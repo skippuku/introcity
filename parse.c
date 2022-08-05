@@ -11,9 +11,9 @@ static const IntroType known_types [] = {
     {{}, 0, "int8_t",   0, 0, 1, 0, 1, INTRO_S8},
     {{}, 0, "int16_t",  0, 0, 2, 0, 2, INTRO_S16},
     {{}, 0, "int32_t",  0, 0, 4, 0, 4, INTRO_S32},
-    {{}, 0, "int64_t",  0, 0, 8, 0, 8, INTRO_S64},
+    {{}, 0, "int64_t",  0, 0, 8, 0, 8, INTRO_S64}, // 8
     {{}, 0, "float",    0, 0, 4, 0, 4, INTRO_F32},
-    {{}, 0, "double",   0, 0, 8, 0, 8, INTRO_F64},
+    {{}, 0, "double",   0, 0, 8, 0, 8, INTRO_F64}, // 10
     {{}, 0, "bool",     0, 0, 1, 0, 1, INTRO_U8},
     {{}, 0, "va_list",  0, 0, 0, 0, 0, INTRO_VA_LIST},
     {{}, 0, "__builtin_va_list", 0, 0, 0, 0, 0, INTRO_VA_LIST},
@@ -124,6 +124,11 @@ parse_error(ParseContext * ctx, Token tk, char * message) {
 static void UNUSED
 parse_warning(ParseContext * ctx, Token tk, char * message) {
     parse_msg_internal(&ctx->loc, tk.index, message, 1);
+}
+
+IntroType *
+parse_get_known(ParseContext * ctx, int index) {
+    return ctx->type_set[index].value;
 }
 
 static intmax_t parse_constant_expression(ParseContext * ctx, TokenIndex * tidx);

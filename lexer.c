@@ -124,20 +124,22 @@ pre_next_token(char ** o_s) {
                 case 'b': s++;
                           do ++s; while (*s == '0' || *s == '1');
                           break;
+                case '.': ++s; break;
                 default:  do ++s; while (*s >= '0' && *s <= '7');
                           break;
                 }
             } else {
                 while (is_digit(*++s));
-                if (*s == '.') {
-                    is_integer = false;
-                    while (is_digit(*++s));
-                }
-                if (*s == 'f' || *s == 'F') {
-                    is_integer = false;
-                    ++s;
-                }
             }
+            if (*s == '.') {
+                is_integer = false;
+                while (is_digit(*++s));
+            }
+            if (*s == 'f' || *s == 'F') {
+                is_integer = false;
+                ++s;
+            }
+
             if (is_integer) {
                 while (*s == 'l' || *s == 'L' || *s == 'u' || *s == 'U') ++s;
             }

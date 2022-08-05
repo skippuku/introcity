@@ -282,6 +282,11 @@ intro_is_int(const IntroType * type) {
 }
 
 INTRO_API_INLINE bool
+intro_is_floating(const IntroType * type) {
+    return (type->category & 0xf0) == INTRO_FLOATING;
+}
+
+INTRO_API_INLINE bool
 intro_is_complex(const IntroType * type) {
     return (type->category == INTRO_STRUCT
          || type->category == INTRO_UNION

@@ -54,15 +54,6 @@ enum ExprOpTypes {
     OP_UNARY_TYPE = 0x20,
 };
 
-typedef enum {
-    I_S8  = 0x00,
-    I_S16 = 0x40,
-    I_S32 = 0x80,
-    I_S64 = 0xC0,
-} InstrExt;
-
-_Static_assert(I_COUNT <= (1 << 6), "Too many bytecode intructions to fit in 6 bits");
-
 struct ExprContext {
     struct{char * key; intmax_t value;} * constant_map;
     MemArena * arena;
@@ -129,6 +120,19 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
         }break;
 
         case TK_L_PARENTHESIS: {
+            if (ectx->mode == MODE_PARSE && tk_at(tidx).type == TK_IDENTIFIER) {
+                size_t last_index = tidx->index;
+                DeclState cast = {.state = DECL_CAST};
+                int ret = parse_declaration(ectx->ctx, tidx, &cast);
+                if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
+                    node->op = OP_CAST;
+                    node->type = cast.type;
+                    tidx->index += 1;
+                    break;
+                } else {
+                    tidx->index = last_index;
+                }
+            }
             paren_depth += 1;
             continue;
         }break;
@@ -145,23 +149,12 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
 
         case TK_IDENTIFIER: {
             if (ectx->mode == MODE_PARSE) {
-                tidx->index -= 1;
-                DeclState cast = {.state = DECL_CAST};
-                int ret = parse_declaration(ectx->ctx, tidx, &cast);
-                if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
-                    node->op = OP_CAST;
-                    node->type = cast.type;
-                } else if (ret == RET_NOT_TYPE) {
-                    tidx->index -= 1;
-                    if (tk_equal(&tk, "sizeof")) {
-                        node->op = OP_SIZEOF;
-                    } else if (tk_equal(&tk, "_Alignof")) {
-                        node->op = OP_ALIGNOF;
-                    } else {
-                        node->op = OP_OTHER;
-                    }
+                if (tk_equal(&tk, "sizeof")) {
+                    node->op = OP_SIZEOF;
+                } else if (tk_equal(&tk, "_Alignof")) {
+                    node->op = OP_ALIGNOF;
                 } else {
-                    return NULL;
+                    node->op = OP_OTHER;
                 }
             } else {
                 node->op = OP_NUMBER;
@@ -224,13 +217,14 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
             if (
                 (index == NULL)
               ||(node->depth < index->depth)
-              ||(
-                 (node->depth == index->depth && (node->op & OP_TYPE_MASK) >= (index->op & OP_TYPE_MASK))
-               &&((node->op & OP_TYPE_MASK) != OP_UNARY_TYPE)
-                )
+              ||(node->depth == index->depth && (node->op & OP_TYPE_MASK) > (index->op & OP_TYPE_MASK))
                )
             {
-                node->left = index;
+                if ((node->op & OP_TYPE_MASK) == OP_UNARY_TYPE) {
+                    node->right = index;
+                } else {
+                    node->left = index;
+                }
                 *p_index = node;
                 break;
             }
@@ -286,18 +280,11 @@ put_imm_int(uint8_t ** pproc, uint64_t val) {
 uint8_t *
 build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const IntroContainer * cont) {
     uint8_t * proc = NULL;
+    bool use_float_expr = false;
 
-    if (node->op == OP_OTHER) {
-        ExprNode ** stack = NULL;
-        ExprNode * index = node;
-
+    if (node->op == OP_MACCESS || node->op == OP_OTHER || node->op == OP_CONTAINER) {
         if (!cont) {
             goto match_constant;
-        }
-
-        while (index) {
-            arrput(stack, index);
-            index = index->left;
         }
 
         size_t offset = 0;
@@ -307,53 +294,53 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
             top_level = top_level->parent;
         }
 
-        while (arrlen(stack) > 0) {
-            index = arrpop(stack);
-            switch (index->op) {
+        ExprNode * base_node = node;
+        while (1) {
+            switch (node->op) {
             case OP_CONTAINER:
                 if (!cont->parent) {
-                    parse_error(ectx->ctx, index->tk, "No container to access.");
+                    parse_error(ectx->ctx, node->tk, "No container to access.");
                 }
                 offset -= cont->parent->type->members[cont->index].offset;
                 cont = cont->parent;
-                index->type = cont->type;
+                node->type = cont->type;
                 // FALLTHROUGH
             case OP_MACCESS:
-                if (arrlen(stack) <= 0) {
-                    parse_error(ectx->ctx, index->tk, "What are you accessing.");
+                if (!node->right) {
+                    parse_error(ectx->ctx, node->tk, "What are you accessing.");
                     exit(1);
                 }
-                index = arrpop(stack);
+                node = node->right;
                 // FALLTHROUGH
             case OP_OTHER: {
-                int32_t moff = get_member_offset(cont->type, &index->tk, &index->type);
+                int32_t moff = get_member_offset(cont->type, &node->tk, &node->type);
                 if (moff < 0) {
-                    if (!node->left) {
+                    if (!base_node->right) {
                     match_constant: ;
-                        STACK_TERMINATE(name, index->tk.start, index->tk.length);
+                        STACK_TERMINATE(name, node->tk.start, node->tk.length);
                         ptrdiff_t map_index = shgeti(ectx->constant_map, name);
                         if (map_index >= 0) {
                             put_imm_int(&proc, ectx->constant_map[map_index].value);
-                            arrfree(stack);
+                            node->type = parse_get_known(ectx->ctx, 8);
                             return proc;
                         }
                     }
-                    parse_error(ectx->ctx, index->tk, "Identifier is not member or constant.");
+                    parse_error(ectx->ctx, node->tk, "Identifier is not member or constant.");
                     exit(1);
                 }
                 offset += moff;
                 IntroContainer * next_cont = arena_alloc(ectx->arena, sizeof(*next_cont));
                 next_cont->parent = cont;
-                next_cont->type = index->type;
+                next_cont->type = node->type;
                 cont = next_cont;
             }break;
 
             case OP_PTR_MACCESS: {
-                if (arrlen(stack) <= 0) {
-                    parse_error(ectx->ctx, index->tk, "What are you accessing.");
+                if (node->right <= 0) {
+                    parse_error(ectx->ctx, node->tk, "What are you accessing.");
                     exit(1);
                 }
-                index = arrpop(stack);
+                node = node->right;
 
                 assert(0);
                 // TODO....
@@ -363,14 +350,19 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
                 db_break();
                 assert(0);
             }
-        }
-        arrfree(stack);
 
-        if (!(intro_is_scalar(index->type) || index->type->category == INTRO_ENUM)) {
-            parse_error(ectx->ctx, index->tk, "Cannot use non-scalar here.");
+            if (node->right) {
+                node = node->right;
+            } else {
+                break;
+            }
+        }
+
+        if (!(intro_is_scalar(node->type) || node->type->category == INTRO_ENUM)) {
+            parse_error(ectx->ctx, node->tk, "Cannot use non-scalar here.");
             exit(1);
         }
-        size_t read_size = index->type->size;
+        size_t read_size = node->type->size;
         uint8_t inst;
         switch(read_size) {
         case 1: inst = I_LD8;  break;
@@ -382,6 +374,8 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
 
         put_imm_int(&proc, offset);
         arrput(proc, inst);
+
+        base_node->type = node->type;
 
         return proc;
     } else if (node->op != OP_SIZEOF && node->op != OP_ALIGNOF) {
@@ -395,13 +389,44 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
                     arrput(proc, I_BOOL);
                 }
             }
+
+            if (ectx->ctx && intro_is_floating(node->left->type)) {
+                use_float_expr = true;
+                if (node->left->type->category == INTRO_F32) {
+                    arrput(proc, I_CVT_F_TO_D);
+                }
+            }
         }
+
         if (node->right) {
             uint8_t * clip = build_expression_procedure_internal(ectx, node->right, cont);
+            if (ectx->ctx && intro_is_floating(node->right->type)) {
+                if (node->left && !use_float_expr) {
+                    use_float_expr = true;
+                    arrput(proc, I_CVT_I_TO_D);
+                }
+            }
+
             if (clip) {
                 void * dest = arraddnptr(proc, arrlen(clip));
                 memcpy(dest, clip, arrlen(clip));
                 arrfree(clip);
+            }
+
+            if (ectx->ctx && use_float_expr) {
+                if (intro_is_int(node->left->type)) {
+                    arrput(proc, I_CVT_I_TO_D);
+                } else if (node->left->type->category == INTRO_F32) {
+                    arrput(proc, I_CVT_F_TO_D);
+                }
+            }
+        }
+
+        if (ectx->ctx) {
+            if (use_float_expr) {
+                node->type = parse_get_known(ectx->ctx, 10); // F64
+            } else {
+                node->type = parse_get_known(ectx->ctx, 8); // S64
             }
         }
     }
@@ -411,11 +436,16 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         Token ntk = node->tk;
         if (memcmp(ntk.start, "0x", 2)!=0 && memchr(ntk.start, '.', ntk.length)) {
             double val = strtod(ntk.start, NULL);
-            arrput(proc, I_IMM64);
             put_imm_int(&proc, *(uint64_t *)&val);
+            if (ectx->ctx) {
+                node->type = parse_get_known(ectx->ctx, 10); // F64
+            }
         } else {
             long long val = strtoll(ntk.start, NULL, 0);
             put_imm_int(&proc, val);
+            if (ectx->ctx) {
+                node->type = parse_get_known(ectx->ctx, 8); // S64
+            }
         }
     }break;
 
@@ -432,7 +462,6 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
     }break;
 
     case OP_CAST: {
-#if 0
         if (intro_is_int(node->type)) {
             if (intro_is_int(node->right->type)) {
             } else if (node->right->type->category == INTRO_F32) {
@@ -440,15 +469,13 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
             } else if (node->right->type->category == INTRO_F64) {
                 arrput(proc, I_CVT_D_TO_I);
             }
-            uint64_t mask = UINT64_MAX;
-            size_t shift = 8 - node->type->size;
-            mask >>= shift;
-            put_imm_int(&proc, mask);
-            arrput(proc, I_BIT_AND);
+            if (node->type->size != 8) {
+                put_imm_int(&proc, (1 << node->type->size) - 1);
+                arrput(proc, I_BIT_AND);
+            }
         } else if ((node->type->category & 0xf0) == INTRO_FLOATING && intro_is_int(node->right->type)) {
             arrput(proc, I_CVT_I_TO_D);
         }
-#endif
     }break;
 
     case OP_SIZEOF: {
@@ -462,6 +489,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
             parse_error(ectx->ctx, node->tk, "Cannot determine size.");
             exit(1);
         }
+        node->type = parse_get_known(ectx->ctx, 8);
     }break;
 
     case OP_ALIGNOF: {
@@ -472,6 +500,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
             parse_error(ectx->ctx, node->tk, "Cannot determine alignment.");
             exit(1);
         }
+        node->type = parse_get_known(ectx->ctx, 8);
     }break;
 
     case OP_UNARY_ADD: break;
@@ -487,21 +516,38 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         break;
 
     case OP_MUL:
-        arrput(proc, I_MULI);
+        if (use_float_expr) {
+            arrput(proc, I_MULF);
+        } else {
+            arrput(proc, I_MULI);
+        }
         break;
     case OP_DIV:
-        arrput(proc, I_DIVI);
+        if (use_float_expr) {
+            arrput(proc, I_DIVF);
+        } else {
+            arrput(proc, I_DIVI);
+        }
         break;
     case OP_MOD:
         arrput(proc, I_MODI);
         break;
 
     case OP_ADD:
-        arrput(proc, I_ADDI);
+        if (use_float_expr) {
+            arrput(proc, I_ADDF);
+        } else {
+            arrput(proc, I_ADDI);
+        }
         break;
     case OP_SUB:
-        arrput(proc, I_NEGATE_I);
-        arrput(proc, I_ADDI);
+        if (use_float_expr) {
+            arrput(proc, I_NEGATE_F);
+            arrput(proc, I_ADDF);
+        } else {
+            arrput(proc, I_NEGATE_I);
+            arrput(proc, I_ADDI);
+        }
         break;
 
     case OP_SHIFT_LEFT:
@@ -512,30 +558,30 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         break;
 
     case OP_LESS:
-        arrput(proc, I_CMP);
+        arrput(proc, (use_float_expr)? I_CMP : I_CMP_F);
         arrput(proc, I_SETL);
         break;
     case OP_LESS_OR_EQUAL:
-        arrput(proc, I_CMP);
+        arrput(proc, (use_float_expr)? I_CMP : I_CMP_F);
         arrput(proc, I_SETLE);
         break;
     case OP_GREATER:
-        arrput(proc, I_CMP);
+        arrput(proc, (use_float_expr)? I_CMP : I_CMP_F);
         arrput(proc, I_SETLE);
         arrput(proc, I_BOOL_NOT);
         break;
     case OP_GREATER_OR_EQUAL:
-        arrput(proc, I_CMP);
+        arrput(proc, (use_float_expr)? I_CMP : I_CMP_F);
         arrput(proc, I_SETL);
         arrput(proc, I_BOOL_NOT);
         break;
 
     case OP_EQUAL:
-        arrput(proc, I_CMP);
+        arrput(proc, (use_float_expr)? I_CMP : I_CMP_F);
         arrput(proc, I_SETE);
         break;
     case OP_NOT_EQUAL:
-        arrput(proc, I_CMP);
+        arrput(proc, (use_float_expr)? I_CMP : I_CMP_F);
         arrput(proc, I_SETE);
         arrput(proc, I_BOOL_NOT);
         break;
@@ -600,7 +646,7 @@ interactive_calculator() {
             arrfree(tklist);
             continue;
         }
-        uint8_t * procedure = build_expression_procedure2(NULL, tree, NULL);
+        uint8_t * procedure = build_expression_procedure2(&expr_ctx, tree, NULL);
         union IntroRegisterData ret = intro_run_bytecode(procedure, NULL);
         printf(" = %i    (expr size: %i)\n", (int)ret.si, (int)arrlen(procedure));
 

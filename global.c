@@ -307,6 +307,7 @@ typedef struct {
 } Metrics;
 static Metrics g_metrics = {0};
 
+IntroType * parse_get_known(ParseContext * ctx, int index);
 static int parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl);
 
 static char *

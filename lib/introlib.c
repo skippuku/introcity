@@ -311,11 +311,7 @@ intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
 #endif
 
 #ifndef INTRO_USE_ASM_VM
-  #if defined(__GNUC__) && defined(__x86_64__)
-    #define INTRO_USE_ASM_VM 1
-  #else
-    #define INTRO_USE_ASM_VM 0
-  #endif
+#define INTRO_USE_ASM_VM 0
 #endif
 
 union IntroRegisterData
@@ -347,14 +343,17 @@ intro_run_bytecode(uint8_t * code, const uint8_t * data) {
         case I_LD64: r0.ui = *(uint64_t *)(data + r0.ui); break;
 
         case I_IMM8:  stack[stack_idx++] = r0;
+                      r0.ui = 0;
                       r0.ui = code[code_idx];
                       code_idx += 1;
                       break;
         case I_IMM16: stack[stack_idx++] = r0;
+                      r0.ui = 0;
                       memcpy(&r0, code + code_idx, 2);
                       code_idx += 2;
                       break;
         case I_IMM32: stack[stack_idx++] = r0;
+                      r0.ui = 0;
                       memcpy(&r0, code + code_idx, 4);
                       code_idx += 4;
                       break;
@@ -396,7 +395,7 @@ intro_run_bytecode(uint8_t * code, const uint8_t * data) {
         case I_BIT_OR:  r0.ui |= r1.ui; break;
         case I_BIT_XOR: r0.ui ^= r1.ui; break;
 
-        case I_CMP  : flag_l = r0.si < r1.si;
+        case I_CMP:   flag_l = r0.si < r1.si;
                       flag_e = r0.si == r1.si;
                       break;
         case I_CMP_F: flag_l = r0.df < r1.df;

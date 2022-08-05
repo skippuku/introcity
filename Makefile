@@ -19,7 +19,7 @@ else
 endif
 CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
 
-SRC := intro.c lib/introlib.c lib/vm.S
+SRC := intro.c lib/introlib.c
 MAGIC_DEFAULT_PROFILE := debug
 
 define PROFILE.release

@@ -15,6 +15,10 @@ typedef enum {
     E_5 = (sizeof(int32_t) == 2)? 6 % 5 : 0x0f & 0x25, // 0x5
 
     E_6 = sizeof(TestSize) * 2 + 4,
+
+    E_F0 = (int)(1156.6f * 0.25),
+    E_F1 = (int)(1234 / 5.0 * 10),
+    E_F2 = 16.33 > -3.4,
 } EnumTest;
 
 typedef struct {
@@ -37,6 +41,13 @@ int
 main() {
     IntroEnumValue * e = ITYPE(EnumTest)->values;
 
+    intro_print(&e[7], ITYPE(IntroEnumValue), NULL);
+    printf("\n");
+    intro_print(&e[8], ITYPE(IntroEnumValue), NULL);
+    printf("\n");
+    intro_print(&e[9], ITYPE(IntroEnumValue), NULL);
+    printf("\n");
+
     assert(e[0].value == E_0);
     assert(e[1].value == E_1);
     assert(e[2].value == E_2);
@@ -44,6 +55,9 @@ main() {
     assert(e[4].value == E_4);
     assert(e[5].value == E_5);
     assert(e[6].value == E_6);
+    assert(e[7].value == E_F0);
+    assert(e[8].value == E_F1);
+    assert(e[9].value == E_F1);
 
     AttrTest test = {0};
     test.stat.hp = 7;
