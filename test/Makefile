@@ -1,6 +1,6 @@
 INTRO_PARSE := ../build/debug/intro
 CPPFLAGS += -I../lib
-CFLAGS = -g -MMD -MT '$@'
+CFLAGS = -g -MMD
 SRC := $(wildcard *.c)
 INTERACTIVE := interactive_test
 EXE := $(SRC:%.c=db_%)
@@ -44,8 +44,8 @@ clean:
 %.d:
 	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) -MM -MG -MT 'db_$*' $*.c > $@
 
-$(INTRO_SHARED): ../lib/introlib.c ../lib/vm.S ../lib/intro.h
-	$(CC) $< ../lib/vm.S -o $@ -g -shared -fpic
+$(INTRO_SHARED): ../lib/introlib.c ../lib/intro.h
+	$(CC) -o $@ $< -g -shared -fpic
 
 DEPS := $(SRC:.c=.d)
 ifeq (,$(filter clean,$(MAKECMDGOALS)))

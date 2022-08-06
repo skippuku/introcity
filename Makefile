@@ -88,7 +88,7 @@ EXE := $(OBJDIR)/intro
 build: $(EXE)
 	@echo "Build complete for $(PROFILE)."
 
-$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o $(OBJDIR)/vm.o
+$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 lib/intro.h.intro: lib/intro.h
