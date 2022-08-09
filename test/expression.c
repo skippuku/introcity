@@ -41,13 +41,6 @@ int
 main() {
     IntroEnumValue * e = ITYPE(EnumTest)->values;
 
-    intro_print(&e[7], ITYPE(IntroEnumValue), NULL);
-    printf("\n");
-    intro_print(&e[8], ITYPE(IntroEnumValue), NULL);
-    printf("\n");
-    intro_print(&e[9], ITYPE(IntroEnumValue), NULL);
-    printf("\n");
-
     assert(e[0].value == E_0);
     assert(e[1].value == E_1);
     assert(e[2].value == E_2);

@@ -72,7 +72,7 @@ static const char * tab = "    ";
 typedef uint8_t u8;
 
 void *
-arena_alloc(MemArena * arena, size_t amount) {
+arena_alloc(MemArena * arena, int amount) {
     if (arena->current_used + amount > arena->capacity) {
         if (amount <= arena->capacity) {
             if (arena->buckets[++arena->current].data == NULL) {
@@ -85,7 +85,7 @@ arena_alloc(MemArena * arena, size_t amount) {
             memset(arena->buckets[arena->current].data, 0, amount - arena->capacity);
         }
     }
-    void * result = arena->buckets[arena->current].data + arena->current_used;
+    void * result = (u8 *)arena->buckets[arena->current].data + arena->current_used;
     arena->current_used += amount;
     arena->current_used += 16 - (arena->current_used & 15);
     return result;
@@ -93,7 +93,7 @@ arena_alloc(MemArena * arena, size_t amount) {
 
 MemArena *
 new_arena(int capacity) {
-    MemArena * arena = calloc(1, sizeof(MemArena));
+    MemArena * arena = (MemArena *)calloc(1, sizeof(MemArena));
     arena->capacity = capacity;
     arena->buckets[0].data = calloc(1, arena->capacity);
     return arena;
@@ -110,7 +110,7 @@ reset_arena(MemArena * arena) {
 
 void
 free_arena(MemArena * arena) {
-    for (int i=0; i < LENGTH(arena->buckets); i++) {
+    for (uint32_t i=0; i < LENGTH(arena->buckets); i++) {
         if (arena->buckets[i].data) free(arena->buckets[i].data);
     }
     free(arena);
@@ -315,8 +315,9 @@ intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
 #endif
 
 union IntroRegisterData
-intro_run_bytecode(uint8_t * code, const uint8_t * data) {
+intro_run_bytecode(uint8_t * code, const void * v_data) {
 #if INTRO_USE_ASM_VM == 0
+    const uint8_t * data = (uint8_t *)v_data;
     union IntroRegisterData stack [1024];
     union IntroRegisterData r0, r1, r2;
     size_t stack_idx = 0;
@@ -1021,7 +1022,7 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
 
     case INTRO_UNION: {
         memset(city->data + data_offset, 0, packed_size(city, type));
-        for (int i=0; i < type->count; i++) {
+        for (uint32_t i=0; i < type->count; i++) {
             int64_t is_valid;
             IntroContainer m_cntr = intro_push(&cont, i);
             if (intro_attribute_expr_x(city->ictx, m_cntr, city->ictx->attr.builtin.i_when, &is_valid) && is_valid) {
@@ -1119,7 +1120,8 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     header.version_major = implementation_version_major;
     header.version_minor = implementation_version_minor;
 
-    CityContext city_ = {0}, *city = &city_;
+    CityContext _city, * city = &_city;
+    memset(city, 0, sizeof(_city));
 
     shdefault(city->name_cache, CITY_INVALID_CACHE);
     city->ictx = ictx;
@@ -1186,7 +1188,7 @@ city__load_into(
     uint16_t union_selection = 0;
     if (s_type->category == INTRO_UNION) {
         memcpy(&union_selection, src, 2);
-        src += 2;
+        src = (u8 *)src + 2;
     }
 
     switch(s_type->category) {
@@ -1202,7 +1204,8 @@ city__load_into(
                     if (arrlen(skip_members) > 1) {
                         arrdelswap(skip_members, dm_i);
                     } else {
-                        arrsetlen(skip_members, 0);
+                        //arrsetlen(skip_members, 0);
+                        stbds_header(skip_members)->length = 0;
                     }
                     do_skip = true;
                     break;
@@ -1282,7 +1285,8 @@ city__load_into(
             if (!found_match) {
                 intro_set_member_value_x(ctx, dest, d_type, dm_i, ctx->attr.builtin.i_default);
             }
-            arrsetlen(aliases, 0);
+            //arrsetlen(aliases, 0);
+            stbds_header(aliases)->length = 0;
         }
         arrfree(aliases);
         arrfree(skip_members);
@@ -1326,7 +1330,7 @@ city__load_into(
 
     case INTRO_ARRAY: {
         for (uint32_t i=0; i < s_type->count; i++) {
-            city__load_into(city, intro_push(&d_cont, i), src + (i * s_type->of->size), s_type->of);
+            city__load_into(city, intro_push(&d_cont, i), (u8 *)src + (i * s_type->of->size), s_type->of);
         }
     }break;
 
@@ -1340,7 +1344,8 @@ city__load_into(
 
 int
 intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size) {
-    CityContext _city = {0}, * city = &_city;
+    CityContext _city, * city = &_city;
+    memset(city, 0, sizeof(_city));
     const CityHeader * header = (const CityHeader *)data;
     city->ictx = ctx;
     
@@ -1364,7 +1369,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
     city->type_size = 1 + ((header->size_info >> 4) & 0x0f);
     city->ptr_size  = 1 + ((header->size_info) & 0x0f);
 
-    struct {
+    struct info_by_id_t {
         uint32_t key;
         IntroType * value;
     } * info_by_id = NULL;
@@ -1398,10 +1403,12 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
                 return -1;
             }
 
-            IntroMember * members = arena_alloc(arena, type->count * sizeof(members[0]));
+            IntroMember * members = (IntroMember *)arena_alloc(arena, type->count * sizeof(members[0]));
             int32_t current_offset = 0;
             for (uint32_t m=0; m < type->count; m++) {
-                IntroMember member = {0};
+                IntroMember member;
+                memset(&member, 0, sizeof(member));
+
                 uint32_t type_id = next_uint(&b, city->type_size);
                 member.type   = hmget(info_by_id, type_id);
                 member.offset = current_offset;

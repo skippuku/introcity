@@ -399,7 +399,7 @@ const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
 #define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
-union IntroRegisterData intro_run_bytecode(uint8_t * code, const uint8_t * data);
+union IntroRegisterData intro_run_bytecode(uint8_t * code, const void * data);
 
 #ifdef INTRO_INCLUDE_EXTRA
 typedef enum {
@@ -454,7 +454,7 @@ typedef struct {
     } buckets [256]; // should be enough for anyone
 } MemArena;
 
-void * arena_alloc(MemArena * arena, size_t amount);
+void * arena_alloc(MemArena * arena, int amount);
 MemArena * new_arena(int capacity);
 void reset_arena(MemArena * arena);
 void free_arena(MemArena * arena);

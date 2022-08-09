@@ -1,4 +1,5 @@
 lib:
+    single header
     interface for creating types/contexts
     intro_print circular detection
     accurate type display
@@ -6,7 +7,6 @@ lib:
         whether to print unnamed members as if their members were within
         max depth
     sprint/mprint version of everything that uses stdout
-    single header?
     the preprocessor and parser could be part of the lib?
     printf-like formatting print with insertions for types and values of types
     bitfield access
@@ -21,7 +21,9 @@ city:
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
     allow attribute declarations with no namespace
-    allow multiple aliases somehow
+        move attributes in i_ namespace to global namespace
+    dynamically sized value attributes
+        allow multiple aliases
     more strict namespacing
         maybe use dot
     allow attributes in more places
@@ -30,6 +32,7 @@ attribute:
         function arguments
     impl: cache matching data
     @repress trait, disable propagation
+        or maybe @propogate and repress by default
     general 'terminated' attribute?
         could even be a value, then you could choose what counts as a terminator
     'from' attribute: allow conversion from a type, introlib will have builtin conversion functions for basic types
@@ -38,28 +41,26 @@ attribute:
         as_enum for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
     members of complex type can specify an attribute as a value: I(default default)
-    parse c++ struct defaults as intro defaults?
     value(*@inherit): inherit base of type?
 
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
     vector types (__m128, etc)
-    Some way to get type location info
+    store type location information
     ParseInfo: have everything, strip away unwated stuff at gen
     fix bitfield regression
     parse globals (for libraries that use extern)
-    const flag?
     rudimentary C++ support
         function overloads
         namespaces
         member functions
         ignore templates
         operator overloads?
+        parse struct defaults as intro defaults?
 
 expr:
     support using const globals
-    implement float math
     array subscript
     ability to return a value of any type
     compound literals
@@ -73,9 +74,7 @@ pre:
     pragma that adds a file to make dependencies
     parse #line directives
     create #line directives?
-    parse comments for documentation?
     fix -E spacing
-    trim big newline gaps
 
 gen:
     !! generate header and data seperately, linker will complain about multiple definitions when compiled in multiple objects
