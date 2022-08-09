@@ -113,7 +113,7 @@ free_arena(MemArena * arena) {
     free(arena);
 }
 
-typedef struct DynArrayHeader {
+typedef struct {
     size_t cap;
     size_t len;
 } DynArrayHeader;
@@ -123,12 +123,13 @@ typedef struct DynArrayHeader {
 #define arr_free(ARR)   (free(arr_header(ARR)), ARR = 0)
 #define arr_len(ARR)    arr_header(ARR)->len
 
-#define arr_append(ARR, VAL)              (arr_len(ARR)++,        arr_grow((void *)&(ARR), sizeof(*(ARR))), (ARR)[arr_header(ARR)->len - 1] = VAL)
-#define arr_append_range(ARR, PTR, COUNT) (arr_len(ARR)+=(COUNT), arr_grow((void *)&(ARR), sizeof(*(ARR))), memcpy(&(ARR)[arr_len(ARR) - (COUNT)], PTR, (COUNT) * sizeof(*(ARR))))
-#define arr_alloc_ptr(ARR, COUNT)             (arr_len(ARR)+=(COUNT), arr_grow((void *)&(ARR), sizeof(*(ARR))), (ARR) + arr_len(ARR) - (COUNT))
-#define arr_alloc_idx(ARR, COUNT)         (arr_len(ARR)+=(COUNT), arr_grow((void *)&(ARR), sizeof(*(ARR))), arr_len(ARR) - (COUNT))
+#define arr_grow(ARR) arr_grow_((void *)&(ARR), sizeof(*(ARR)))
+#define arr_append(ARR, VAL)              (arr_len(ARR)+=1,       arr_grow(ARR), (ARR)[arr_header(ARR)->len - 1] = VAL)
+#define arr_append_range(ARR, PTR, COUNT) (arr_len(ARR)+=(COUNT), arr_grow(ARR), memcpy(&(ARR)[arr_len(ARR) - (COUNT)], PTR, (COUNT) * sizeof(*(ARR))))
+#define arr_alloc_ptr(ARR, COUNT)         (arr_len(ARR)+=(COUNT), arr_grow(ARR), (ARR) + arr_len(ARR) - (COUNT))
+#define arr_alloc_idx(ARR, COUNT)         (arr_len(ARR)+=(COUNT), arr_grow(ARR), arr_len(ARR) - (COUNT))
 
-void
+static void
 arr_init_(void ** o_arr, size_t elem_size) {
 #define ARR_INIT_CAP 128
     void * handle = malloc(elem_size * ARR_INIT_CAP + sizeof(DynArrayHeader));
@@ -141,8 +142,8 @@ arr_init_(void ** o_arr, size_t elem_size) {
 #undef ARR_INIT_CAP
 }
 
-void
-arr_grow(void ** o_arr, size_t elem_size) {
+static void
+arr_grow_(void ** o_arr, size_t elem_size) {
     bool do_realloc = false;
     while (arr_header(*o_arr)->len > arr_header(*o_arr)->cap) {
         arr_header(*o_arr)->cap <<= 1;
@@ -153,6 +154,57 @@ arr_grow(void ** o_arr, size_t elem_size) {
         void * handle = realloc(arr_header(*o_arr), arr_header(*o_arr)->cap * elem_size + sizeof(DynArrayHeader));
         *o_arr = (DynArrayHeader *)handle + 1;
     }
+}
+
+// borrowed and adapted from from gingerBill's gb.h
+static uint32_t
+gb_murmur32_seed(void const *data, size_t len, uint32_t seed) {
+    const uint32_t c1 = 0xcc9e2d51;
+    const uint32_t c2 = 0x1b873593;
+    const uint32_t r1 = 15;
+    const uint32_t r2 = 13;
+    const uint32_t m  = 5;
+    const uint32_t n  = 0xe6546b64;
+
+    size_t count_blocks = len / 4;
+    uint32_t hash = seed, k1 = 0;
+    const uint32_t * blocks = (const uint32_t *)data;
+    const uint8_t  * tail   = (const uint32_t *)(data) + count_blocks * 4;
+
+    for (size_t i=0; i < count_blocks; i++) {
+        uint32_t k = blocks[i];
+        k *= c1;
+        k = (k << r1) | (k >> (32 - r1));
+        k *= c2;
+
+        hash ^= k;
+        hash = ((hash << r2) | (hash >> (32 - r2))) * m + n;
+    }
+
+    switch (len & 3) {
+    case 3:
+        k1 ^= tail[2] << 16;
+        // FALLTHROUGH
+    case 2:
+        k1 ^= tail[1] << 8;
+        // FALLTHROUGH
+    case 1:
+        k1 ^= tail[0];
+
+        k1 *= c1;
+        k1 = (k1 << r1) | (k1 >> (32 - r1));
+        k1 *= c2;
+        hash ^= k1;
+    }
+
+    hash ^= len;
+    hash ^= (hash >> 16);
+    hash *= 0x85ebca6b;
+    hash ^= (hash >> 13);
+    hash *= 0xc2b2ae35;
+    hash ^= (hash >> 16);
+
+    return hash;
 }
 
 const char *
