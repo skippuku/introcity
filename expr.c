@@ -217,10 +217,19 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
             if (
                 (index == NULL)
               ||(node->depth < index->depth)
-              ||(node->depth == index->depth && (node->op & OP_TYPE_MASK) > (index->op & OP_TYPE_MASK))
+              ||(
+                  (node->depth == index->depth)
+                &&(
+                    ((node->op & OP_TYPE_MASK) > (index->op & OP_TYPE_MASK))
+                  ||(
+                      ((index->op & OP_TYPE_MASK) > OP_UNARY_TYPE)
+                    &&((node->op & OP_TYPE_MASK) == (index->op & OP_TYPE_MASK))
+                    )
+                  )
+                )
                )
             {
-                if ((node->op & OP_TYPE_MASK) == OP_UNARY_TYPE) {
+                if ((node->op & OP_TYPE_MASK) <= OP_UNARY_TYPE) {
                     node->right = index;
                 } else {
                     node->left = index;
@@ -414,9 +423,9 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
             }
 
             if (ectx->ctx && use_float_expr) {
-                if (intro_is_int(node->left->type)) {
+                if (intro_is_int(node->right->type)) {
                     arrput(proc, I_CVT_I_TO_D);
-                } else if (node->left->type->category == INTRO_F32) {
+                } else if (node->right->type->category == INTRO_F32) {
                     arrput(proc, I_CVT_F_TO_D);
                 }
             }

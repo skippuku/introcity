@@ -57,7 +57,7 @@ main() {
     assert(e[6].value == E_6);
     assert(e[7].value == E_F0);
     assert(e[8].value == E_F1);
-    assert(e[9].value == E_F1);
+    assert(e[9].value == E_F2);
 
     AttrTest test = {0};
     test.stat.hp = 7;
