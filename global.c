@@ -24,6 +24,8 @@
 
 #include "lib/intro.h"
 #include "lib/ext/stb_ds.h"
+
+#define STB_SPRINTF_IMPLEMENTATION
 #include "lib/ext/stb_sprintf.h"
 
 #ifndef LENGTH

@@ -444,8 +444,12 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
     case OP_NUMBER: {
         Token ntk = node->tk;
         if (memcmp(ntk.start, "0x", 2)!=0 && memchr(ntk.start, '.', ntk.length)) {
-            double val = strtod(ntk.start, NULL);
-            put_imm_int(&proc, *(uint64_t *)&val);
+            union {
+                double d;
+                uint64_t u;
+            } val;
+            val.d = strtod(ntk.start, NULL);
+            put_imm_int(&proc, val.u);
             if (ectx->ctx) {
                 node->type = parse_get_known(ectx->ctx, 10); // F64
             }

@@ -8,9 +8,6 @@
 #define STB_DS_IMPLEMENTATION
 #include "ext/stb_ds.h"
 
-#define STB_SPRINTF_IMPLEMENTATION
-#include "ext/stb_sprintf.h"
-
 #ifndef LENGTH
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #endif
@@ -28,9 +25,9 @@
   // taken from https://github.com/BartMassey/popcount/blob/master/popcount.c
   INTRO_API_INLINE int
   intro_popcount_x(uint32_t x) {
-      static const uint32_t m1 = 0x55555555;
-      static const uint32_t m2 = 0x33333333;
-      static const uint32_t m4 = 0x0f0f0f0f;
+      const uint32_t m1 = 0x55555555;
+      const uint32_t m2 = 0x33333333;
+      const uint32_t m4 = 0x0f0f0f0f;
       x -= (x >> 1) & m1;
       x = (x & m2) + ((x >> 2) & m2);
       x = (x + (x >> 4)) & m4;
@@ -114,6 +111,48 @@ free_arena(MemArena * arena) {
         if (arena->buckets[i].data) free(arena->buckets[i].data);
     }
     free(arena);
+}
+
+typedef struct DynArrayHeader {
+    size_t cap;
+    size_t len;
+} DynArrayHeader;
+
+#define arr_header(ARR) ((DynArrayHeader *)(ARR) - 1)
+#define arr_init(ARR)   arr_init_((void *)&(ARR), sizeof(*(ARR)))
+#define arr_free(ARR)   (free(arr_header(ARR)), ARR = 0)
+#define arr_len(ARR)    arr_header(ARR)->len
+
+#define arr_append(ARR, VAL)              (arr_len(ARR)++,        arr_grow((void *)&(ARR), sizeof(*(ARR))), (ARR)[arr_header(ARR)->len - 1] = VAL)
+#define arr_append_range(ARR, PTR, COUNT) (arr_len(ARR)+=(COUNT), arr_grow((void *)&(ARR), sizeof(*(ARR))), memcpy(&(ARR)[arr_len(ARR) - (COUNT)], PTR, (COUNT) * sizeof(*(ARR))))
+#define arr_alloc_ptr(ARR, COUNT)             (arr_len(ARR)+=(COUNT), arr_grow((void *)&(ARR), sizeof(*(ARR))), (ARR) + arr_len(ARR) - (COUNT))
+#define arr_alloc_idx(ARR, COUNT)         (arr_len(ARR)+=(COUNT), arr_grow((void *)&(ARR), sizeof(*(ARR))), arr_len(ARR) - (COUNT))
+
+void
+arr_init_(void ** o_arr, size_t elem_size) {
+#define ARR_INIT_CAP 128
+    void * handle = malloc(elem_size * ARR_INIT_CAP + sizeof(DynArrayHeader));
+
+    DynArrayHeader * header = handle;
+    header->cap = ARR_INIT_CAP;
+    header->len = 0;
+
+    *o_arr = (DynArrayHeader *)handle + 1;
+#undef ARR_INIT_CAP
+}
+
+void
+arr_grow(void ** o_arr, size_t elem_size) {
+    bool do_realloc = false;
+    while (arr_header(*o_arr)->len > arr_header(*o_arr)->cap) {
+        arr_header(*o_arr)->cap <<= 1;
+        do_realloc = true;
+    }
+
+    if (do_realloc) {
+        void * handle = realloc(arr_header(*o_arr), arr_header(*o_arr)->cap * elem_size + sizeof(DynArrayHeader));
+        *o_arr = (DynArrayHeader *)handle + 1;
+    }
 }
 
 const char *
@@ -478,13 +517,13 @@ intro_sprint_type_name(char * dest, const IntroType * type) {
             *dest++ = '*';
             type = type->of;
         } else if (type->category == INTRO_ARRAY) {
-            dest += stbsp_sprintf(dest, "[%u]", type->count);
+            dest += sprintf(dest, "[%u]", type->count);
             type = type->of;
         } else if (type->name) {
-            dest += stbsp_sprintf(dest, "%s", type->name);
+            dest += sprintf(dest, "%s", type->name);
             break;
         } else {
-            dest += stbsp_sprintf(dest, "<anon>");
+            dest += sprintf(dest, "<anon>");
             break;
         }
     }
@@ -827,9 +866,9 @@ city__error(const char * msg) {
 }
 
 static void
-put_uint(uint8_t ** array, uint32_t number, uint8_t bytes) {
-    assert(*array != NULL);
-    memcpy(arraddnptr(*array, bytes), &number, bytes);
+put_uint(uint8_t ** o_array, uint32_t number, uint8_t bytes) {
+    assert(*o_array != NULL);
+    arr_append_range(*o_array, &number, bytes);
 }
 
 static uint32_t
@@ -906,13 +945,6 @@ packed_size(const CityContext * city, const IntroType * type) {
     }
 }
 
-static inline uint64_t
-alignoff(uint64_t len, uint64_t alignment) {
-    uint64_t mask = alignment - 1;
-    uint64_t off = (alignment - (len & mask)) & mask;
-    return off;
-}
-
 static uint32_t
 city__get_serialized_id(CityContext * city, const IntroType * type) {
     ptrdiff_t type_id_index = hmgeti(city->type_set, type);
@@ -937,7 +969,7 @@ city__get_serialized_id(CityContext * city, const IntroType * type) {
 
             put_uint(&city->info, type->category, 1);
 
-            size_t of_type_id_index = arraddnindex(city->info, city->type_size);
+            size_t of_type_id_index = arr_alloc_idx(city->info, city->type_size);
 
             uint32_t of_type_id = city__get_serialized_id(city, type->of);
             memcpy(&city->info[of_type_id_index], &of_type_id, city->type_size);
@@ -979,8 +1011,9 @@ city__get_serialized_id(CityContext * city, const IntroType * type) {
                     uint32_t name_offset = shget(city->name_cache, m->name);
                     if (name_offset == CITY_INVALID_CACHE) {
                         size_t m_name_len = strlen(m->name);
-                        name_offset = arrlen(city->data);
-                        memcpy(arraddnptr(city->data, m_name_len + 1), m->name, m_name_len + 1);
+                        name_offset = arr_len(city->data);
+                        arr_append_range(city->data, m->name, m_name_len + 1);
+
                         shput(city->name_cache, m->name, name_offset);
                     }
                     put_uint(&city->info, name_offset, city->ptr_size);
@@ -1046,12 +1079,7 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
         uint32_t attr = intro_get_attr(cont);
         if (intro_attribute_length_x(city->ictx, cont, &length)) {
         } else if (intro_has_attribute_x(city->ictx, attr, city->ictx->attr.builtin.i_cstring)) {
-            const char * str = (char *)ptr;
-            if (str) {
-                length = strlen(str) + 1;
-            } else {
-                length = 0;
-            }
+            length = strlen((char *)ptr) + 1;
         } else {
             length = 1;
         }
@@ -1061,7 +1089,7 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
         CityBuffer buf;
         CityDeferredPointer dptr;
         dptr.data_location = data_offset;
-        for (int buf_i=0; buf_i < arrlen(city->buffers); buf_i++) {
+        for (int buf_i=0; buf_i < arr_len(city->buffers); buf_i++) {
             buf = city->buffers[buf_i];
             if (ptr == buf.origin && buf_size == buf.size) {
                 dptr.ptr_value = buf.ser_offset;
@@ -1069,18 +1097,18 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
             }
         }
 
-        uint32_t * ser_length = (uint32_t *)arraddnptr(city->data, 4); // TODO: this should go with a ptr, not with the buffer
+        uint32_t * ser_length = (uint32_t *)arr_alloc_ptr(city->data, 4); // TODO: this should go with a ptr, not with the buffer
         memcpy(ser_length, &length, 4);
 
-        uint32_t ser_offset = arraddnindex(city->data, buf_size);
+        uint32_t ser_offset = arr_alloc_idx(city->data, buf_size);
 
         buf.origin = ptr;
         buf.ser_offset = ser_offset;
         buf.size = buf_size;
-        arrput(city->buffers, buf);
+        arr_append(city->buffers, buf);
 
         dptr.ptr_value = ser_offset;
-        arrput(city->deferred_ptrs, dptr);
+        arr_append(city->deferred_ptrs, dptr);
 
         if (intro_is_scalar(type->of)) {
             memcpy(city->data + ser_offset, ptr, buf_size);
@@ -1130,44 +1158,48 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     city->ptr_size = 3;
     header.size_info = ((city->type_size-1) << 4) | (city->ptr_size-1);
 
-    arraddnptr(city->data, packed_size(city, s_type));
+    arr_init(city->data);
+    arr_init(city->info);
+    arr_init(city->deferred_ptrs);
+    arr_init(city->buffers);
 
-    arrsetcap(city->info, 64);
+    (void) arr_alloc_idx(city->data, packed_size(city, s_type));
+
     uint32_t main_type_id = city__get_serialized_id(city, s_type);
     uint32_t count_types = hmlenu(city->type_set);
     assert(main_type_id == count_types - 1);
 
     header.count_types = count_types;
-    header.data_ptr = sizeof(header) + arrlen(city->info);
+    header.data_ptr = sizeof(header) + arr_len(city->info);
 
     CityBuffer src_buf;
     src_buf.origin = (const u8 *)src;
     src_buf.ser_offset = 0;
     src_buf.size = packed_size(city, s_type);
 
-    arrput(city->buffers, src_buf);
+    arr_append(city->buffers, src_buf);
     city__serialize(city, 0, intro_container((void *)src, s_type));
 
-    for (int i=0; i < arrlen(city->deferred_ptrs); i++) {
+    for (int i=0; i < arr_len(city->deferred_ptrs); i++) {
         CityDeferredPointer dptr = city->deferred_ptrs[i];
         u8 * o_ptr = city->data + dptr.data_location;
         memcpy(o_ptr, &dptr.ptr_value, city->ptr_size);
     }
-    arrfree(city->deferred_ptrs);
+    arr_free(city->deferred_ptrs);
 
-    size_t result_size = header.data_ptr + arrlen(city->data);
+    size_t result_size = header.data_ptr + arr_len(city->data);
     u8 * result = (u8 *)malloc(result_size);
     u8 * p = result;
     memcpy(p, &header, sizeof(header));
     p += sizeof(header);
 
-    memcpy(p, city->info, arrlen(city->info));
-    p += arrlen(city->info);
+    memcpy(p, city->info, arr_len(city->info));
+    p += arr_len(city->info);
 
-    memcpy(p, city->data, arrlen(city->data));
+    memcpy(p, city->data, arr_len(city->data));
 
-    arrfree(city->info);
-    arrfree(city->data);
+    arr_free(city->info);
+    arr_free(city->data);
     hmfree(city->type_set);
 
     *o_size = result_size;
@@ -1195,24 +1227,23 @@ city__load_into(
     case INTRO_UNION:
     case INTRO_STRUCT: {
         const char ** aliases = NULL;
-        uint32_t * skip_members = NULL;
+        arr_init(aliases);
 
         for (uint32_t dm_i=0; dm_i < d_type->count; dm_i++) {
+#if 0
             bool do_skip = false;
-            for (int skip_i=0; skip_i < arrlen(skip_members); skip_i++) {
+            for (int skip_i=0; skip_i < arr_len(skip_members); skip_i++) {
                 if (skip_members[skip_i] == dm_i) {
-                    if (arrlen(skip_members) > 1) {
-                        arrdelswap(skip_members, dm_i);
-                    } else {
-                        //arrsetlen(skip_members, 0);
-                        stbds_header(skip_members)->length = 0;
+                    uint32_t last = skip_members[--arr_len(skip_members)];
+                    if (arr_len(skip_members) >= 1) {
+                        skip_members[dm_i] = last;
                     }
                     do_skip = true;
                     break;
                 }
             }
             if (do_skip) continue;
-
+#endif
             const IntroMember * dm = &d_type->members[dm_i];
 
             if (intro_has_attribute_x(ctx, dm->attr, ctx->attr.builtin.i_type)) {
@@ -1220,11 +1251,11 @@ city__load_into(
                 continue;
             }
 
-            arrput(aliases, dm->name);
+            arr_append(aliases, dm->name);
             IntroVariant var;
             if (intro_attribute_value_x(ctx, NULL, dm->attr, ctx->attr.builtin.i_alias, &var)) {
                 char * alias = (char *)var.data;
-                arrput(aliases, alias);
+                arr_append(aliases, alias);
             }
 
             bool found_match = false;
@@ -1244,7 +1275,7 @@ city__load_into(
 
                 bool match = false;
                 if (sm->name) {
-                    for (int alias_i=0; alias_i < arrlen(aliases); alias_i++) {
+                    for (int alias_i=0; alias_i < arr_len(aliases); alias_i++) {
                         if (strcmp(aliases[alias_i], sm->name) == 0) {
                             match = true;
                             break;
@@ -1265,7 +1296,7 @@ city__load_into(
                         char msg [512];
                         intro_sprint_type_name(from, sm->type);
                         intro_sprint_type_name(to,   dm->type);
-                        stbsp_sprintf(msg, "type mismatch. from: %s to: %s", from, to);
+                        snprintf(msg, sizeof(msg), "type mismatch. from: %s to: %s", from, to);
                         city__error(msg);
                         return -1;
                     }
@@ -1285,11 +1316,9 @@ city__load_into(
             if (!found_match) {
                 intro_set_member_value_x(ctx, dest, d_type, dm_i, ctx->attr.builtin.i_default);
             }
-            //arrsetlen(aliases, 0);
-            stbds_header(aliases)->length = 0;
+            arr_header(aliases)->len = 0;
         }
-        arrfree(aliases);
-        arrfree(skip_members);
+        arr_free(aliases);
     }break;
 
     case INTRO_POINTER: {
@@ -1301,7 +1330,7 @@ city__load_into(
             if (wr_size > 4) wr_size = 4;
             memcpy((u8 *)dest + lm->offset, &length, wr_size);
             if ((uint32_t)length_member_index > dm_i) {
-                arrput(skip_members, length_member_index);
+                arr_append(skip_members, length_member_index);
             }
         }
     #endif
@@ -1384,6 +1413,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
         uint32_t of_id;
     } TypePtrOf;
     TypePtrOf * deferred_pointer_ofs = NULL;
+    arr_init(deferred_pointer_ofs);
 
     MemArena * arena = new_arena(4096);
 
@@ -1443,7 +1473,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
             ptrof.type = type;
             ptrof.of_id = of_id;
 
-            arrput(deferred_pointer_ofs, ptrof);
+            arr_append(deferred_pointer_ofs, ptrof);
 
             type->size = city->ptr_size;
         }break;
@@ -1478,11 +1508,11 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
         hmput(info_by_id, i, type);
     }
 
-    for (int i=0; i < arrlen(deferred_pointer_ofs); i++) {
+    for (int i=0; i < arr_len(deferred_pointer_ofs); i++) {
         TypePtrOf ptrof = deferred_pointer_ofs[i];
         ptrof.type->of = hmget(info_by_id, ptrof.of_id);
     }
-    arrfree(deferred_pointer_ofs);
+    arr_free(deferred_pointer_ofs);
 
     const IntroType * s_type = info_by_id[hmlen(info_by_id) - 1].value;
 
