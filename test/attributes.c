@@ -1,6 +1,6 @@
 #include "basic.h"
 #include <intro.h>
-#include <ext/stb_ds.h>
+#include "../ext/stb_ds.h"
 
 I(attribute my_ (
     joint: member,
@@ -57,7 +57,8 @@ special_alloc(void * dest_struct, const IntroType * type) {
             assert(m->type->category == INTRO_POINTER);
             owner_index = mi;
 
-            struct join_info {int index; int ptr_offset;} * stack = NULL;
+            struct _JoinInfo {int index; int ptr_offset;} stack [128];
+            size_t stack_i = 0;
             size_t amount = 0;
             for (int mi=0; mi < type->count; mi++) {
                 const IntroMember * m = &type->members[mi];
@@ -73,10 +74,10 @@ special_alloc(void * dest_struct, const IntroType * type) {
                     IntroContainer parent = intro_container(dest_struct, type);
                     assert( intro_attribute_length(intro_push(&parent, mi), &length) );
 
-                    struct join_info info;
+                    struct _JoinInfo info;
                     info.index = mi;
                     info.ptr_offset = amount;
-                    arrput(stack, info);
+                    stack[stack_i++] = info;
                     amount += length * element_size;
                 }
             }
@@ -84,14 +85,12 @@ special_alloc(void * dest_struct, const IntroType * type) {
             void * buffer = malloc(amount);
             assert(buffer);
 
-            for (int i=0; i < arrlen(stack); i++) {
-                struct join_info info = stack[i];
+            for (int i=0; i < stack_i; i++) {
+                struct _JoinInfo info = stack[i];
                 const IntroMember * m = &type->members[info.index];
                 void ** member_loc = (void **)(dest_struct + m->offset);
                 *member_loc = (void *)(buffer + info.ptr_offset);
             }
-
-            arrfree(stack);
         }
     }
 }

@@ -5,26 +5,21 @@
 #include <stdio.h>
 #include <string.h>
 
-#define STB_DS_IMPLEMENTATION
-#include "ext/stb_ds.h"
-
 #ifndef LENGTH
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #endif
-// index of last put or get
-#define shtemp(t) stbds_temp((t)-1)
-#define hmtemp(t) stbds_temp((t)-1)
 
-#if defined(__GNUC__)
-  #define INTRO_POPCOUNT __builtin_popcount
-#elif defined(_MSC_VER)
-  #include <intrin.h>
-  #define INTRO_POPCOUNT __popcnt
+#if defined(__x86_64__)
+  #include <x86intrin.h>
+  #define INTRO_POPCNT32 __popcntd
+  #define INTRO_BSR64 __bsrq
 #else
-  #define INTRO_POPCOUNT intro_popcount_x
+  #define INTRO_POPCNT32 intro_popcnt32_x
+  #define INTRO_BSR64 intro_bsr64_x
+
   // taken from https://github.com/BartMassey/popcount/blob/master/popcount.c
   INTRO_API_INLINE int
-  intro_popcount_x(uint32_t x) {
+  intro_popcnt32_x(uint32_t x) {
       const uint32_t m1 = 0x55555555;
       const uint32_t m2 = 0x33333333;
       const uint32_t m4 = 0x0f0f0f0f;
@@ -34,27 +29,17 @@
       x += x >>  8;
       return (x + (x >> 16)) & 0x3f;
   }
-#endif
 
-#if 0
-static inline uint64_t
-intro_bsr(uint64_t x) {
-#if defined(__GNUC__)
-    return 63 - __builtin_clzll(x);
-#elif defined(_MSC_VER)
-    uint64_t index;
-    _BitScanReverse64(&index, x);
-    return index;
-#else
-    uint64_t index = 63;
-    for (; index > 0; index--) {
-        if ((x & (1 << index))) {
-            return index;
-        }
-    }
-    return 0;
-#endif
-}
+  INTRO_API_INLINE uint64_t
+  intro_bsr64_x(uint64_t x) {
+      uint64_t index = 63;
+      for (; index > 0; index--) {
+          if ((x & (1 << index))) {
+              return index;
+          }
+      }
+      return 0;
+  }
 #endif
 
 #ifdef __cplusplus
@@ -156,6 +141,8 @@ arr_grow_(void ** o_arr, size_t elem_size) {
     }
 }
 
+static const uint32_t MURMUR32_SEED = 0x67FD5513;
+
 // borrowed and adapted from from gingerBill's gb.h
 static uint32_t
 gb_murmur32_seed(void const *data, size_t len, uint32_t seed) {
@@ -169,7 +156,7 @@ gb_murmur32_seed(void const *data, size_t len, uint32_t seed) {
     size_t count_blocks = len / 4;
     uint32_t hash = seed, k1 = 0;
     const uint32_t * blocks = (const uint32_t *)data;
-    const uint8_t  * tail   = (const uint32_t *)(data) + count_blocks * 4;
+    const uint8_t  * tail   = (const uint8_t  *)data + count_blocks * 4;
 
     for (size_t i=0; i < count_blocks; i++) {
         uint32_t k = blocks[i];
@@ -205,6 +192,155 @@ gb_murmur32_seed(void const *data, size_t len, uint32_t seed) {
     hash ^= (hash >> 16);
 
     return hash;
+}
+
+static const uint32_t TABLE_INVALID_INDEX = UINT32_MAX;
+static const size_t   TABLE_INVALID_VALUE = SIZE_MAX;
+
+typedef struct {
+    uint32_t hash;
+    uint32_t index;
+} HashLookup;
+
+typedef struct {
+    const void * key_data;
+    size_t key_size;
+    size_t value;
+} HashEntry;
+
+typedef struct {
+    HashLookup * hashes;
+    HashEntry  * entries;
+    MemArena   * arena;
+} HashTable;
+
+static void
+table_clear_lookups_(HashTable * tbl, size_t start, size_t end) {
+    for (size_t i=start; i < end; i++) {
+        tbl->hashes[i].index = TABLE_INVALID_INDEX;
+    }
+}
+
+static HashTable *
+new_table(size_t cap) {
+    assert(1 << INTRO_BSR64(cap) == cap); // must be power of 2
+    cap <<= 1;
+
+    HashTable * tbl = (HashTable *)malloc(sizeof(*tbl));
+
+    arr_init(tbl->hashes);
+    arr_init(tbl->entries);
+    (void) arr_alloc_idx(tbl->hashes, cap);
+
+    tbl->arena = new_arena(1024);
+
+    table_clear_lookups_(tbl, 0, cap);
+
+    return tbl;
+}
+
+#define table_count(TBL) arr_header((TBL)->entries)->len
+
+#define free_table(TBL) (free_table_(TBL), TBL = 0)
+static void
+free_table_(HashTable * tbl) {
+    arr_free(tbl->hashes);
+    arr_free(tbl->entries);
+
+    free_arena(tbl->arena);
+
+    free(tbl);
+}
+
+static void
+table_insert_lookup_(HashTable * tbl, HashLookup * p_lookup) {
+    uint32_t index = p_lookup->hash & (arr_len(tbl->hashes) - 1);
+
+    HashLookup * p_slot = &tbl->hashes[index];
+    while (p_slot->index != TABLE_INVALID_INDEX) {
+        if (p_slot->index == p_lookup->index) {
+            return;
+        }
+        index += 1;
+        index &= arr_len(tbl->hashes) - 1;
+        p_slot = &tbl->hashes[index];
+    }
+
+    *p_slot = *p_lookup;
+
+    p_lookup->index = TABLE_INVALID_INDEX;
+}
+
+static void
+table_grow_lookup_(HashTable * tbl) {
+    size_t old_len = arr_len(tbl->hashes);
+    arr_header(tbl->hashes)->len <<= 1;
+    arr_grow(tbl->hashes);
+
+    table_clear_lookups_(tbl, old_len, arr_len(tbl->hashes));
+
+    for (size_t i=0; i < old_len; i++) {
+        HashLookup * p_lookup = &tbl->hashes[i];
+        if (p_lookup->index != TABLE_INVALID_INDEX) {
+            table_insert_lookup_(tbl, p_lookup);
+        }
+    }
+}
+
+static uint32_t
+table_get(const HashTable * tbl, HashEntry * p_entry) {
+    uint32_t hash = gb_murmur32_seed(p_entry->key_data, p_entry->key_size, MURMUR32_SEED);
+    uint32_t lookup_index_mask = arr_len(tbl->hashes) - 1;
+    uint32_t lookup_index = hash & lookup_index_mask;
+
+    while (1) {
+        HashLookup lookup = tbl->hashes[lookup_index];
+        if (lookup.index == TABLE_INVALID_INDEX) {
+            p_entry->value = TABLE_INVALID_VALUE;
+            return TABLE_INVALID_INDEX;
+        }
+        if (lookup.hash == hash) {
+            HashEntry s_entry = tbl->entries[lookup.index];
+            if (
+                s_entry.key_size == p_entry->key_size
+             && 0==memcmp(s_entry.key_data, p_entry->key_data, s_entry.key_size)
+               )
+            {
+                p_entry->value = s_entry.value;
+                return lookup.index;
+            }
+        }
+        lookup_index += 1;
+        lookup_index &= lookup_index_mask;
+    }
+}
+
+static void
+table_set(HashTable * tbl, HashEntry entry) {
+    size_t new_value = entry.value;
+    uint32_t entry_index = table_get(tbl, &entry);
+    if (entry_index != TABLE_INVALID_INDEX) {
+        tbl->entries[entry_index].value = new_value;
+        return;
+    }
+
+    void * stored_key = arena_alloc(tbl->arena, entry.key_size);
+    memcpy(stored_key, entry.key_data, entry.key_size);
+    entry.key_data = stored_key;
+    entry.value = new_value;
+
+    entry_index = arr_len(tbl->entries);
+    arr_append(tbl->entries, entry);
+
+    if (arr_len(tbl->entries) > arr_len(tbl->hashes) / 2) {
+        table_grow_lookup_(tbl);
+    }
+
+    HashLookup lookup;
+    lookup.hash = gb_murmur32_seed(entry.key_data, entry.key_size, MURMUR32_SEED);
+    lookup.index = entry_index;
+
+    table_insert_lookup_(tbl, &lookup);
 }
 
 const char *
@@ -276,9 +412,9 @@ get_attribute_value_offset(IntroContext * ctx, uint32_t attr_spec_location, uint
 
     int pop = 0;
     for (uint32_t i=0; i < bitset_index; i++) {
-        pop += INTRO_POPCOUNT(spec->bitset[i]);
+        pop += INTRO_POPCNT32(spec->bitset[i]);
     }
-    pop += INTRO_POPCOUNT(spec->bitset[bitset_index] & pop_count_mask);
+    pop += INTRO_POPCNT32(spec->bitset[bitset_index] & pop_count_mask);
     uint32_t * value_offsets = (uint32_t *)(spec + 1);
     *out = value_offsets[pop];
 
@@ -933,11 +1069,6 @@ next_uint(const uint8_t ** ptr, uint8_t size) {
 }
 
 typedef struct {
-    const IntroType * key;
-    uint32_t value;
-} CityTypeSet;
-
-typedef struct {
     const u8 * origin;
     uint32_t ser_offset;
     uint32_t size;
@@ -957,10 +1088,10 @@ typedef struct {
 
     // Creation only
     uint32_t type_id_counter;
-    CityTypeSet * type_set;
+    HashTable * type_set;
     CityBuffer * buffers;
     CityDeferredPointer * deferred_ptrs;
-    struct{ char * key; uint32_t value; } * name_cache;
+    HashTable * name_cache;
 } CityContext;
 
 #define CITY_INVALID_CACHE UINT32_MAX
@@ -999,9 +1130,14 @@ packed_size(const CityContext * city, const IntroType * type) {
 
 static uint32_t
 city__get_serialized_id(CityContext * city, const IntroType * type) {
-    ptrdiff_t type_id_index = hmgeti(city->type_set, type);
-    if (type_id_index >= 0) {
-        return city->type_set[type_id_index].value;
+    HashEntry entry;
+    entry.key_data = &type;
+    entry.key_size = sizeof(type);
+
+    table_get(city->type_set, &entry);
+    size_t type_id_index = entry.value;
+    if (type_id_index != TABLE_INVALID_VALUE) {
+        return entry.value;
     }
 
     if (intro_is_scalar(type)) {
@@ -1017,7 +1153,9 @@ city__get_serialized_id(CityContext * city, const IntroType * type) {
 
         case INTRO_POINTER: {
             uint32_t ptr_type_id = city->type_id_counter++;
-            hmput(city->type_set, type, ptr_type_id);
+
+            entry.value = ptr_type_id;
+            table_set(city->type_set, entry);
 
             put_uint(&city->info, type->category, 1);
 
@@ -1060,13 +1198,21 @@ city__get_serialized_id(CityContext * city, const IntroType * type) {
                         city__error("Unnamed members must have an id.");
                         exit(1);
                     }
-                    uint32_t name_offset = shget(city->name_cache, m->name);
-                    if (name_offset == CITY_INVALID_CACHE) {
-                        size_t m_name_len = strlen(m->name);
+
+                    size_t m_name_len = strlen(m->name);
+
+                    HashEntry h_entry;
+                    h_entry.key_data = m->name;
+                    h_entry.key_size = m_name_len;
+
+                    table_get(city->name_cache, &h_entry);
+                    size_t name_offset = h_entry.value;
+                    if (name_offset == TABLE_INVALID_VALUE) {
                         name_offset = arr_len(city->data);
                         arr_append_range(city->data, m->name, m_name_len + 1);
 
-                        shput(city->name_cache, m->name, name_offset);
+                        h_entry.value = name_offset;
+                        table_set(city->name_cache, h_entry);
                     }
                     put_uint(&city->info, name_offset, city->ptr_size);
                 }
@@ -1080,7 +1226,8 @@ city__get_serialized_id(CityContext * city, const IntroType * type) {
     }
 
     uint32_t type_id = city->type_id_counter++;
-    hmput(city->type_set, type, type_id);
+    entry.value = type_id;
+    table_set(city->type_set, entry);
     return type_id;
 }
 
@@ -1192,7 +1339,10 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
 
 void *
 intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_type, size_t *o_size) {
-    assert(s_type->category == INTRO_STRUCT);
+    assert(s_type->category == INTRO_STRUCT); // TODO: remove
+
+    // init context
+    CityContext _city, * city = &_city;
 
     CityHeader header;
     memset(&header, 0, sizeof(header));
@@ -1200,10 +1350,8 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     header.version_major = implementation_version_major;
     header.version_minor = implementation_version_minor;
 
-    CityContext _city, * city = &_city;
     memset(city, 0, sizeof(_city));
 
-    shdefault(city->name_cache, CITY_INVALID_CACHE);
     city->ictx = ictx;
 
     city->type_size = 2;
@@ -1214,15 +1362,22 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     arr_init(city->info);
     arr_init(city->deferred_ptrs);
     arr_init(city->buffers);
+    city->name_cache = new_table(128);
+    city->type_set = new_table(128);
 
+    // reserve space for main data
     (void) arr_alloc_idx(city->data, packed_size(city, s_type));
 
+    // create type info
+
     uint32_t main_type_id = city__get_serialized_id(city, s_type);
-    uint32_t count_types = hmlenu(city->type_set);
+    uint32_t count_types = table_count(city->type_set);
     assert(main_type_id == count_types - 1);
 
     header.count_types = count_types;
     header.data_ptr = sizeof(header) + arr_len(city->info);
+
+    // serialized data
 
     CityBuffer src_buf;
     src_buf.origin = (const u8 *)src;
@@ -1252,7 +1407,8 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
 
     arr_free(city->info);
     arr_free(city->data);
-    hmfree(city->type_set);
+    free_table(city->name_cache);
+    free_table(city->type_set);
 
     *o_size = result_size;
     return (void *)result;
@@ -1450,11 +1606,6 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
     city->type_size = 1 + ((header->size_info >> 4) & 0x0f);
     city->ptr_size  = 1 + ((header->size_info) & 0x0f);
 
-    struct info_by_id_t {
-        uint32_t key;
-        IntroType * value;
-    } * info_by_id = NULL;
-
     city->data = (uint8_t *)data + header->data_ptr;
     const uint8_t * b = (u8 *)data + sizeof(*header);
 
@@ -1466,6 +1617,9 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
     } TypePtrOf;
     TypePtrOf * deferred_pointer_ofs = NULL;
     arr_init(deferred_pointer_ofs);
+
+    IntroType ** info_by_id;
+    arr_init(info_by_id);
 
     MemArena * arena = new_arena(4096);
 
@@ -1492,7 +1646,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
                 memset(&member, 0, sizeof(member));
 
                 uint32_t type_id = next_uint(&b, city->type_size);
-                member.type   = hmget(info_by_id, type_id);
+                member.type   = info_by_id[type_id];
                 member.offset = current_offset;
                 if (type->category == INTRO_UNION) {
                     if (member.type->size > type->size) {
@@ -1534,7 +1688,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
             uint32_t elem_id = next_uint(&b, city->type_size);
             uint32_t count = next_uint(&b, city->ptr_size);
 
-            IntroType * elem_type = hmget(info_by_id, elem_id);
+            IntroType * elem_type = info_by_id[elem_id];
             type->of = elem_type;
             type->count = count;
             type->size = elem_type->size * count;
@@ -1557,20 +1711,20 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
             case INTRO_F128: type->size = 16; break;
             }
         }
-        hmput(info_by_id, i, type);
+        arr_append(info_by_id, type);
     }
 
     for (int i=0; i < arr_len(deferred_pointer_ofs); i++) {
         TypePtrOf ptrof = deferred_pointer_ofs[i];
-        ptrof.type->of = hmget(info_by_id, ptrof.of_id);
+        ptrof.type->of = info_by_id[ptrof.of_id];
     }
     arr_free(deferred_pointer_ofs);
 
-    const IntroType * s_type = info_by_id[hmlen(info_by_id) - 1].value;
+    const IntroType * s_type = info_by_id[arr_len(info_by_id) - 1];
 
     int copy_result = city__load_into(city, intro_container(dest, d_type), city->data, s_type);
 
-    hmfree(info_by_id);
+    arr_free(info_by_id);
     free_arena(arena);
 
     return copy_result;
