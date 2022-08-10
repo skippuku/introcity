@@ -19,7 +19,7 @@ else
 endif
 CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
 
-SRC := intro.c lib/introlib.c
+SRC := intro.c
 MAGIC_DEFAULT_PROFILE := debug
 
 define PROFILE.release
@@ -88,7 +88,7 @@ EXE := $(OBJDIR)/intro
 build: $(EXE)
 	@echo "Build complete for $(PROFILE)."
 
-$(EXE): $(OBJDIR)/intro.o $(OBJDIR)/introlib.o
+$(EXE): $(OBJDIR)/intro.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 lib/intro.h.intro: lib/intro.h

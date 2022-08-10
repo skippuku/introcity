@@ -1,5 +1,4 @@
 lib:
-    single header
     interface for creating types/contexts
     intro_print circular detection
     accurate type display

@@ -1,6 +1,6 @@
 doc/
 test/
-lib/ext/
+ext/
 README.md
 magic.mk
 build/
