@@ -409,6 +409,12 @@ union IntroRegisterData intro_run_bytecode(uint8_t * code, const void * data);
 #include <stdio.h>
 #include <string.h>
 
+#if defined(__GNUC__)
+  #define INTRO_UNUSED __attribute__((unused))
+#else
+  #define INTRO_UNUSED
+#endif
+
 #ifndef LENGTH
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #endif
@@ -449,8 +455,6 @@ union IntroRegisterData intro_run_bytecode(uint8_t * code, const void * data);
 #ifdef __cplusplus
   #define restrict
 #endif
-
-extern  __attribute__((sysv_abi)) int64_t intro__vm(void * bytecode, const void * data);
 
 const static int MAX_EXPOSED_LENGTH = 64;
 static const char * tab = "    ";
@@ -494,7 +498,7 @@ new_arena(int capacity) {
     return arena;
 }
 
-static void
+static void INTRO_UNUSED
 reset_arena(MemArena * arena) {
     for (int i=0; i <= arena->current; i++) {
         memset(arena->buckets[i].data, 0, arena->capacity);
@@ -517,11 +521,11 @@ typedef struct {
 } DynArrayHeader;
 
 #define arr_header(ARR) ((DynArrayHeader *)(ARR) - 1)
-#define arr_init(ARR)   arr_init_((void *)&(ARR), sizeof(*(ARR)))
+#define arr_init(ARR)   arr_init_((void **)&(ARR), sizeof(*(ARR)))
 #define arr_free(ARR)   (free(arr_header(ARR)), ARR = 0)
 #define arr_len(ARR)    arr_header(ARR)->len
 
-#define arr_grow(ARR) arr_grow_((void *)&(ARR), sizeof(*(ARR)))
+#define arr_grow(ARR) arr_grow_((void **)&(ARR), sizeof(*(ARR)))
 #define arr_append(ARR, VAL)              (arr_len(ARR)+=1,       arr_grow(ARR), (ARR)[arr_header(ARR)->len - 1] = VAL)
 #define arr_append_range(ARR, PTR, COUNT) (arr_len(ARR)+=(COUNT), arr_grow(ARR), memcpy(&(ARR)[arr_len(ARR) - (COUNT)], PTR, (COUNT) * sizeof(*(ARR))))
 #define arr_alloc_ptr(ARR, COUNT)         (arr_len(ARR)+=(COUNT), arr_grow(ARR), (ARR) + arr_len(ARR) - (COUNT))
@@ -532,7 +536,7 @@ arr_init_(void ** o_arr, size_t elem_size) {
 #define ARR_INIT_CAP 128
     void * handle = malloc(elem_size * ARR_INIT_CAP + sizeof(DynArrayHeader));
 
-    DynArrayHeader * header = handle;
+    DynArrayHeader * header = (DynArrayHeader *)handle;
     header->cap = ARR_INIT_CAP;
     header->len = 0;
 
@@ -636,7 +640,7 @@ table_clear_lookups_(HashTable * tbl, size_t start, size_t end) {
 
 static HashTable *
 new_table(size_t cap) {
-    assert(1 << INTRO_BSR64(cap) == cap); // must be power of 2
+    assert((size_t)1 << INTRO_BSR64(cap) == cap); // must be power of 2
     cap <<= 1;
 
     HashTable * tbl = (HashTable *)malloc(sizeof(*tbl));
@@ -1094,6 +1098,8 @@ intro_run_bytecode(uint8_t * code, const void * v_data) {
         }
     }
 #else
+    extern  __attribute__((sysv_abi)) int64_t intro__vm(void * bytecode, const void * data);
+
     union IntroRegisterData reg;
     reg.si = intro__vm(code, data);
     return reg;
@@ -1744,7 +1750,7 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
         CityBuffer buf;
         CityDeferredPointer dptr;
         dptr.data_location = data_offset;
-        for (int buf_i=0; buf_i < arr_len(city->buffers); buf_i++) {
+        for (size_t buf_i=0; buf_i < arr_len(city->buffers); buf_i++) {
             buf = city->buffers[buf_i];
             if (ptr == buf.origin && buf_size == buf.size) {
                 dptr.ptr_value = buf.ser_offset;
@@ -1843,7 +1849,7 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     arr_append(city->buffers, src_buf);
     city__serialize(city, 0, intro_container((void *)src, s_type));
 
-    for (int i=0; i < arr_len(city->deferred_ptrs); i++) {
+    for (size_t i=0; i < arr_len(city->deferred_ptrs); i++) {
         CityDeferredPointer dptr = city->deferred_ptrs[i];
         u8 * o_ptr = city->data + dptr.data_location;
         memcpy(o_ptr, &dptr.ptr_value, city->ptr_size);
@@ -1939,7 +1945,7 @@ city__load_into(
 
                 bool match = false;
                 if (sm->name) {
-                    for (int alias_i=0; alias_i < arr_len(aliases); alias_i++) {
+                    for (size_t alias_i=0; alias_i < arr_len(aliases); alias_i++) {
                         if (strcmp(aliases[alias_i], sm->name) == 0) {
                             match = true;
                             break;
@@ -2170,7 +2176,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
         arr_append(info_by_id, type);
     }
 
-    for (int i=0; i < arr_len(deferred_pointer_ofs); i++) {
+    for (size_t i=0; i < arr_len(deferred_pointer_ofs); i++) {
         TypePtrOf ptrof = deferred_pointer_ofs[i];
         ptrof.type->of = info_by_id[ptrof.of_id];
     }
@@ -2192,7 +2198,11 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
 //////////////////////////////////////////
 #ifdef INTRO_IMGUI_IMPL
 #ifndef __cplusplus
-  #error "INTRO_IMGUI_IMPL must be compiled as C++"
+  #error "intro.h must be compiled as C++ when INTRO_IMGUI_IMPL is defined"
+#endif
+
+#ifndef IMGUI_VERSION
+  #error "imgui.h must be included before intro.h when INTRO_IMGUI_IMPL is defined"
 #endif
 
 #define GUIATTR(x) (ctx->attr.builtin.gui_##x)
@@ -2226,11 +2236,9 @@ static void edit_member(IntroContext *, const char *, IntroContainer, int);
 
 static void
 edit_array(IntroContext * ctx, const IntroContainer * p_cont, int count) {
-    size_t element_size = p_cont->type->size;
     for (int i=0; i < count; i++) {
         char name [64];
         snprintf(name, 63, "[%i]", i);
-        void * element_data = (uint8_t *)p_cont->data + i * element_size;
         edit_member(ctx, name, intro_push(p_cont, i), i);
     }
 }
@@ -2398,7 +2406,7 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
         case 16:
             ImGui::ColorEdit4("##", (float *)cont.data);
             break;
-        case 4:
+        case 4: {
             float im_color [4];
             uint8_t * buf = (uint8_t *)cont.data;
             im_color[0] = buf[0] / 256.0f;
@@ -2412,8 +2420,9 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
             buf[1] = im_color[1] * 256;
             buf[2] = im_color[2] * 256;
             buf[3] = im_color[3] * 256;
-            break;
-        defualt:
+        }break;
+
+        default:
             ImGui::Text("bad color size");
             break;
         }
@@ -2421,19 +2430,21 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
     }
 
     if (intro_has_attribute_x(ctx, attr, GUIATTR(vector))) {
-        int count_components;
+        int count_components = 0;
         const IntroType * scalar_type;
         if (type->category == INTRO_ARRAY) {
-            count_components = type->count;
             scalar_type = type->of;
-        } else if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
+            count_components = type->count;
+        } else if (intro_has_members(type)) {
             const IntroType * m_type = type->members[0].type;
             scalar_type = m_type;
             count_components = type->size / m_type->size;
         }
-        auto param = get_scalar_params(ctx, type, attr);
-        ImGui::DragScalarN("##", imgui_scalar_type(scalar_type), cont.data, count_components, param.scale, param.min, param.max, param.format);
-        do_tree_place_holder = false;
+        if (count_components > 0) {
+            auto param = get_scalar_params(ctx, type, attr);
+            ImGui::DragScalarN("##", imgui_scalar_type(scalar_type), cont.data, count_components, param.scale, param.min, param.max, param.format);
+            do_tree_place_holder = false;
+        }
     }
 
     if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
@@ -2539,7 +2550,7 @@ intro_imgui_edit_x(IntroContext * ctx, IntroContainer cont, const char * name) {
         ImGui::TableSetupColumn("value");
         ImGui::TableHeadersRow();
 
-        edit_member(ctx, name, cont, (int)(uintptr_t)name);
+        intro::edit_member(ctx, name, cont, (int)(uintptr_t)name);
         ImGui::EndTable();
     }
 }

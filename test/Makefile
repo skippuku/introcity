@@ -45,7 +45,7 @@ clean:
 	$(INTRO_PARSE) --cfg $(ICFG) $(CPPFLAGS) -MM -MG -MT 'db_$*' $*.c > $@
 
 $(INTRO_SHARED): ../lib/intro.h
-	$(CC) -o $@ -DINTRO_IMPL -xc $< -g -shared -fpic
+	$(CXX) -o $@ -DINTRO_IMPL -xc++ $< -std=c++11 -pedantic -Wall -Wextra -Werror -g -shared -fpic
 
 DEPS := $(SRC:.c=.d)
 ifeq (,$(filter clean,$(MAKECMDGOALS)))
