@@ -209,7 +209,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
         int type_index = hmget(info->index_by_ptr_map, func->type);
         int return_type_index = hmget(info->index_by_ptr_map, func->return_type);
         int saved_index = hmget(complex_type_map, func->type->__data);
-        strputf(&s, "{\"%s\", &__intro_t[%i], &__intro_t[%i], &__intro_argnm[%i], __intro_%x, {\"%s\", %u}, %u, %u},\n",
+        strputf(&s, "{\"%s\", &__intro_t[%i], &__intro_t[%i], &__intro_argnm[%i], &__intro_%x[1], {\"%s\", %u}, %u, %u},\n",
                     func->name, type_index, return_type_index, name_index, saved_index,
                     func->location.path, func->location.offset,
                     func->count_args, func->flags);

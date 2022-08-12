@@ -345,29 +345,41 @@ intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t 
 }
 
 INTRO_API_INLINE IntroContainer
+intro_cntr(void * data, const IntroType * type) {
+    IntroContainer cntr;
+    cntr.data = (uint8_t *)data;
+    cntr.type = type;
+    cntr.parent = NULL;
+    cntr.index = 0;
+    return cntr;
+}
+
+INTRO_API_INLINE IntroContainer
 intro_container(void * data, const IntroType * type) {
-    IntroContainer container;
-    container.data = (uint8_t *)data;
-    container.type = type;
-    container.parent = NULL;
-    container.index = 0;
-    return container;
+    return intro_cntr(data, type);
 }
 
 INTRO_API_INLINE uint32_t
-intro_get_attr(IntroContainer cont) {
-    if (cont.parent && intro_has_members(cont.parent->type)) {
-        return cont.parent->type->members[cont.index].attr;
+intro_get_attr(IntroContainer cntr) {
+    if (cntr.parent && intro_has_members(cntr.parent->type)) {
+        return cntr.parent->type->members[cntr.index].attr;
     } else {
-        return cont.type->attr;
+        return cntr.type->attr;
+    }
+}
+
+INTRO_API_INLINE const IntroMember *
+intro_get_member(IntroContainer cntr) {
+    if (intro_has_members(cntr.parent->type)) {
+        return &cntr.parent->type->members[cntr.index];
+    } else {
+        return NULL;
     }
 }
 
 typedef struct {
     int indent;
 } IntroPrintOptions;
-
-typedef struct IntroPool IntroPool;
 
 // ATTRIBUTE INFO
 #define intro_attribute_value(m, a, out) intro_attribute_value_x(INTRO_CTX, m->type, m->attr, IATTR_##a, out)
@@ -1430,18 +1442,30 @@ intro_push(const IntroContainer * parent, int32_t index) {
     switch(parent->type->category) {
     case INTRO_POINTER: {
         result.type = parent->type->of;
-        result.data = *(uint8_t **)(parent->data) + result.type->size * index;
+        if (parent->data) {
+            result.data = *(uint8_t **)(parent->data) + result.type->size * index;
+        } else {
+            result.data = NULL;
+        }
     }break;
 
     case INTRO_ARRAY: {
         result.type = parent->type->of;
-        result.data = parent->data + result.type->size * index;
+        if (parent->data) {
+            result.data = parent->data + result.type->size * index;
+        } else {
+            result.data = NULL;
+        }
     }break;
 
     case INTRO_STRUCT:
     case INTRO_UNION: {
         result.type = parent->type->members[index].type;
-        result.data = parent->data + parent->type->members[index].offset;
+        if (parent->data) {
+            result.data = parent->data + parent->type->members[index].offset;
+        } else {
+            result.data = NULL;
+        }
     }break;
 
     default:

@@ -1196,7 +1196,7 @@ add_to_gen_info(ParseContext * ctx, ParseInfo * info, IntroType * type) {
                 add_to_gen_info(ctx, info, m->type);
             }
         } else if (type->category == INTRO_FUNCTION) {
-            for (int arg_i=0; arg_i < type->size; arg_i++) {
+            for (int arg_i=0; arg_i < type->count; arg_i++) {
                 add_to_gen_info(ctx, info, type->arg_types[arg_i]);
             }
         }
