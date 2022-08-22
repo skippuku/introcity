@@ -34,7 +34,7 @@ typedef struct {
 typedef struct {
     I(note "this is the name")
     I(num 47)
-    char * name I(9) I(default "spock");
+    char * name I(9) I(fallback "spock");
 
     int v1 I(10, = 67, death_value -9, friend v2, my_scale 8.5, exp);
 
@@ -161,7 +161,7 @@ main() {
 
         assert(!intro_has_attribute(m_name, my_exp));
 
-        assert(intro_attribute_int(m_name, i_id, &i) && i == 9);
+        assert(intro_attribute_int(m_name, id, &i) && i == 9);
 
         assert(test.v1 == 67);
         assert(intro_attribute_member(m_v1, my_friend, &i) && i == 2);

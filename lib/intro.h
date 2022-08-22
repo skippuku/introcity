@@ -185,16 +185,16 @@ typedef struct IntroAttributeSpec {
 } IntroAttributeSpec;
 
 typedef struct IntroBuiltinAttributeIds {
-    uint8_t i_id;
-    uint8_t i_btfld;
-    uint8_t i_default;
-    uint8_t i_length;
-    uint8_t i_alias;
-    uint8_t i_city;
-    uint8_t i_cstring;
-    uint8_t i_type;
-    uint8_t i_when;
-    uint8_t i_remove;
+    uint8_t id;
+    uint8_t bitfield;
+    uint8_t fallback;
+    uint8_t length;
+    uint8_t alias;
+    uint8_t city;
+    uint8_t cstring;
+    uint8_t type;
+    uint8_t when;
+    uint8_t remove;
 
     uint8_t gui_note;
     uint8_t gui_name;
@@ -263,10 +263,10 @@ union IntroRegisterData {
 I(apply_to (char *) (cstring))
 I(apply_to (void *) (~city))
 
-I(attribute i_ (
+I(attribute @global (
     id:       int,
-    btfld:    int,
-    default:  value(@inherit),
+    bitfield: int,
+    fallback: value(@inherit),
     length:   expr,
     when:     expr,
     alias:    value(char *),
@@ -934,7 +934,7 @@ intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_
 bool
 intro_attribute_length_x(IntroContext * ctx, IntroContainer cntr, int64_t * o_length) {
     assert(cntr.parent && intro_has_members(cntr.parent->type));
-    return intro_attribute_expr_x(ctx, cntr, ctx->attr.builtin.i_length, o_length);
+    return intro_attribute_expr_x(ctx, cntr, ctx->attr.builtin.length, o_length);
 }
 
 static const void *
@@ -1157,7 +1157,7 @@ intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * stru
     const IntroMember * m = &struct_type->members[member_index];
     size_t size = m->type->size;
     IntroVariant var;
-    if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.i_type)) {
+    if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.type)) {
         memcpy((u8 *)dest + m->offset, &struct_type, sizeof(void *));
     } else if (intro_attribute_value_x(ctx, m->type, m->attr, value_attribute, &var)) {
         assert(var.type == m->type);
@@ -1191,7 +1191,7 @@ intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint
 
 void
 intro_set_defaults_x(IntroContext * ctx, void * dest, const IntroType * type) {
-    intro_set_values_x(ctx, dest, type, ctx->attr.builtin.i_default);
+    intro_set_values_x(ctx, dest, type, ctx->attr.builtin.fallback);
 }
 
 void
@@ -1297,7 +1297,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
             int64_t expr_result;
             if (
                 !intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.gui_show)
-              ||(intro_attribute_expr_x(ctx, m_cntr, ctx->attr.builtin.i_when, &expr_result) && !expr_result)
+              ||(intro_attribute_expr_x(ctx, m_cntr, ctx->attr.builtin.when, &expr_result) && !expr_result)
                )
             {
                 continue;
@@ -1391,7 +1391,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
         void * ptr = *(void **)data;
         if (!ptr) {
             printf("<null>");
-        } else if (intro_has_attribute_x(ctx, attr, ctx->attr.builtin.i_cstring)) {
+        } else if (intro_has_attribute_x(ctx, attr, ctx->attr.builtin.cstring)) {
             char * str = (char *)ptr;
             const int max_string_length = 32;
             if (strlen(str) <= max_string_length) {
@@ -1697,7 +1697,7 @@ city__get_serialized_id(CityContext * city, const IntroType * type) {
                 put_uint(&city->info, m_type_ids[m_index], city->type_size);
 
                 int32_t id;
-                if (intro_attribute_int_x(city->ictx, m->attr, city->ictx->attr.builtin.i_id, &id)) {
+                if (intro_attribute_int_x(city->ictx, m->attr, city->ictx->attr.builtin.id, &id)) {
                     size_t stored = id;
                     stored |= id_test_bit;
                     put_uint(&city->info, stored, city->ptr_size);
@@ -1744,7 +1744,7 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
     const IntroType * type = cont.type;
     const u8 * src = cont.data;
 
-    if (!intro_has_attribute_x(city->ictx, intro_get_attr(cont), city->ictx->attr.builtin.i_city)) {
+    if (!intro_has_attribute_x(city->ictx, intro_get_attr(cont), city->ictx->attr.builtin.city)) {
         memset(city->data + data_offset, 0, packed_size(city, type));
         return;
     }
@@ -1765,7 +1765,7 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
         for (uint32_t i=0; i < type->count; i++) {
             int64_t is_valid;
             IntroContainer m_cntr = intro_push(&cont, i);
-            if (intro_attribute_expr_x(city->ictx, m_cntr, city->ictx->attr.builtin.i_when, &is_valid) && is_valid) {
+            if (intro_attribute_expr_x(city->ictx, m_cntr, city->ictx->attr.builtin.when, &is_valid) && is_valid) {
                 uint16_t selection_index = i;
                 memcpy(city->data + data_offset, &selection_index, 2);
                 city__serialize(city, data_offset + 2, m_cntr);
@@ -1785,7 +1785,7 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
         int64_t length;
         uint32_t attr = intro_get_attr(cont);
         if (intro_attribute_length_x(city->ictx, cont, &length)) {
-        } else if (intro_has_attribute_x(city->ictx, attr, city->ictx->attr.builtin.i_cstring)) {
+        } else if (intro_has_attribute_x(city->ictx, attr, city->ictx->attr.builtin.cstring)) {
             length = strlen((char *)ptr) + 1;
         } else {
             length = 1;
@@ -1962,14 +1962,14 @@ city__load_into(
 #endif
             const IntroMember * dm = &d_type->members[dm_i];
 
-            if (intro_has_attribute_x(ctx, dm->attr, ctx->attr.builtin.i_type)) {
+            if (intro_has_attribute_x(ctx, dm->attr, ctx->attr.builtin.type)) {
                 *(const IntroType **)((u8 *)dest + dm->offset) = d_type;
                 continue;
             }
 
             arr_append(aliases, dm->name);
             IntroVariant var;
-            if (intro_attribute_value_x(ctx, NULL, dm->attr, ctx->attr.builtin.i_alias, &var)) {
+            if (intro_attribute_value_x(ctx, NULL, dm->attr, ctx->attr.builtin.alias, &var)) {
                 char * alias = (char *)var.data;
                 arr_append(aliases, alias);
             }
@@ -2000,7 +2000,7 @@ city__load_into(
                 } else {
                     int32_t sm_id = sm->attr;
                     int32_t dm_id;
-                    if (intro_attribute_int_x(ctx, dm->attr, ctx->attr.builtin.i_id, &dm_id) && dm_id == sm_id) {
+                    if (intro_attribute_int_x(ctx, dm->attr, ctx->attr.builtin.id, &dm_id) && dm_id == sm_id) {
                         match = true;
                     }
                 }
@@ -2030,7 +2030,7 @@ city__load_into(
                 }
             }
             if (!found_match) {
-                intro_set_member_value_x(ctx, dest, d_type, dm_i, ctx->attr.builtin.i_default);
+                intro_set_member_value_x(ctx, dest, d_type, dm_i, ctx->attr.builtin.fallback);
             }
             arr_header(aliases)->len = 0;
         }
@@ -2040,7 +2040,7 @@ city__load_into(
     case INTRO_POINTER: {
     #if 0 // TODO...
         int32_t length_member_index;
-        if (intro_attribute_member_x(ctx, dm->attr, ctx->attr.builtin.i_length, &length_member_index)) {
+        if (intro_attribute_member_x(ctx, dm->attr, ctx->attr.builtin.length, &length_member_index)) {
             const IntroMember * lm = &d_type->members[length_member_index];
             size_t wr_size = lm->type->size;
             if (wr_size > 4) wr_size = 4;
@@ -2069,7 +2069,7 @@ city__load_into(
                 }
             }
         } else {
-            intro_set_member_value_x(ctx, d_cont.parent->data, d_cont.parent->type, d_cont.index, ctx->attr.builtin.i_default);
+            intro_set_member_value_x(ctx, d_cont.parent->data, d_cont.parent->type, d_cont.index, ctx->attr.builtin.fallback);
         }
     }break;
 
@@ -2342,7 +2342,7 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
     int64_t expr_result;
     if (
         !intro_has_attribute_x(ctx, attr, GUIATTR(show))
-      ||(intro_attribute_expr_x(ctx, cont, ctx->attr.builtin.i_when, &expr_result) && !expr_result)
+      ||(intro_attribute_expr_x(ctx, cont, ctx->attr.builtin.when, &expr_result) && !expr_result)
        )
     {
         return;
@@ -2562,7 +2562,7 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
         }
     } else if (type->category == INTRO_POINTER) {
         void * ptr_data = *(void **)cont.data;
-        if (intro_has_attribute_x(ctx, attr, ctx->attr.builtin.i_cstring)) {
+        if (intro_has_attribute_x(ctx, attr, ctx->attr.builtin.cstring)) {
             ImGui::Text("\"%s\"", (const char *)ptr_data);
         } else if (ptr_data) {
             ImGui::TextColored(ptr_color, "0x%llx", (uintptr_t)ptr_data);

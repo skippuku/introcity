@@ -208,7 +208,7 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
 
         if (node->op == OP_TERNARY_1) paren_depth += 1;
 
-        last_was_value = ((node->op & 0xf0) <= OP_UNARY_TYPE);
+        last_was_value = ((node->op & OP_TYPE_MASK) <= OP_UNARY_TYPE);
 
         ExprNode ** p_index = &base;
         while (1) {

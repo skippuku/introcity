@@ -109,7 +109,7 @@ typedef struct {
 } DefaultAlignTest;
 
 typedef struct {
-    int v_int I(default 123);
+    int v_int I(fallback 123);
     uint8_t v_u8 I(=1);
     int64_t v_s64 I(=-54321);
     float v_float I(= 3.14159);
@@ -119,7 +119,7 @@ typedef struct {
     uint8_t numbers [8] I(= {4, 5, 8, 9, 112, 9});
     char * words [5] I(= {[3] = "apple", [1] = "banana", "mango", [0] = "pineapple", [4] = "newline\ntest"});
 
-    float * speeds I(length count_speeds, default {3.4, 5.6, 1.7, 8.2, 0.002});
+    float * speeds I(length count_speeds, fallback {3.4, 5.6, 1.7, 8.2, 0.002});
     uint32_t count_speeds I(= 5, remove gui_show);
 
     Skills skills I(= SKILL_MUSICIAN | SKILL_PROGRAMMER);

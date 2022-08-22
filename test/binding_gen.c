@@ -58,11 +58,11 @@ fprint_odin_type(FILE * out, const OdinGenOptions * opt, IntroContainer cntr, in
         if (type->of == ITYPE(void)) {
             fprintf(out, "rawptr");
             return;
-        } else if (type->of == ITYPE(char) && intro_has_attribute_x(INTRO_CTX, attr, IATTR_i_cstring)) {
+        } else if (type->of == ITYPE(char) && intro_has_attribute_x(INTRO_CTX, attr, IATTR_cstring)) {
             fprintf(out, "cstring");
             return;
         } else {
-            if (intro_has_attribute_x(INTRO_CTX, attr, IATTR_i_length)) {
+            if (intro_has_attribute_x(INTRO_CTX, attr, IATTR_length)) {
                 fprintf(out, "[^]");
             } else {
                 fprintf(out, "^");

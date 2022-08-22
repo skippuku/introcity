@@ -43,6 +43,7 @@ attribute_parse_init(ParseContext * ctx) {
 
     sh_new_arena(ctx->attribute_map);
     ctx->attribute_id_counter = 0;
+    ctx->flag_temp_id_counter = 0;
 }
 
 int
@@ -64,9 +65,24 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
         if (tk.type == TK_IDENTIFIER) {
             namespace = copy_and_terminate(ctx->arena, tk.start, tk.length);
             tk = next_token(tidx);
+        } else if (tk.type == TK_AT) {
+            tk = next_token(tidx);
+            memcpy(temp, tk.start, tk.length);
+            temp[tk.length] = 0;
+            a_tk = shget(ctx->attribute_token_map, temp);
+            if (a_tk != ATTR_TK_GLOBAL) {
+                parse_error(ctx, tk, "The only attribute trait allowed here is 'global'.");
+                return -1;
+            }
+            namespace = NULL;
+            tk = next_token(tidx);
+        } else {
+            parse_error(ctx, tk, "Expected namespace or @global before '('.");
+            return -1;
         }
+
         if (tk.type != TK_L_PARENTHESIS) {
-            parse_error(ctx, tk, "Expected. '('.");
+            parse_error(ctx, tk, "Expected '('.");
             return -1;
         }
 
@@ -83,7 +99,7 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
             char unspaced [1024];
             memcpy(unspaced, tk.start, tk.length);
             unspaced[tk.length] = 0;
-            strcpy(namespaced, namespace);
+            strcpy(namespaced, (namespace)? namespace : "");
             strcat(namespaced, unspaced);
             if (shgeti(ctx->attribute_map, namespaced) >= 0) {
                 parse_error(ctx, tk, "Attribute name is reserved.");
@@ -105,7 +121,9 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
             }
             info.type = a_tk;
 
-            if (info.type != INTRO_AT_FLAG) {
+            if (info.type == INTRO_AT_FLAG) {
+                info.id = ctx->flag_temp_id_counter++;
+            } else {
                 info.id = ctx->attribute_id_counter++;
             }
 
@@ -159,12 +177,16 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
             }
 
             shput(ctx->attribute_map, namespaced, info);
-            ptrdiff_t unspaced_index = shgeti(ctx->attribute_map, unspaced);
-            if (unspaced_index < 0) {
-                info.without_namespace = true;
-                shput(ctx->attribute_map, unspaced, info);
-            } else {
-                ctx->attribute_map[unspaced_index].value.invalid_without_namespace = true;
+
+            // TODO: not a fan of this
+            if (namespace) {
+                ptrdiff_t unspaced_index = shgeti(ctx->attribute_map, unspaced);
+                if (unspaced_index < 0) {
+                    info.without_namespace = true;
+                    shput(ctx->attribute_map, unspaced, info);
+                } else {
+                    ctx->attribute_map[unspaced_index].value.invalid_without_namespace = true;
+                }
             }
 
             if (tk.type == TK_COMMA) {
@@ -584,7 +606,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     char * end;
     switch(attribute_type) {
     case INTRO_AT_FLAG: {
-        if (data.id == ctx->builtin.i_type) {
+        if (data.id == ctx->builtin.type) {
             IntroType * mtype = type->members[member_index].type;
             if (!(mtype->category == INTRO_POINTER && strcmp(mtype->of->name, "IntroType") == 0)) {
                 parse_error(ctx, tk, "Member must be of type 'IntroType *' to have type attribute.");
@@ -622,7 +644,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     // TODO: error check: if multiple members use the same member for length, values can't have different lengths
     // NOTE: the previous 2 todo's do not apply if the values are for different attributes
     case INTRO_AT_VALUE: {
-        if (data.id == ctx->builtin.i_alias && tk_at(tidx).type == TK_IDENTIFIER) {
+        if (data.id == ctx->builtin.alias && tk_at(tidx).type == TK_IDENTIFIER) {
             tk = next_token(tidx);
             char * name = malloc(tk.length + 1);
             memcpy(name, tk.start, tk.length);
@@ -644,7 +666,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         bool success = false;
         for (int mi=0; mi < type->count; mi++) {
             if (tk_equal(&tk, type->members[mi].name)) {
-                if (data.id == ctx->builtin.i_length) {
+                if (data.id == ctx->builtin.length) {
                     IntroType * mtype = type->members[mi].type;
                     uint32_t category_no_size = mtype->category & 0xf0;
                     if (category_no_size != INTRO_SIGNED && category_no_size != INTRO_UNSIGNED) {
@@ -732,7 +754,7 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
             if (error) return -1;
             arrput(attributes, data);
         } else if (tk.type == TK_NUMBER) {
-            data.id = ctx->builtin.i_id;
+            data.id = ctx->builtin.id;
             // @copy from above
             char * end;
             long result = strtol(tk.start, &end, 0);
@@ -744,12 +766,12 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
             data.v.i = (int32_t)result;
             arrput(attributes, data);
         } else if (tk.type == TK_EQUAL) {
-            data.id = ctx->builtin.i_default;
+            data.id = ctx->builtin.fallback;
             if (handle_value_attribute(ctx, tidx, directive->type, directive->member_index, &data, &tk)) return -1;
 
             arrput(attributes, data);
         } else if (tk.type == TK_TILDE) {
-            data.id = ctx->builtin.i_remove;
+            data.id = ctx->builtin.remove;
             int32_t remove_id = parse_attribute_id(ctx, tidx);
             if (remove_id < 0) return -1;
             data.v.i = remove_id;
@@ -818,7 +840,7 @@ apply_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_
         assert(pcontent != NULL);
     }
     for (int i=0; i < count; i++) {
-        bool do_remove = data[i].id == ctx->builtin.i_remove;
+        bool do_remove = data[i].id == ctx->builtin.remove;
         uint32_t check_id = (do_remove)? data[i].v.i : data[i].id;
         for (int j=0; j < arrlen(pcontent->value); j++) {
             if (pcontent->value[j].id == check_id) {
@@ -846,7 +868,7 @@ handle_deferred_defaults(ParseContext * ctx) {
         IntroMember * length_member = NULL;
         int32_t length_member_index = -1;
         for (int a=0; a < arrlen(pcontent->value); a++) {
-            if (pcontent->value[a].id == ctx->builtin.i_length) {
+            if (pcontent->value[a].id == ctx->builtin.length) {
                 length_member_index = pcontent->value[a].v.i;
                 length_member = &def.type->members[length_member_index];
                 break;
@@ -873,16 +895,16 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
     arrsetcap(o_info->attr.available, 32);
     arrsetcap(ctx->value_buffer, (1 << 16));
 
-    for (int i=0; i < hmlen(ctx->attribute_map); i++) {
+    for (int i=0; i < shlen(ctx->attribute_map); i++) {
         AttributeParseInfo * info = &ctx->attribute_map[i].value;
         AttributeParseInfo * next_info = NULL;
         int index = i;
-        if (i+1 < hmlen(ctx->attribute_map)) {
+        if (i+1 < shlen(ctx->attribute_map)) {
             next_info = &ctx->attribute_map[i+1].value;
-            if (next_info->id != info->id) {
-                next_info = NULL;
-            } else {
+            if (next_info->type == info->type && next_info->id == info->id) {
                 i++;
+            } else {
+                next_info = NULL;
             }
         }
         if (info->type == INTRO_AT_FLAG) {

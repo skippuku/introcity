@@ -113,6 +113,7 @@ struct ParseContext {
     AttributeDataMap * attribute_data_map;
     IntroBuiltinAttributeIds builtin;
     uint32_t attribute_id_counter;
+    uint32_t flag_temp_id_counter;
     ParseInfo * p_info;
 };
 
@@ -273,7 +274,10 @@ maybe_expect_attribute(ParseContext * ctx, TokenIndex * tidx, int32_t member_ind
             tidx->index = paren_index;
 
             g_metrics.parse_time += nanointerval();
-            parse_global_directive(ctx, tidx);
+            int ret = parse_global_directive(ctx, tidx);
+            if (ret < 0) {
+                exit(1);
+            }
             g_metrics.attribute_time += nanointerval();
 
             *o_tk = next_token(tidx);
