@@ -379,6 +379,7 @@ intro_get_member(IntroContainer cntr) {
 
 typedef struct {
     int indent;
+    const char * tab;
 } IntroPrintOptions;
 
 // ATTRIBUTE INFO
@@ -406,9 +407,10 @@ void intro_set_defaults_x(IntroContext * ctx, void * dest, const IntroType * typ
 // PRINTERS
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
-
 #define intro_print(DATA, TYPE, OPT) intro_print_x(INTRO_CTX, intro_container(DATA, TYPE), OPT)
 void intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOptions * opt);
+
+void intro_sprint_json_x(IntroContext * ctx, char * buf, const void * data, const IntroType * type, const IntroPrintOptions * opt);
 
 // CITY IMPLEMENTATION
 char * intro_read_file(const char * filename, size_t * o_size);
@@ -1251,11 +1253,13 @@ intro__print_array(IntroContext * ctx, const IntroContainer * p_container, size_
 
 void
 intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOptions * opt) {
-    static const IntroPrintOptions opt_default = {0};
+    IntroPrintOptions opt_default;
     const IntroType * type = container.type;
     const void * data = container.data;
 
     if (!opt) {
+        memset(&opt_default, 0, sizeof(opt_default));
+        opt_default.tab = "    ";
         opt = &opt_default;
     }
 
@@ -1477,6 +1481,169 @@ intro_push(const IntroContainer * parent, int32_t index) {
     result.parent = parent;
     return result;
 }
+
+// JSON GENERATION
+
+#define DO_INDENT(OPT) for (int _i=0; _i < (OPT)->indent; _i++) *p_out += sprintf(*p_out, "%s", (OPT)->tab)
+
+static void intro_generate_json_internal(IntroContext * ctx, char ** p_out, IntroContainer cntr, IntroPrintOptions * opt);
+
+static void
+intro_generate_json_array_internal(IntroContext * ctx, char ** p_out, IntroContainer cntr, size_t count, IntroPrintOptions * opt) {
+    bool do_newlines = !intro_is_scalar(cntr.type->of);
+    char space = (do_newlines)? '\n' : ' ';
+
+    IntroPrintOptions n_opt = *opt;
+    if (do_newlines) {
+        n_opt.indent += 1;
+    }
+
+    *p_out += sprintf(*p_out, "[%c", space);
+
+    for (size_t elem_i=0; elem_i < count; elem_i++) {
+        if (do_newlines) {
+            DO_INDENT(&n_opt);
+        }
+        intro_generate_json_internal(ctx, p_out, intro_push(&cntr, elem_i), &n_opt);
+        if (elem_i < count - 1) {
+            *p_out += sprintf(*p_out, ",%c", space);
+        }
+    }
+
+    *p_out += sprintf(*p_out, "%c", space);
+    if (do_newlines) {
+        DO_INDENT(opt);
+    }
+    *p_out += sprintf(*p_out, "]");
+}
+
+static void
+intro_generate_json_internal(IntroContext * ctx, char ** p_out, IntroContainer cntr, IntroPrintOptions * opt) {
+    switch (cntr.type->category) {
+    case INTRO_U8: {
+        const IntroType * origin = intro_origin(cntr.type);
+        uint8_t value = *(uint8_t *)cntr.data;
+        if (origin->name && 0==strcmp(origin->name, "bool")) {
+            *p_out += sprintf(*p_out, "%s", value? "true" : "false");
+        } else {
+            *p_out += sprintf(*p_out, "%u", (unsigned int)value);
+        }
+    }break;
+
+    case INTRO_U16: case INTRO_U32: case INTRO_U64:
+    case INTRO_S8: case INTRO_S16: case INTRO_S32: case INTRO_S64: {
+        ssize_t value = intro_int_value(cntr.data, cntr.type);
+        *p_out += sprintf(*p_out, "%li", (long int)value);
+    }break;
+
+    case INTRO_F32: {
+        *p_out += sprintf(*p_out, "%g", *(float *)cntr.data);
+    }break;
+
+    case INTRO_F64: {
+        *p_out += sprintf(*p_out, "%g", *(double *)cntr.data);
+    }break;
+
+    case INTRO_STRUCT: {
+        *p_out += sprintf(*p_out, "{\n");
+        for (size_t member_i=0; member_i < cntr.type->count; member_i++) {
+            IntroContainer m_cntr = intro_push(&cntr, member_i);
+            IntroPrintOptions m_opt = *opt;
+            m_opt.indent += 1;
+
+            DO_INDENT(&m_opt);
+            *p_out += sprintf(*p_out, "\"%s\" : ", intro_get_member(m_cntr)->name);
+
+            intro_generate_json_internal(ctx, p_out, m_cntr, &m_opt);
+
+            if (member_i < cntr.type->count - 1) {
+                *p_out += sprintf(*p_out, ",");
+            }
+            *p_out += sprintf(*p_out, "\n");
+        }
+        DO_INDENT(opt);
+        *p_out += sprintf(*p_out, "}");
+    }break;
+
+    case INTRO_UNION: {
+        IntroContainer m_cntr;
+
+        for (uint32_t member_i=0; member_i < cntr.type->count; member_i++) {
+            m_cntr = intro_push(&cntr, member_i);
+            int64_t res;
+            if (intro_attribute_expr_x(ctx, m_cntr, ctx->attr.builtin.when, &res) && res) {
+                IntroPrintOptions n_opt = *opt;
+                n_opt.indent += 1;
+
+                char type_buf [1024];
+                intro_sprint_type_name(type_buf, intro_get_member(m_cntr)->type);
+                *p_out += sprintf(*p_out, "{ \"type\" : \"%s\", \"content\" : ", type_buf);
+                intro_generate_json_internal(ctx, p_out, m_cntr, &n_opt);
+                *p_out += sprintf(*p_out, " }");
+                return;
+            }
+        }
+
+        *p_out += sprintf(*p_out, "null");
+    }break;
+
+    case INTRO_ENUM: {
+        int value = *(int *)cntr.data;
+        *p_out += sprintf(*p_out, "%i", value);
+    }break;
+
+    case INTRO_POINTER: {
+        void * ptr = *(void **)cntr.data;
+        // check for circular reference
+        {
+            const IntroContainer * super = &cntr;
+            while (super->parent) {
+                super = super->parent;
+                if (super->data == cntr.data) {
+                    *p_out += sprintf(*p_out, "\"<circular>\"");
+                    return;
+                }
+            }
+        }
+        if (!ptr) {
+            *p_out += sprintf(*p_out, "null");
+        } else if (intro_has_attribute_x(ctx, intro_get_attr(cntr), ctx->attr.builtin.cstring)) {
+            *p_out += sprintf(*p_out, "\"%s\"", (char *)ptr);
+        } else {
+            int64_t length;
+            if (intro_attribute_length_x(ctx, cntr, &length)) {
+                intro_generate_json_array_internal(ctx, p_out, cntr, length, opt);
+            } else {
+                intro_generate_json_internal(ctx, p_out, intro_push(&cntr, 0), opt);
+            }
+        }
+    }break;
+
+    case INTRO_ARRAY: {
+        int64_t length;
+        if (!intro_attribute_length_x(ctx, cntr, &length)) {
+            length = cntr.type->count;
+        }
+        intro_generate_json_array_internal(ctx, p_out, cntr, length, opt);
+    }break;
+    }
+}
+
+void
+intro_sprint_json_x(IntroContext * ctx, char * buf, const void * data, const IntroType * type, const IntroPrintOptions * opt) {
+    IntroPrintOptions n_opt;
+    if (!opt) {
+        memset(&n_opt, 0, sizeof(n_opt));
+        n_opt.indent = 0;
+        n_opt.tab = "  ";
+    } else {
+        n_opt = *opt;
+    }
+
+    intro_generate_json_internal(ctx, &buf, intro_cntr((void *)data, type), &n_opt);
+}
+
+#undef DO_INDENT
 
 // CITY IMPLEMENTATION
 

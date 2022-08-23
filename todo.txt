@@ -1,14 +1,19 @@
 lib:
+    move parts of the parser into a library separate from introlib
+        preprocessor
+        parser
     interface for creating types/contexts
-    intro_print circular detection
-    accurate type display
+    sprint/mprint version of everything that uses stdout
+    accurate type print
+        would be useful for metaprogramming
+    intro_print: follow pointer arrays
+    intro_print: detect and handle against cyclical references
     intro_print options
         whether to print unnamed members as if their members were within
         max depth
-    sprint/mprint version of everything that uses stdout
-    the preprocessor and parser could be part of the lib?
     printf-like formatting print with insertions for types and values of types
     bitfield access
+    allocation options as part of context
 
 city:
     !! allocation options
@@ -19,8 +24,6 @@ city:
 
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
-    allow attribute declarations with no namespace
-        move attributes in i_ namespace to global namespace
     dynamically sized value attributes
         allow multiple aliases
     more strict namespacing
@@ -30,36 +33,48 @@ attribute:
         functions
         function arguments
     impl: cache matching data
-    @repress trait, disable propagation
-        or maybe @propogate and repress by default
-    general 'terminated' attribute?
-        could even be a value, then you could choose what counts as a terminator
+
+    @propogate trait
+        don't propogate by default
+    @imply trait: applies additional attributes along when applied
+        example: cstring: flag @imply(string, terminated 0)
+
     'from' attribute: allow conversion from a type, introlib will have builtin conversion functions for basic types
         some way to specify custom conversion functions
-    attribute type: type
-        as_enum for when you want an integer to be treated like an enum
+    'terminated' attribute?
+        specify the terminator (optionally?)
+
+    'type' attribute type
+        'as_enum' for when you want an integer to be treated like an enum
             (or maybe just a general 'as')
+    'none' attribute type
+        makes an attribute not generate any information
+        useful for when an attribute is only relevant at compile-time
+
     members of complex type can specify an attribute as a value: I(default default)
-    value(*@inherit): inherit base of type?
+    value(@inherit_base): inherit base of pointer or array type
 
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
+    detect const
+        this can be used for function arguments, to generate better wrappers
     vector types (__m128, etc)
     store type location information
     ParseInfo: have everything, strip away unwated stuff at gen
     fix bitfield regression
     parse globals (for libraries that use extern)
     rudimentary C++ support
+        templates?
         function overloads
         namespaces
         member functions
-        ignore templates
+        references
         operator overloads?
         parse struct defaults as intro defaults?
 
 expr:
-    support using const globals
+    support globals
     array subscript
     ability to return a value of any type
     compound literals
@@ -86,11 +101,16 @@ gen:
     option to create typedefs for structs and enums
     typeof with _Generic?
 
+    more generation options:
+        odin "header"
+        json info
+
 config:
     default program arguments
     allow config to be appended with another config?
     handle c type sizes
     static assert in .intro file if types don't match
+    embed a default config based on how the parser was compiled
 
 test:
     add sanitized target

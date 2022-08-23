@@ -325,6 +325,11 @@ tk_at(const TokenIndex * tidx) {
     return tidx->list[tidx->index];
 }
 
+static inline Token UNUSED
+tk_last(const TokenIndex * tidx) {
+    return tidx->list[tidx->index - 1];
+}
+
 static inline Token
 next_token(TokenIndex * tidx) {
     Token tk = tidx->list[tidx->index];
