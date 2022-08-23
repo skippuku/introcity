@@ -19,6 +19,8 @@ typedef enum {
     E_F0 = (int)(1156.6f * 0.25),
     E_F1 = (int)(1234 / 5.0 * 10),
     E_F2 = 16.33 > -3.4,
+
+    E_7  = (int) -5,
 } EnumTest;
 
 typedef struct {
@@ -41,6 +43,13 @@ int
 main() {
     IntroEnumValue * e = ITYPE(EnumTest)->values;
 
+    for (int i=0; i < ITYPE(EnumTest)->count; i++) {
+        printf("value[%i] = ", i);
+        intro_print(&e[i], ITYPE(IntroEnumValue), NULL);
+        printf("\n");
+    }
+    intro_print(ITYPE(EnumTest), ITYPE(IntroType), NULL);
+
     assert(e[0].value == E_0);
     assert(e[1].value == E_1);
     assert(e[2].value == E_2);
@@ -51,6 +60,7 @@ main() {
     assert(e[7].value == E_F0);
     assert(e[8].value == E_F1);
     assert(e[9].value == E_F2);
+    assert(e[10].value == E_7);
 
     AttrTest test = {0};
     test.stat.hp = 7;

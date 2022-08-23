@@ -99,13 +99,38 @@ free_expr_context(ExprContext * ectx) {
     shfree(ectx->constant_map);
 }
 
+static void
+insert_node_into_tree(ExprNode ** p_base, ExprNode * node) {
+    ExprNode ** p_slot = p_base;
+    while (1) {
+        ExprNode * slot = *p_slot;
+
+        if (
+            (slot == NULL)
+          ||(node->depth < slot->depth)
+          ||(
+              (node->depth == slot->depth)
+            &&((node->op & OP_TYPE_MASK) >= (slot->op & OP_TYPE_MASK))
+            )
+           )
+        {
+            node->left = slot;
+            *p_slot = node;
+            break;
+        }
+        p_slot = &slot->right;
+    }
+}
+
 ExprNode *
 build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
     int paren_depth = 0;
+    bool next_is_unary = true;
     ExprNode * base = NULL;
+    ExprNode * branch = NULL;
+    ExprNode * last = NULL;
     ExprNode * node = arena_alloc(ectx->arena, sizeof(*base));
     Token tk;
-    bool last_was_value = false;
     while (1) {
         bool found_end = false;
         tk = next_token(tidx);
@@ -167,10 +192,10 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
 
         case TK_STRING:        node->op = OP_OTHER; break;
 
-        case TK_PLUS:          node->op = (last_was_value)? OP_ADD : OP_UNARY_ADD; break;
-        case TK_HYPHEN:        node->op = (last_was_value)? OP_SUB : OP_UNARY_SUB; break;
-        case TK_STAR:          node->op = (last_was_value)? OP_MUL : OP_DEREF; break;
-        case TK_AND:           node->op = (last_was_value)? OP_BIT_AND : OP_ADDRESS; break;
+        case TK_PLUS:          node->op = (next_is_unary)? OP_UNARY_ADD : OP_ADD; break;
+        case TK_HYPHEN:        node->op = (next_is_unary)? OP_UNARY_SUB : OP_SUB; break;
+        case TK_STAR:          node->op = (next_is_unary)? OP_DEREF : OP_MUL; break;
+        case TK_AND:           node->op = (next_is_unary)? OP_ADDRESS : OP_BIT_AND; break;
         case TK_FORSLASH:      node->op = OP_DIV; break;
         case TK_MOD:           node->op = OP_MOD; break;
         case TK_D_EQUAL:       node->op = OP_EQUAL; break;
@@ -199,7 +224,12 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
         }break;
         }
 
-        if (found_end) break;
+        if (found_end) {
+            if (branch) {
+                insert_node_into_tree(&base, branch);
+            }
+            break;
+        }
 
         if (node->op == OP_TERNARY_2) paren_depth -= 1;
 
@@ -208,37 +238,32 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
 
         if (node->op == OP_TERNARY_1) paren_depth += 1;
 
-        last_was_value = ((node->op & OP_TYPE_MASK) <= OP_UNARY_TYPE);
-
-        ExprNode ** p_index = &base;
-        while (1) {
-            ExprNode * index = *p_index;
-
-            if (
-                (index == NULL)
-              ||(node->depth < index->depth)
-              ||(
-                  (node->depth == index->depth)
-                &&(
-                    ((node->op & OP_TYPE_MASK) > (index->op & OP_TYPE_MASK))
-                  ||(
-                      ((index->op & OP_TYPE_MASK) > OP_UNARY_TYPE)
-                    &&((node->op & OP_TYPE_MASK) == (index->op & OP_TYPE_MASK))
-                    )
-                  )
-                )
-               )
-            {
-                if ((node->op & OP_TYPE_MASK) <= OP_UNARY_TYPE) {
-                    node->right = index;
-                } else {
-                    node->left = index;
+        next_is_unary = false;
+        if ((node->op & OP_TYPE_MASK) <= OP_UNARY_TYPE) {
+            if (last) {
+                last->right = node;
+                if (node->op == OP_CAST && (last->op == OP_SIZEOF || last->op == OP_ALIGNOF)) {
+                    insert_node_into_tree(&base, branch);
+                    branch = NULL;
+                    goto alloc_next_node;
                 }
-                *p_index = node;
-                break;
             }
-            p_index = &index->right;
+            last = node;
+            if (!branch) branch = node;
+            if ((node->op & OP_TYPE_MASK) == OP_UNARY_TYPE) {
+                next_is_unary = true;
+            }
+        } else {
+            if (branch) {
+                insert_node_into_tree(&base, branch);
+                branch = NULL;
+            }
+            last = NULL;
+            insert_node_into_tree(&base, node);
+            next_is_unary = true;
         }
+
+      alloc_next_node:
         node = arena_alloc(ectx->arena, sizeof(*node));
     }
 
