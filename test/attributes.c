@@ -10,6 +10,9 @@ I(attribute my_ (
     death_value: value(@inherit),
     exp: flag,
     handle: flag,
+
+    gene_num: int @propagate,
+    non_gene_num: int,
 ))
 
 typedef struct {
@@ -26,10 +29,12 @@ typedef struct {
     int count_sweet_nothings;
 } JointAllocTest;
 
-I(gui_vector)
+I(gui_vector, gene_num -83, non_gene_num 578)
 typedef struct {
     float x, y;
 } Vector2;
+
+typedef Vector2 SpecialVec2;
 
 typedef struct {
     I(note "this is the name")
@@ -44,6 +49,9 @@ typedef struct {
     Vector2 speed;
     Vector2 accel I(gui_scale 0.1);
     Vector2 internal_vec I(~gui_show, ~gui_vector);
+
+    SpecialVec2 special_vec1;
+    SpecialVec2 special_vec2 I(my_non_gene_num 612);
 } AttributeTest;
 
 #include "attributes.c.intro"
@@ -176,17 +184,40 @@ main() {
         assert(note);
         assert(0==strcmp(note, "i don't know what to put in here guys"));
 
-        const IntroMember *m_speed = intro_member_by_name(ITYPE(AttributeTest), speed),
-                          *m_accel = intro_member_by_name(ITYPE(AttributeTest), accel),
-                          *m_internal_vec = intro_member_by_name(ITYPE(AttributeTest), internal_vec);
+        const IntroMember *m_speed = intro_member_by_name(ITYPE(AttributeTest), speed)
+                        , *m_accel = intro_member_by_name(ITYPE(AttributeTest), accel)
+                        , *m_internal_vec = intro_member_by_name(ITYPE(AttributeTest), internal_vec)
+                        , *m_special_vec1 = intro_member_by_name(ITYPE(AttributeTest), special_vec1)
+                        , *m_special_vec2 = intro_member_by_name(ITYPE(AttributeTest), special_vec2)
+                        ;
 
         assert(intro_has_attribute(ITYPE(Vector2), gui_vector));
 
-        assert(intro_has_attribute(m_speed, gui_vector));
         assert(intro_has_attribute(m_accel, gui_scale));
-        assert(intro_has_attribute(m_accel, gui_vector));
         assert(!intro_has_attribute(m_internal_vec, gui_show));
         assert(!intro_has_attribute(m_internal_vec, gui_vector));
+
+        // PROPAGATION TESTS
+        int32_t val;
+
+        assert(intro_has_attribute(m_speed, gui_vector));
+        assert(intro_has_attribute(m_accel, gui_vector));
+        assert(intro_attribute_int(m_accel, my_gene_num, &val) && val == -83);
+        assert(!intro_has_attribute(m_accel, my_non_gene_num));
+
+        val = 0;
+        assert(intro_has_attribute(ITYPE(SpecialVec2), gui_vector));
+        assert(intro_attribute_int(ITYPE(SpecialVec2), my_gene_num, &val) && val == -83);
+        assert(!intro_has_attribute(ITYPE(SpecialVec2), my_non_gene_num));
+
+        val = 0;
+        assert(intro_has_attribute(m_special_vec1, gui_vector));
+        assert(intro_attribute_int(m_special_vec1, my_gene_num, &val) && val == -83);
+
+        val = 0;
+        assert(intro_has_attribute(m_special_vec2, gui_vector));
+        assert(intro_attribute_int(m_special_vec2, my_gene_num, &val) && val == -83);
+        assert(intro_attribute_int(m_special_vec2, my_non_gene_num, &val) && val == 612);
 
         intro_set_values(&test, ITYPE(AttributeTest), my_death_value);
         assert(test.name == NULL);

@@ -34,6 +34,7 @@ typedef struct {
 
 enum SpecialMemberIndex {
     MIDX_TYPE = INT32_MIN,
+    MIDX_TYPE_PROPAGATED,
     MIDX_ALL,
     MIDX_ALL_RECURSE,
 };

@@ -34,8 +34,6 @@ attribute:
         function arguments
     impl: cache matching data
 
-    @propagate trait
-        don't propagate by default
     @imply trait: applies additional attributes along when applied
         example: cstring: flag @imply(string, terminated 0)
 
@@ -50,6 +48,8 @@ attribute:
     'none' attribute type
         makes an attribute not generate any information
         useful for when an attribute is only relevant at compile-time
+    'int' allow aliasing as an enum?
+        ex. flags: int(MyFlags)
 
     members of complex type can specify an attribute as a value: I(default default)
     value(@inherit_base): inherit base of pointer or array type

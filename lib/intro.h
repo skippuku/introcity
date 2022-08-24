@@ -177,6 +177,7 @@ typedef struct IntroAttribute {
     const char * name;
     int attr_type;
     uint32_t type_id;
+    bool propagated;
 } IntroAttribute;
 
 typedef struct IntroAttributeSpec {
@@ -266,29 +267,29 @@ I(apply_to (void *) (~city))
 I(attribute @global (
     id:       int,
     bitfield: int,
-    fallback: value(@inherit),
+    fallback: value(@inherit) @propagate,
     length:   expr,
     when:     expr,
     alias:    value(char *),
     city:     flag @global,
-    cstring:  flag,
+    cstring:  flag @propagate,
     type:     flag,
     remove:   __remove,
 ))
 
 I(attribute gui_ (
     note:   value(char *),
-    name:   value(char *),
-    min:    value(@inherit),
-    max:    value(@inherit),
-    format: value(char *),
-    scale:  float,
-    vector: flag,
-    color:  value(IntroGuiColor),
+    name:   value(char *), // TODO: rename to friendly, move to @global
+    min:    value(@inherit) @propagate,
+    max:    value(@inherit) @propagate,
+    format: value(char *)   @propagate,
+    scale:  float           @propagate,
+    vector: flag            @propagate,
+    color:  value(IntroGuiColor) @propagate,
     show:   flag @global,
     edit:   flag @global,
-    edit_color: flag,
-    edit_text:  flag,
+    edit_color: flag @propagate,
+    edit_text:  flag @propagate,
 ))
 
 #define intro_var_get(var, T) (assert(var.type == ITYPE(T)), *(T *)var.data)

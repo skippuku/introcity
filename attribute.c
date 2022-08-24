@@ -170,6 +170,7 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                         return -1;
                     }
                     info.global = true;
+                    info.propagate = true;
                 } else if (a_tk == ATTR_TK_PROPAGATE) {
                     info.propagate = true;
                 } else {
@@ -629,6 +630,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
             parse_error(ctx, tk, "Invalid integer.");
             return -1;
         }
+        advance_to(tidx, end);
         data.v.i = (int32_t)result;
     } break;
 
@@ -640,6 +642,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
             parse_error(ctx, tk, "Invalid floating point number.");
             return -1;
         }
+        advance_to(tidx, end);
         data.v.f = result;
     } break;
 
@@ -808,6 +811,7 @@ add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info,
         .name = name,
         .attr_type = info->type,
         .type_id = hmget(o_info->index_by_ptr_map, info->type_ptr),
+        .propagated = info->propagate,
     };
     int final_id = arrlen(o_info->attr.available);
     arrput(o_info->attr.available, attribute);
@@ -818,7 +822,9 @@ add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info,
         *((uint8_t *)&ctx->builtin + builtin_offset) = (uint8_t)final_id;
     }
     if (info->global) {
-        AttributeData data = {.id = final_id};
+        AttributeData data = {
+            .id = final_id,
+        };
         arrput(ctx->attribute_globals, data);
     }
 }
@@ -843,6 +849,10 @@ apply_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_
         assert(pcontent != NULL);
     }
     for (int i=0; i < count; i++) {
+        bool propagated = ctx->p_info->attr.available[data[i].id].propagated;
+        if (member_index == MIDX_TYPE_PROPAGATED && !propagated) {
+            continue;
+        }
         bool do_remove = data[i].id == ctx->builtin.remove;
         uint32_t check_id = (do_remove)? data[i].v.i : data[i].id;
         for (int j=0; j < arrlen(pcontent->value); j++) {
@@ -938,12 +948,10 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         int ret = parse_attributes(ctx, &directive);
         if (ret) exit(1);
 
-        // add global flags
-        apply_attributes_to_member(ctx, directive.type, directive.member_index, ctx->attribute_globals, arrlen(ctx->attribute_globals));
-
-        // add type attributes
+        // add propagated type attributes
+        bool found_inheritance = false;
         AttributeDataKey key = {0};
-        key.member_index = MIDX_TYPE;
+        key.member_index = MIDX_TYPE_PROPAGATED;
         if (directive.member_index >= 0) {
             const IntroMember member = directive.type->members[directive.member_index];
             key.type = member.type;
@@ -953,17 +961,44 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
             }
         }
         if (key.type != NULL) {
-            AttributeData * type_attr_data = hmget(ctx->attribute_data_map, key);
-            if (arrlen(type_attr_data) > 0) {
-                apply_attributes_to_member(ctx, directive.type, directive.member_index, type_attr_data, arrlen(type_attr_data));
+            AttributeData * type_attr_data = NULL;
+            while (1) {
+                type_attr_data = hmget(ctx->attribute_data_map, key);
+                if (!type_attr_data && key.type->parent) {
+                    key.type = key.type->parent;
+                } else {
+                    break;
+                }
             }
+            if (type_attr_data && arrlen(type_attr_data) > 0) {
+                apply_attributes_to_member(ctx, directive.type, directive.member_index, type_attr_data, arrlen(type_attr_data));
+                found_inheritance = true;
+            }
+        }
+
+        // add global flags if nothing could be inherited
+        if (!found_inheritance) {
+            apply_attributes_to_member(ctx, directive.type, directive.member_index, ctx->attribute_globals, arrlen(ctx->attribute_globals));
         }
 
         // add attributes from directive
         apply_attributes_to_member(ctx, directive.type, directive.member_index, directive.attr_data, directive.count);
+
+        // add to heritable (propagated) attributes if this is for a type
+        if (directive.member_index == MIDX_TYPE) {
+            AttributeDataKey key = {.type = directive.type, .member_index = directive.member_index};
+            AttributeData * all_data = hmget(ctx->attribute_data_map, key);
+
+            if (arrlen(all_data) > 0) {
+                // function ignores non-propagated attributes
+                apply_attributes_to_member(ctx, directive.type, MIDX_TYPE_PROPAGATED, all_data, arrlen(all_data));
+            }
+        }
     }
 
     handle_deferred_defaults(ctx);
+
+    struct {IntroType * key; uint32_t value;} * propagated_map = NULL;
 
     for (int data_i=0; data_i < hmlen(ctx->attribute_data_map); data_i++) {
         AttributeDataMap content = ctx->attribute_data_map[data_i];
@@ -1003,6 +1038,10 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
             type->attr = spec_index;
         }break;
 
+        case MIDX_TYPE_PROPAGATED: {
+            hmput(propagated_map, type, spec_index);
+        }break;
+
         default: {
             type->members[member_index].attr = spec_index;
         }break;
@@ -1015,18 +1054,21 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
     for (int type_i=0; type_i < arrlen(o_info->types); type_i++) {
         IntroType * type = o_info->types[type_i];
         if (type->attr == 0 && type->parent && type->parent->attr != 0) {
-            type->attr = type->parent->attr;
+            type->attr = hmget(propagated_map, type->parent);
+            hmput(propagated_map, type, type->attr);
         }
-        if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
+        if (intro_has_members(type)) {
             for (int mi=0; mi < type->count; mi++) {
                 IntroMember * member = &type->members[mi];
                 if (member->attr == 0 && member->type->attr != 0) {
-                    member->attr = member->type->attr;
+                    member->attr = hmget(propagated_map, member->type);
                 }
             }
         }
     }
+    hmfree(propagated_map);
 
+    // apply global flags to default attribute spec (0)
     for (int i=0; i < arrlen(ctx->attribute_globals); i++) {
         uint32_t id = ctx->attribute_globals[i].id;
         uint32_t bitset_index = id >> 5; 

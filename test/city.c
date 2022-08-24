@@ -233,17 +233,21 @@ main() {
     printf("\n");
     report_LinkNodeLoad(obj_load.linked);
 
-#define CHECK_EQUAL(member) \
-    if (0!=memcmp(&obj_load.member, &obj_save.member, sizeof(obj_save.member))) { \
-        fprintf(stderr, "NOT EQUAL (%s:%i): " #member "\n", __FILE__, __LINE__); \
+#define CHECK_EQUAL(MBR) \
+    if (0!=memcmp(&obj_load.MBR, &obj_save.MBR, sizeof(obj_save.MBR))) { \
+        fprintf(stderr, "NOT EQUAL (%s:%i): " #MBR "\n", __FILE__, __LINE__); \
         exit(1); \
     }
 
-#define CHECK_STR_EQUAL(member) \
-    if (0 != strcmp(obj_load.member, obj_save.member)) { \
-        fprintf(stderr, "NOT EQUAL (%s:%i): " #member "\n", __FILE__, __LINE__); \
+#define CHECK_STR_EQUAL(MBR) \
+    if (!obj_load.MBR || 0 != strcmp(obj_load.MBR, obj_save.MBR)) { \
+        fprintf(stderr, "NOT EQUAL (%s:%i): " #MBR "\n", __FILE__, __LINE__); \
         exit(1); \
     }
+
+    const IntroMember * m = intro_member_by_name(ITYPE(BasicPlus), name);
+    assert(m != NULL);
+    assert(intro_has_attribute(m, cstring));
 
     CHECK_EQUAL(a);
     assert(obj_save.b == obj_load.b2);
@@ -253,7 +257,7 @@ main() {
     CHECK_EQUAL(stuff.b);
     CHECK_STR_EQUAL(name);
     CHECK_EQUAL(count_numbers);
-    assert(0==memcmp(obj_save.numbers, obj_load.numbers, obj_save.count_numbers * sizeof(obj_save.numbers[0])));
+    assert(obj_load.numbers && 0==memcmp(obj_save.numbers, obj_load.numbers, obj_save.count_numbers * sizeof(obj_save.numbers[0])));
     CHECK_EQUAL(cool_number);
     CHECK_STR_EQUAL(character);
     CHECK_STR_EQUAL(long_member_name_that_would_take_up_a_great_deal_of_space_in_a_city_file);
