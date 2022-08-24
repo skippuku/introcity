@@ -100,6 +100,8 @@ struct ParseContext {
     struct {char * key; AttributeParseInfo value;} * attribute_map;
     struct {char * key; int value;}                * attribute_token_map;
     struct {char * key; int value;}                * builtin_map;
+    NameSet * attribute_namespace_set;
+    const char * current_namespace;
 
     struct {size_t      key; IntroType **      value;} * arg_list_by_hash;
     struct {IntroType * key; IntroType **      value;} * incomplete_typedefs;

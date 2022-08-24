@@ -14,6 +14,13 @@ enum AttributeToken {
         return -1; \
     }
 
+#define EXPECT_IDEN() \
+    tk = next_token(tidx); \
+    if (tk.type != TK_IDENTIFIER) { \
+        parse_error(ctx, tk, "Expected identifier."); \
+        return -1; \
+    }
+
 void
 attribute_parse_init(ParseContext * ctx) {
     static const struct { const char * key; int value; } attribute_keywords [] = {
@@ -48,11 +55,8 @@ attribute_parse_init(ParseContext * ctx) {
 
 int
 parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
-    Token tk = next_token(tidx);
-    if (tk.type != TK_L_PARENTHESIS) {
-        parse_error(ctx, tk, "Expected '('.");
-        return -1;
-    }
+    Token tk;
+    EXPECT('(');
 
     tk = next_token(tidx);
     char temp [1024];
@@ -64,6 +68,7 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
         char * namespace = NULL;
         if (tk.type == TK_IDENTIFIER) {
             namespace = copy_and_terminate(ctx->arena, tk.start, tk.length);
+            shputs(ctx->attribute_namespace_set, (NameSet){namespace});
             tk = next_token(tidx);
         } else if (tk.type == TK_AT) {
             tk = next_token(tidx);
@@ -137,7 +142,7 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                     if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
                         info.type_ptr = decl.type;
                     } else if (ret == RET_NOT_TYPE) {
-                        parse_error(ctx, decl.base_tk, "Not a type.");
+                        parse_error(ctx, decl.base_tk, "Type must be defined before attribute definition.");
                         return -1;
                     } else {
                         return -1;
@@ -544,39 +549,43 @@ handle_value_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, 
     return 0;
 }
 
-int32_t
-parse_attribute_id(ParseContext * ctx, TokenIndex * tidx) {
-    Token tk = next_token(tidx);
-    STACK_TERMINATE(term, tk.start, tk.length);
-    int map_index = shgeti(ctx->attribute_map, term);
-    if (map_index < 0) {
-        parse_error(ctx, tk, "No such attribute.");
-        return -1;
+bool
+parse_attribute_name(ParseContext * ctx, TokenIndex * tidx, AttributeParseInfo * o_info) {
+    ptrdiff_t map_index = -1;
+    char name [1024];
+    Token tk;
+
+    EXPECT_IDEN();
+
+    if (ctx->current_namespace) {
+        stbsp_snprintf(name, sizeof name, "%s%.*s", ctx->current_namespace, tk.length, tk.start);
+        map_index = shgeti(ctx->attribute_map, name);
     }
 
-    AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
-    uint32_t id = attr_info.final_id;
-    return id;
+    if (map_index < 0) {
+        memcpy(name, tk.start, tk.length);
+        name[tk.length] = 0;
+        map_index = shgeti(ctx->attribute_map, name);
+    }
+
+    if (map_index < 0) {
+        parse_error(ctx, tk, "No such attribute.");
+        return false;
+    }
+
+    *o_info = ctx->attribute_map[map_index].value;
+    return true;
 }
 
 int
 parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int member_index, AttributeData * o_result) {
     AttributeData data = {0};
+    AttributeParseInfo attr_info;
+    Token tk;
 
-    Token tk = next_token(tidx);
-    if (tk.type != TK_IDENTIFIER) {
-        parse_error(ctx, tk, "Expected identifier.");
+    if (!parse_attribute_name(ctx, tidx, &attr_info)) {
         return -1;
     }
-
-    STACK_TERMINATE(terminated_name, tk.start, tk.length);
-    int map_index = shgeti(ctx->attribute_map, terminated_name);
-    if (map_index < 0) {
-        parse_error(ctx, tk, "No such attribute.");
-        return -1;
-    }
-
-    AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
     data.id = attr_info.final_id;
     IntroAttributeType attribute_type = attr_info.type;
 
@@ -694,11 +703,9 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     }break;
 
     case INTRO_AT_REMOVE: {
-        int32_t id = parse_attribute_id(ctx, tidx);
-        if (id < 0) {
-            return -1;
-        }
-        data.v.i = id;
+        AttributeParseInfo rm_attr_info;
+        if (!parse_attribute_name(ctx, tidx, &rm_attr_info)) return -1;
+        data.v.i = (int32_t)rm_attr_info.final_id;
     }break;
 
     case INTRO_AT_TYPE: {
@@ -724,14 +731,42 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
         parse_error(ctx, tk, "Expected '('.");
         return -1;
     }
+
+    ctx->current_namespace = NULL;
+
     while (1) {
         tk = next_token(tidx);
         AttributeData data;
         if (tk.type == TK_IDENTIFIER) {
-            tidx->index--;
-            int error = parse_attribute(ctx, tidx, directive->type, directive->member_index, &data);
-            if (error) return -1;
-            arrput(attributes, data);
+            if (tk_at(tidx).type == TK_COLON) {
+                char temp_namespace [1024];
+                memcpy(temp_namespace, tk.start, tk.length);
+                temp_namespace[tk.length] = 0;
+                ctx->current_namespace = shgets(ctx->attribute_namespace_set, temp_namespace).key;
+                if (!ctx->current_namespace) {
+                    strcat(temp_namespace, "_");
+                    ctx->current_namespace = shgets(ctx->attribute_namespace_set, temp_namespace).key;
+                    if (!ctx->current_namespace) {
+                        parse_error(ctx, tk, "Namespace does not exist.");
+                        return -1;
+                    }
+                }
+                tidx->index += 1;
+                continue;
+            } else {
+                tidx->index--;
+                int error = parse_attribute(ctx, tidx, directive->type, directive->member_index, &data);
+                if (error) return -1;
+                arrput(attributes, data);
+            }
+        } else if (tk.type == TK_AT) {
+            if (tk_equal(&tidx->list[tidx->index], "global") && tidx->list[tidx->index + 1].type == TK_COLON) {
+                ctx->current_namespace = NULL;
+                tidx->index += 2;
+                continue;
+            } else {
+                goto invalid_symbol;
+            }
         } else if (tk.type == TK_NUMBER) {
             data.id = ctx->builtin.id;
             // @copy from above
@@ -751,14 +786,16 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
             arrput(attributes, data);
         } else if (tk.type == TK_TILDE) {
             data.id = ctx->builtin.remove;
-            int32_t remove_id = parse_attribute_id(ctx, tidx);
-            if (remove_id < 0) return -1;
-            data.v.i = remove_id;
+
+            AttributeParseInfo rm_attr_info;
+            if (!parse_attribute_name(ctx, tidx, &rm_attr_info)) return -1;
+            data.v.i = (int32_t)rm_attr_info.final_id;
 
             arrput(attributes, data);
         } else if (tk.type == TK_R_PARENTHESIS) {
             break;
         } else {
+          invalid_symbol: ;
             parse_error(ctx, tk, "Invalid symbol.");
             return -1;
         }

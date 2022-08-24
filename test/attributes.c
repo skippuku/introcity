@@ -2,6 +2,9 @@
 #include <intro.h>
 #include "../ext/stb_ds.h"
 
+typedef struct {uint32_t i;} SkpID;
+typedef struct {float f;} SkpCity;
+
 I(attribute my_ (
     joint: member,
     scale: float,
@@ -13,6 +16,16 @@ I(attribute my_ (
 
     gene_num: int @propagate,
     non_gene_num: int,
+))
+
+I(attribute Skp (
+    id: value(SkpID),
+    city: value(SkpCity),
+    num: int,
+))
+
+I(attribute @global (
+    num: float,
 ))
 
 typedef struct {
@@ -41,17 +54,27 @@ typedef struct {
     I(my_num 47)
     char * name I(9) I(fallback "spock");
 
-    int v1 I(10, = 67, my_death_value -9, my_friend v2, my_scale 8.5, my_exp);
+    int v1 I(10, = 67, my: death_value -9, friend v2, scale 8.5, exp);
 
-    I(id 11, my_exp, my_friend v1, my_death_value 2.5, gui_note "i don't know what to put in here guys")
+    I(id 11,
+        my: exp, friend v1, death_value 2.5,
+        gui: note "i don't know what to put in here guys")
     float v2;
 
     Vector2 speed;
     Vector2 accel I(gui_scale 0.1);
-    Vector2 internal_vec I(~gui_show, ~gui_vector);
+    Vector2 internal_vec I(gui: ~show, ~vector);
 
     SpecialVec2 special_vec1;
-    SpecialVec2 special_vec2 I(my_non_gene_num 612);
+    SpecialVec2 special_vec2 I(my_: non_gene_num 612);
+
+    I(
+        ~city,      // start in global namespace
+        my:  num 5, // specified namespace takes precedence over global namespace
+        Skp: num -5, id {4}, city {4.5}, alias large_test, // the global namespace can still be used if a name isn't shadowed
+        @global: num 5.0, id 5, // clear specified namespace
+     )
+    int big_test;
 } AttributeTest;
 
 #include "attributes.c.intro"
@@ -184,11 +207,12 @@ main() {
         assert(note);
         assert(0==strcmp(note, "i don't know what to put in here guys"));
 
-        const IntroMember *m_speed = intro_member_by_name(ITYPE(AttributeTest), speed)
-                        , *m_accel = intro_member_by_name(ITYPE(AttributeTest), accel)
+        const IntroMember *m_speed =        intro_member_by_name(ITYPE(AttributeTest), speed)
+                        , *m_accel =        intro_member_by_name(ITYPE(AttributeTest), accel)
                         , *m_internal_vec = intro_member_by_name(ITYPE(AttributeTest), internal_vec)
                         , *m_special_vec1 = intro_member_by_name(ITYPE(AttributeTest), special_vec1)
                         , *m_special_vec2 = intro_member_by_name(ITYPE(AttributeTest), special_vec2)
+                        , *m_big_test =     intro_member_by_name(ITYPE(AttributeTest), big_test)
                         ;
 
         assert(intro_has_attribute(ITYPE(Vector2), gui_vector));
@@ -198,31 +222,49 @@ main() {
         assert(!intro_has_attribute(m_internal_vec, gui_vector));
 
         // PROPAGATION TESTS
-        int32_t val;
+        {
+            int32_t val;
 
-        assert(intro_has_attribute(m_speed, gui_vector));
-        assert(intro_has_attribute(m_accel, gui_vector));
-        assert(intro_attribute_int(m_accel, my_gene_num, &val) && val == -83);
-        assert(!intro_has_attribute(m_accel, my_non_gene_num));
+            assert(intro_has_attribute(m_speed, gui_vector));
+            assert(intro_has_attribute(m_accel, gui_vector));
+            assert(intro_attribute_int(m_accel, my_gene_num, &val) && val == -83);
+            assert(!intro_has_attribute(m_accel, my_non_gene_num));
 
-        val = 0;
-        assert(intro_has_attribute(ITYPE(SpecialVec2), gui_vector));
-        assert(intro_attribute_int(ITYPE(SpecialVec2), my_gene_num, &val) && val == -83);
-        assert(!intro_has_attribute(ITYPE(SpecialVec2), my_non_gene_num));
+            val = 0;
+            assert(intro_has_attribute(ITYPE(SpecialVec2), gui_vector));
+            assert(intro_attribute_int(ITYPE(SpecialVec2), my_gene_num, &val) && val == -83);
+            assert(!intro_has_attribute(ITYPE(SpecialVec2), my_non_gene_num));
 
-        val = 0;
-        assert(intro_has_attribute(m_special_vec1, gui_vector));
-        assert(intro_attribute_int(m_special_vec1, my_gene_num, &val) && val == -83);
+            val = 0;
+            assert(intro_has_attribute(m_special_vec1, gui_vector));
+            assert(intro_attribute_int(m_special_vec1, my_gene_num, &val) && val == -83);
 
-        val = 0;
-        assert(intro_has_attribute(m_special_vec2, gui_vector));
-        assert(intro_attribute_int(m_special_vec2, my_gene_num, &val) && val == -83);
-        assert(intro_attribute_int(m_special_vec2, my_non_gene_num, &val) && val == 612);
+            val = 0;
+            assert(intro_has_attribute(m_special_vec2, gui_vector));
+            assert(intro_attribute_int(m_special_vec2, my_gene_num, &val) && val == -83);
+            assert(intro_attribute_int(m_special_vec2, my_non_gene_num, &val) && val == 612);
 
-        intro_set_values(&test, ITYPE(AttributeTest), my_death_value);
-        assert(test.name == NULL);
-        assert(test.v1 == -9);
-        assert(test.v2 == 2.5);
+            intro_set_values(&test, ITYPE(AttributeTest), my_death_value);
+            assert(test.name == NULL);
+            assert(test.v1 == -9);
+            assert(test.v2 == 2.5);
+        }
+
+        // big_test
+        {
+            float fval;
+            int32_t ival;
+            IntroVariant var;
+
+            assert(!intro_has_attribute(m_big_test, city));
+            assert(intro_attribute_int(m_big_test, my_num, &ival)   && ival == 5);
+            assert(intro_attribute_int(m_big_test, Skpnum, &ival)   && ival == -5);
+            assert(intro_attribute_value(m_big_test, Skpid, &var)   && intro_var_get(var, SkpID).i == 4);
+            assert(intro_attribute_value(m_big_test, Skpcity, &var) && intro_var_get(var, SkpCity).f == 4.5);
+            assert(intro_attribute_value(m_big_test, alias, &var)   && 0==strcmp((char *)var.data, "large_test"));
+            assert(intro_attribute_float(m_big_test, num, &fval)    && fval == 5.0);
+            assert(intro_attribute_int(m_big_test, id, &ival)       && ival == 5);
+        }
     }
 
     return 0;
