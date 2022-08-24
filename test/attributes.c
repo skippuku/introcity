@@ -16,20 +16,20 @@ I(attribute my_ (
 ))
 
 typedef struct {
-    char * name I(length length_name, handle);
+    char * name I(length length_name, my_handle);
     int length_name;
 
-    char * resume I(length length_resume, joint name);
+    char * resume I(length length_resume, my_joint name);
     int length_resume;
 
-    uint8_t * buffer I(length size_buffer, joint name);
+    uint8_t * buffer I(length size_buffer, my_joint name);
     int size_buffer;
 
-    size_t * sweet_nothings I(length count_sweet_nothings, joint name);
+    size_t * sweet_nothings I(length count_sweet_nothings, my_joint name);
     int count_sweet_nothings;
 } JointAllocTest;
 
-I(gui_vector, gene_num -83, non_gene_num 578)
+I(gui_vector, my_gene_num -83, my_non_gene_num 578)
 typedef struct {
     float x, y;
 } Vector2;
@@ -37,13 +37,13 @@ typedef struct {
 typedef Vector2 SpecialVec2;
 
 typedef struct {
-    I(note "this is the name")
-    I(num 47)
+    I(gui_note "this is the name")
+    I(my_num 47)
     char * name I(9) I(fallback "spock");
 
-    int v1 I(10, = 67, death_value -9, friend v2, my_scale 8.5, exp);
+    int v1 I(10, = 67, my_death_value -9, my_friend v2, my_scale 8.5, my_exp);
 
-    I(id 11, exp, friend v1, death_value 2.5, note "i don't know what to put in here guys")
+    I(id 11, my_exp, my_friend v1, my_death_value 2.5, gui_note "i don't know what to put in here guys")
     float v2;
 
     Vector2 speed;

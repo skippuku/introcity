@@ -27,9 +27,6 @@ typedef struct {
     bool builtin;
     bool global;
     bool propagate;
-    bool without_namespace;
-    bool invalid_without_namespace;
-    bool next_is_same;
 } AttributeParseInfo;
 
 enum SpecialMemberIndex {

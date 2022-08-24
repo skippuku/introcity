@@ -93,23 +93,15 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
             if (tk.type == TK_R_PARENTHESIS) {
                 break;
             } else if (tk.type != TK_IDENTIFIER) {
-                parse_error(ctx, tk, "Expected identifier for attribute name.");
+                parse_error(ctx, tk, "Expected an identifier for an attribute name.");
             }
             char namespaced [1024];
-            char unspaced [1024];
-            memcpy(unspaced, tk.start, tk.length);
-            unspaced[tk.length] = 0;
-            strcpy(namespaced, (namespace)? namespace : "");
-            strcat(namespaced, unspaced);
+            stbsp_snprintf(namespaced, sizeof namespaced, "%s%.*s", namespace ?: "", tk.length, tk.start);
             if (shgeti(ctx->attribute_map, namespaced) >= 0) {
-                parse_error(ctx, tk, "Attribute name is reserved.");
+                parse_error(ctx, tk, "This attribute name is reserved.");
                 return -1;
             }
-            tk = next_token(tidx);
-            if (tk.type != TK_COLON) {
-                parse_error(ctx, tk, "Expected ':'.");
-                return -1;
-            }
+            EXPECT(':');
 
             tk = next_token(tidx);
             memcpy(temp, tk.start, tk.length);
@@ -181,17 +173,6 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
             }
 
             shput(ctx->attribute_map, namespaced, info);
-
-            // TODO: not a fan of this
-            if (namespace) {
-                ptrdiff_t unspaced_index = shgeti(ctx->attribute_map, unspaced);
-                if (unspaced_index < 0) {
-                    info.without_namespace = true;
-                    shput(ctx->attribute_map, unspaced, info);
-                } else {
-                    ctx->attribute_map[unspaced_index].value.invalid_without_namespace = true;
-                }
-            }
 
             if (tk.type == TK_COMMA) {
                 continue;
@@ -574,10 +555,6 @@ parse_attribute_id(ParseContext * ctx, TokenIndex * tidx) {
     }
 
     AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
-    if (attr_info.invalid_without_namespace) {
-        parse_error(ctx, tk, "Name matches more than one namespace.");
-        return -1;
-    }
     uint32_t id = attr_info.final_id;
     return id;
 }
@@ -600,10 +577,6 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     }
 
     AttributeParseInfo attr_info = ctx->attribute_map[map_index].value;
-    if (attr_info.invalid_without_namespace) {
-        parse_error(ctx, tk, "Name matches more than one namespace.");
-        return -1;
-    }
     data.id = attr_info.final_id;
     IntroAttributeType attribute_type = attr_info.type;
 
@@ -806,7 +779,7 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
 }
 
 static void
-add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info, AttributeParseInfo * next_info, char * name) {
+add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info, char * name) {
     IntroAttribute attribute = {
         .name = name,
         .attr_type = info->type,
@@ -816,7 +789,6 @@ add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info,
     int final_id = arrlen(o_info->attr.available);
     arrput(o_info->attr.available, attribute);
     info->final_id = final_id;
-    if (next_info) next_info->final_id = final_id;
     int builtin_offset = shget(ctx->builtin_map, name);
     if (builtin_offset >= 0) {
         *((uint8_t *)&ctx->builtin + builtin_offset) = (uint8_t)final_id;
@@ -910,24 +882,11 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
 
     for (int i=0; i < shlen(ctx->attribute_map); i++) {
         AttributeParseInfo * info = &ctx->attribute_map[i].value;
-        AttributeParseInfo * next_info = NULL;
-        int index = i;
-        if (i+1 < shlen(ctx->attribute_map)) {
-            next_info = &ctx->attribute_map[i+1].value;
-            if (next_info->type == info->type && next_info->id == info->id) {
-                i++;
-            } else {
-                next_info = NULL;
-            }
-        }
         if (info->type == INTRO_AT_FLAG) {
-            arrput(flags, index);
-            if (next_info) {
-                info->next_is_same = true;
-            }
+            arrput(flags, i);
             continue;
         }
-        add_attribute(ctx, o_info, info, next_info, ctx->attribute_map[index].key);
+        add_attribute(ctx, o_info, info, ctx->attribute_map[i].key);
     }
 
     o_info->attr.first_flag = arrlen(o_info->attr.available);
@@ -935,8 +894,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         int index = flags[i];
         char * name = ctx->attribute_map[index].key;
         AttributeParseInfo * info = &ctx->attribute_map[index].value;
-        AttributeParseInfo * next_info = (info->next_is_same)? &ctx->attribute_map[index+1].value : NULL;
-        add_attribute(ctx, o_info, info, next_info, name);
+        add_attribute(ctx, o_info, info, name);
     }
     arrfree(flags);
 
@@ -1051,6 +1009,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
     }
     hmfree(ctx->attribute_data_map);
 
+    // set inhertited attribute data for declarations without attribute directives
     for (int type_i=0; type_i < arrlen(o_info->types); type_i++) {
         IntroType * type = o_info->types[type_i];
         if (type->attr == 0 && type->parent && type->parent->attr != 0) {

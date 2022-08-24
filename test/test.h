@@ -60,7 +60,7 @@ typedef struct TestAttributes {
     u8 * buffer I(1, length buffer_size);
     s32 buffer_size;
     u32 v1 I(3);
-    int h I(2, note "notes test, hello");
+    int h I(2, gui_note "notes test, hello");
 } TestAttributes;
 
 enum {
