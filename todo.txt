@@ -7,7 +7,7 @@ lib:
     accurate type print
         would be useful for metaprogramming
     intro_print: follow pointer arrays
-    intro_print: detect and handle against cyclical references
+    intro_print: detect and handle cyclical references
     intro_print options
         whether to print unnamed members as if their members were within
         max depth
@@ -34,8 +34,8 @@ attribute:
         function arguments
     impl: cache matching data
 
-    @propogate trait
-        don't propogate by default
+    @propagate trait
+        don't propagate by default
     @imply trait: applies additional attributes along when applied
         example: cstring: flag @imply(string, terminated 0)
 

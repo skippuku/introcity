@@ -3,7 +3,7 @@ enum AttributeToken {
     ATTR_TK_INHERIT,
     ATTR_TK_ATTRIBUTE,
     ATTR_TK_APPLY_TO,
-    ATTR_TK_REPRESS,
+    ATTR_TK_PROPAGATE,
     ATTR_TK_INVALID
 };
 
@@ -25,11 +25,11 @@ attribute_parse_init(ParseContext * ctx) {
         {"type",    INTRO_AT_TYPE},
         {"expr",    INTRO_AT_EXPR},
         {"__remove",INTRO_AT_REMOVE},
-        {"global",  ATTR_TK_GLOBAL},
-        {"inherit", ATTR_TK_INHERIT},
         {"attribute", ATTR_TK_ATTRIBUTE},
         {"apply_to", ATTR_TK_APPLY_TO},
-        {"repress", ATTR_TK_REPRESS},
+        {"global",  ATTR_TK_GLOBAL},
+        {"inherit", ATTR_TK_INHERIT},
+        {"propagate", ATTR_TK_PROPAGATE},
     };
     shdefault(ctx->attribute_token_map, ATTR_TK_INVALID);
     for (int i=0; i < LENGTH(attribute_keywords); i++) {
@@ -159,16 +159,19 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                 tk = next_token(tidx);
             }
 
-            if (tk.type == TK_AT) {
+            while (tk.type == TK_AT) {
                 tk = next_token(tidx);
-                if (tk_equal(&tk, "global")) {
+                memcpy(temp, tk.start, tk.length);
+                temp[tk.length] = 0;
+                a_tk = shget(ctx->attribute_token_map, temp);
+                if (a_tk == ATTR_TK_GLOBAL) {
                     if (info.type != INTRO_AT_FLAG) {
                         parse_error(ctx, tk, "Only flag attributes can have the trait global.");
                         return -1;
                     }
                     info.global = true;
-                } else if (tk_equal(&tk, "repress")) {
-                    info.repress = true;
+                } else if (a_tk == ATTR_TK_PROPAGATE) {
+                    info.propagate = true;
                 } else {
                     parse_error(ctx, tk, "Invalid trait.");
                     return -1;
