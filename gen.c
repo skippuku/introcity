@@ -87,7 +87,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
                 hmput(complex_type_map, t->__data, enum_value_index);
                 for (int v_i=0; v_i < t->count; v_i++) {
                     IntroEnumValue v = t->values[v_i];
-                    strputf(&ev, "{\"%s\", %i},\n", v.name, v.value);
+                    strputf(&ev, "{\"%s\", %i, %u},\n", v.name, v.value, v.attr);
                 }
                 enum_value_index += t->count;
             }break;

@@ -370,7 +370,7 @@ create_token_list(char * buffer) {
 int32_t
 find_closing(TokenIndex idx) {
     int depth = 1;
-    char o = *tk_at(&idx).start, c;
+    char o = tk_at(&idx).start[0], c;
     switch(o) {
     case '{': c = '}'; break;
     case '[': c = ']'; break;
@@ -381,9 +381,9 @@ find_closing(TokenIndex idx) {
     idx.index++;
     Token tk;
     while ((tk = next_token(&idx)).type != TK_END) {
-        if (*tk.start == o) {
+        if (tk.start[0] == o) {
             depth++;
-        } else if (*tk.start == c) {
+        } else if (tk.start[0] == c) {
             if (--depth == 0) return idx.index;
         }
     }

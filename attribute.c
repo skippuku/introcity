@@ -948,8 +948,14 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         AttributeDataKey key = {0};
         key.member_index = MIDX_TYPE_PROPAGATED;
         if (directive.member_index >= 0) {
-            const IntroMember member = directive.type->members[directive.member_index];
-            key.type = member.type;
+            if (intro_has_members(directive.type)) {
+                IntroMember member = directive.type->members[directive.member_index];
+                key.type = member.type;
+            } else if (directive.type->category == INTRO_ENUM) {
+                key.type = directive.type; // NOTE: maybe this should be set to null instead
+            } else {
+                assert(0 /* Vibe check failed. */);
+            }
         } else {
             if (directive.type->parent) {
                 key.type = directive.type->parent;
@@ -1038,7 +1044,13 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         }break;
 
         default: {
-            type->members[member_index].attr = spec_index;
+            if (intro_has_members(type)) {
+                type->members[member_index].attr = spec_index;
+            } else if (type->category == INTRO_ENUM) {
+                type->values[member_index].attr = spec_index;
+            } else {
+                assert(0 /* Vibe check failed */);
+            }
         }break;
         }
 

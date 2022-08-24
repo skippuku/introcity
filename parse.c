@@ -496,6 +496,8 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
         return -1;
     }
 
+    int start_attribute_directives = arrlen(ctx->attribute_directives);
+
     bool is_flags = true;
     bool is_sequential = true;
     IntroEnumValue * values = NULL;
@@ -508,6 +510,10 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
         if (name.type == TK_R_BRACE) {
             break;
         }
+
+        int this_index = arrlen(values);
+        maybe_expect_attribute(ctx, tidx, this_index, &name);
+
         if (name.type != TK_IDENTIFIER) {
             parse_error(ctx, name, "Expected identifier.");
             return -1;
@@ -516,6 +522,9 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
         v.name = register_enum_name(ctx, name);
 
         tk = next_token(tidx);
+
+        maybe_expect_attribute(ctx, tidx, this_index, &tk);
+
         bool set = false;
         bool is_last = false;
         if (tk.type == TK_COMMA) {
@@ -545,6 +554,9 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
 
         if (set) {
             tk = next_token(tidx);
+
+            maybe_expect_attribute(ctx, tidx, this_index, &tk);
+
             if (tk.type == TK_COMMA) {
             } else if (tk.type == TK_R_BRACE) {
                 break;
@@ -569,8 +581,17 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
     type.size = 4; // TODO: this could be other things in C++
     type.align = type.size;
 
-    store_type(ctx, type, pos_index);
+    IntroType * stored = store_type(ctx, type, pos_index);
     arrfree(complex_type_name);
+
+    if (arrlen(ctx->attribute_directives) > start_attribute_directives) {
+        for (int i = start_attribute_directives; i < arrlen(ctx->attribute_directives); i++) {
+            AttributeDirective * p_directive = &ctx->attribute_directives[i];
+            if (p_directive->type == NULL) {
+                p_directive->type = stored;
+            }
+        }
+    }
 
     return 0;
 }

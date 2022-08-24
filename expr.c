@@ -178,6 +178,13 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
                     node->op = OP_SIZEOF;
                 } else if (tk_equal(&tk, "_Alignof")) {
                     node->op = OP_ALIGNOF;
+                } else if (tk_equal(&tk, "I")) {
+                    if (tk_at(tidx).type == TK_L_PARENTHESIS) {
+                        found_end = true;
+                        tidx->index -= 1;
+                    } else {
+                        node->op = OP_OTHER;
+                    }
                 } else {
                     node->op = OP_OTHER;
                 }

@@ -77,6 +77,12 @@ typedef struct {
     int big_test;
 } AttributeTest;
 
+typedef enum {
+    SKP_FIRST = 0 I(alias first),
+    SKP_SECOND I(alias second),
+    I(alias third) SKP_THIRD,
+} SkpEnum;
+
 #include "attributes.c.intro"
 
 void
@@ -265,6 +271,16 @@ main() {
             assert(intro_attribute_float(m_big_test, num, &fval)    && fval == 5.0);
             assert(intro_attribute_int(m_big_test, id, &ival)       && ival == 5);
         }
+    }
+
+    // enum test
+    {
+        IntroVariant var;
+
+        const IntroEnumValue * e = ITYPE(SkpEnum)->values;
+        assert(intro_attribute_value_x(INTRO_CTX, NULL, e[0].attr, IATTR_alias, &var) && 0==strcmp((char *)var.data, "first"));
+        assert(intro_attribute_value_x(INTRO_CTX, NULL, e[1].attr, IATTR_alias, &var) && 0==strcmp((char *)var.data, "second"));
+        assert(intro_attribute_value_x(INTRO_CTX, NULL, e[2].attr, IATTR_alias, &var) && 0==strcmp((char *)var.data, "third"));
     }
 
     return 0;

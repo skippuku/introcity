@@ -120,16 +120,19 @@ typedef enum IntroFlags {
 
 typedef struct IntroType IntroType I(~gui_edit);
 
+typedef uint32_t IntroAttributeInfo;
+
 typedef struct IntroMember {
     const char * name;
     IntroType * type;
     uint32_t offset;
-    uint32_t attr;
+    IntroAttributeInfo attr;
 } IntroMember;
 
 typedef struct IntroEnumValue {
     const char * name;
     int32_t value;
+    IntroAttributeInfo attr;
 } IntroEnumValue;
 
 struct IntroType {
@@ -143,7 +146,7 @@ struct IntroType {
     IntroType * parent;
     const char * name;
     uint32_t count;
-    uint32_t attr;
+    IntroAttributeInfo attr;
     uint32_t size;
     uint16_t flags I(gui_format "0x%02x");
     uint8_t align;

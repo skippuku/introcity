@@ -31,7 +31,6 @@ attribute:
     dynamically sized value attributes
         allow multiple aliases
     allow attributes in more places
-        enum values
         functions
         function arguments
     impl: cache matching data
@@ -50,8 +49,6 @@ attribute:
     'none' attribute type
         makes an attribute not generate any information
         useful for when an attribute is only relevant at compile-time
-    'int' allow aliasing as an enum?
-        ex. flags: int(MyFlags)
 
     members of complex type can specify an attribute as a value: I(default default)
     value(@inherit_base): inherit base of pointer or array type
