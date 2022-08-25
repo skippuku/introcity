@@ -175,7 +175,7 @@ main() {
     special_free(&data, ITYPE(JointAllocTest));
 
     AttributeTest test;
-    intro_set_defaults(&test, ITYPE(AttributeTest));
+    intro_set_fallbacks(&test, ITYPE(AttributeTest));
     {
         int32_t i;
         float f;

@@ -7,20 +7,6 @@ enum AttributeToken {
     ATTR_TK_INVALID
 };
 
-#define EXPECT(x) \
-    tk = next_token(tidx); \
-    if (tk.start[0] != x) { \
-        parse_error(ctx, tk, "Expected " #x "."); \
-        return -1; \
-    }
-
-#define EXPECT_IDEN() \
-    tk = next_token(tidx); \
-    if (tk.type != TK_IDENTIFIER) { \
-        parse_error(ctx, tk, "Expected identifier."); \
-        return -1; \
-    }
-
 void
 attribute_parse_init(ParseContext * ctx) {
     static const struct { const char * key; int value; } attribute_keywords [] = {

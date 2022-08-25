@@ -417,6 +417,7 @@ pre_get_include_path(PreContext * ctx, const char * file_dir, IncludeFile inc_fi
         if (inc_file.is_quote) {
             path_join(o_path, file_dir, inc_file.name);
             if (access(o_path, F_OK) == 0) {
+                ctx->is_sys_header = false;
                 return true;
             }
         }
@@ -426,8 +427,8 @@ pre_get_include_path(PreContext * ctx, const char * file_dir, IncludeFile inc_fi
         const char * include_path = ctx->include_paths[i];
         path_join(o_path, include_path, inc_file.name);
         if (access(o_path, F_OK) == 0) {
-            if (!inc_file.test_only && i >= ctx->sys_header_first && i <= ctx->sys_header_last) {
-                ctx->is_sys_header = true;
+            if (!inc_file.test_only) {
+                ctx->is_sys_header = (i >= ctx->sys_header_first && i <= ctx->sys_header_last);
             }
             return true;
         }
@@ -557,9 +558,10 @@ free_macro_arguments(MacroArgs margs) {
 static bool // true if token was expanded
 macro_scan(PreContext * ctx, int macro_tk_index) {
     Token * macro_tk = &ctx->expand_ctx.list[macro_tk_index];
-    STACK_TERMINATE(terminated_tk, macro_tk->start, macro_tk->length);
+    char temp [1024];
+    TERMINATE(temp, macro_tk->start, macro_tk->length);
 
-    ptrdiff_t macro_index = shgeti(ctx->defines, terminated_tk);
+    ptrdiff_t macro_index = shgeti(ctx->defines, temp);
     if (macro_index < 0) {
         return false;
     }
@@ -588,8 +590,8 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 preprocess_error(&tk, "Expected identifier.");
                 exit(1);
             }
-            STACK_TERMINATE(defined_iden, tk.start, tk.length);
-            Define def = shgets(ctx->defines, defined_iden);
+            TERMINATE(temp, tk.start, tk.length);
+            Define def = shgets(ctx->defines, temp);
             char * replace = (def.is_defined)? "1" : "0";
             if (is_paren) {
                 tk = internal_macro_next_token(ctx, &index);
@@ -724,15 +726,18 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 preprocess_error(&tk, "Expected include file.");
                 exit(1);
             }
-            STACK_TERMINATE(inc_filename, start, end - start);
+
+            char inc_filename [1024];
+            char file_dir [1024];
+            char _static_buf [1024];
+            char * _filename;
+
+            TERMINATE(inc_filename, start, end - start);
             inc_file.name = inc_filename;
 
-            char file_dir [1024];
-            char static_buf_ [1024];
-            char * filename = NULL;
-            path_dir(file_dir, ctx->current_file->filename, &filename);
+            path_dir(file_dir, ctx->current_file->filename, &_filename);
 
-            bool found_file = pre_get_include_path(ctx, file_dir, inc_file, static_buf_);
+            bool found_file = pre_get_include_path(ctx, file_dir, inc_file, _static_buf);
 
             char * replace = (found_file)? "1" : "0";
 
@@ -1293,7 +1298,8 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
             if (!ctx->minimal_parse) ignore_section(paste, start_of_line, tidx->index);
 
             if (inc_file.exists) {
-                STACK_TERMINATE(inc_filename, inc_file.tk.start + 1, inc_file.tk.length - 2);
+                char inc_filename [1024];
+                TERMINATE(inc_filename, inc_file.tk.start + 1, inc_file.tk.length - 2);
                 char ext_buf [128];
                 if (0==strcmp(".intro", path_extension(ext_buf, inc_filename))) {
                     goto skip_and_add_include_dep;

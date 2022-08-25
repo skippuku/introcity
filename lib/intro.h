@@ -404,9 +404,9 @@ bool intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, uint32_t at
 void intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);
 #define intro_set_values(dest, type, a) intro_set_values_x(INTRO_CTX, dest, type, IATTR_##a)
 void intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute);
-#define intro_set_defaults(dest, type) intro_set_defaults_x(INTRO_CTX, dest, type)
-#define intro_default(dest, type) intro_set_defaults_x(INTRO_CTX, dest, type)
-void intro_set_defaults_x(IntroContext * ctx, void * dest, const IntroType * type);
+#define intro_set_fallbacks(dest, type) intro_set_fallbacks_x(INTRO_CTX, dest, type)
+#define intro_fallback(dest, type) intro_set_fallbacks_x(INTRO_CTX, dest, type)
+void intro_set_fallbacks_x(IntroContext * ctx, void * dest, const IntroType * type);
 
 // PRINTERS
 void intro_sprint_type_name(char * dest, const IntroType * type);
@@ -1196,7 +1196,7 @@ intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint
 }
 
 void
-intro_set_defaults_x(IntroContext * ctx, void * dest, const IntroType * type) {
+intro_set_fallbacks_x(IntroContext * ctx, void * dest, const IntroType * type) {
     intro_set_values_x(ctx, dest, type, ctx->attr.builtin.fallback);
 }
 

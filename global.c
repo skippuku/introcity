@@ -31,11 +31,15 @@
 #include "ext/stb_sprintf.h"
 
 #ifndef LENGTH
-#define LENGTH(a) (sizeof(a)/sizeof(*(a)))
+#define LENGTH(a) (sizeof(a)/sizeof*(a))
 #endif
 
 #ifndef MIN
 #define MIN(a,b) (((a)<(b))? (a) : (b))
+#endif
+
+#ifndef MAX
+#define MAX(a,b) (((a)>(b))? (a) : (b))
 #endif
 
 // index of last put or get
@@ -47,6 +51,12 @@
     memcpy(name, src, length); \
     name[length] = 0;
 
+#define TERMINATE(DEST, SRC, LEN) do{ \
+    assert(sizeof(DEST) > LEN); \
+    memcpy(DEST, SRC, LEN); \
+    (DEST)[LEN] = 0; \
+}while(0)
+
 #if defined __has_attribute
   #if __has_attribute(unused)
     #define UNUSED __attribute__((unused))
@@ -57,6 +67,7 @@
 #endif
 
 #define db_here() fprintf(stderr, "here: %s:%i\n", __FILE__, __LINE__)
+#define db_assert(x) assert(x)
 
 #ifdef DEBUG
   #if (defined __GNUC__ || defined __clang__) && (defined __x86_64__ || defined __i386__)
@@ -64,9 +75,6 @@
   #elif defined _MSC_VER
     #define db_break() __debugbreak()
   #endif
-  #define db_assert(x) assert(x)
-#else
-  #define db_assert(x)
 #endif
 #ifndef db_break
   #define db_break()
@@ -78,11 +86,30 @@
   #define COMPILER_STR "gcc"
 #elif defined _MSC_VER
   #define COMPILER_STR "msvc"
+#elif defined __TINYC__
+  #define COMPILER_STR "tcc"
 #else
   #define COMPILER_STR "compiler"
 #endif
 
 #include "lexer.c"
+
+// REQUIREMENTS FOR EXPECT MACROS:
+//   - ctx (ParseContext *), tk (Token), and tidx (TokenIndex *) are available
+//   - function returns a return code (int)
+#define EXPECT(x) \
+    tk = next_token(tidx); \
+    if (tk.start[0] != x) { \
+        parse_error(ctx, tk, "Expected " #x "."); \
+        return -1; \
+    }
+
+#define EXPECT_IDEN() \
+    tk = next_token(tidx); \
+    if (tk.type != TK_IDENTIFIER) { \
+        parse_error(ctx, tk, "Expected identifier."); \
+        return -1; \
+    }
 
 static uint64_t g_timer_freq = 0;
 
@@ -289,7 +316,7 @@ typedef struct {
     CTypeInfo type_info;
 } Config;
 
-typedef struct {
+static struct Metrics {
     uint64_t start;
     uint64_t last;
 
@@ -308,8 +335,7 @@ typedef struct {
     uint64_t count_parse_tokens;
     uint64_t count_parse_types;
     uint64_t count_gen_types;
-} Metrics;
-static Metrics g_metrics = {0};
+} g_metrics = {0};
 
 IntroType * parse_get_known(ParseContext * ctx, int index);
 static int parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl);
@@ -465,7 +491,7 @@ nanotime() {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
 #else
-#pragma message ("No nanotime implementation for this platform")
+    #pragma message ("No nanotime implementation for this platform")
     return 0;
 #endif
 }
@@ -480,16 +506,4 @@ nanointerval() {
 
 static void parse_error(ParseContext * ctx, Token tk, char * message);
 
-#ifdef DEBUG
-// this is so i can get array and map length in gdb
-int
-dbarrlen(void * a) {
-    return (a)? arrlen(a) : -1;
-}
-
-int
-dbhmlen(void * m) {
-    return (m)? hmlen(m) : -1;
-}
-#endif
-#endif // UTIL_C
+#endif // GLOBAL_C

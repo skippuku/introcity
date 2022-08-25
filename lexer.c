@@ -2,7 +2,7 @@
 #define LEXER_C
 
 #include <stdbool.h>
-#include <stdio.h> // EOF
+#include <stdio.h> // only for EOF
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

@@ -3,13 +3,13 @@
 int
 main() {
     TestDefault default_test;
-    intro_set_defaults(&default_test, ITYPE(TestDefault));
+    intro_set_fallbacks(&default_test, ITYPE(TestDefault));
 
     printf("default_test = ");
     intro_print(&default_test, default_test.type, NULL);
     printf("\n");
 
-#define ABS(x) ((x)<0?-1 * (x):(x))
+#define ABS(x) (((x) < 0)? (x) * -1 : (x))
     assert(default_test.v_int == 123);
     assert(default_test.v_u8 == 1);
     assert(default_test.v_s64 == -54321);

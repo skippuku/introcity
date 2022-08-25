@@ -6,7 +6,7 @@
 int
 main() {
     TestDefault obj;
-    intro_default(&obj, ITYPE(TestDefault));
+    intro_fallback(&obj, ITYPE(TestDefault));
 
     char * buffer = malloc(1 << 16);
     intro_sprint_json_x(INTRO_CTX, buffer, &obj, ITYPE(TestDefault), NULL);

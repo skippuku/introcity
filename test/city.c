@@ -152,7 +152,7 @@ GEN_LINK_REPORT(LinkNodeLoad)
 int
 main() {
     Basic obj_save;
-    intro_set_defaults(&obj_save, ITYPE(Basic));
+    intro_set_fallbacks(&obj_save, ITYPE(Basic));
     obj_save.name = "Steven";
     obj_save.a = 25;
     obj_save.b = -53;
