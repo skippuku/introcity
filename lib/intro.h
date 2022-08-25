@@ -1141,7 +1141,7 @@ intro_run_bytecode(uint8_t * code, const void * v_data) {
     extern  __attribute__((sysv_abi)) int64_t intro__vm(void * bytecode, const void * data);
 
     union IntroRegisterData reg;
-    reg.si = intro__vm(code, data);
+    reg.si = intro__vm(code, v_data);
     return reg;
 #endif
 }

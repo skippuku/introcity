@@ -19,12 +19,12 @@ intro__vm:
 .skip_pop:
     cmp    cl, 37
     ja     .I_INVALID
-    lea    r9, .jmptbl
-    mov    ecx, dword ptr [.jmptbl + rcx*4]
+    lea    r9, .jmptbl[rip]
+    mov    ecx, dword ptr [r9 + rcx*4]
     add    rcx, r9
     jmp    rcx
 
-#define INST(name) .long .name-.jmptbl
+#define INST(NAME) .long .NAME-.jmptbl
     .align 4
 .jmptbl:
     INST(I_INVALID)
@@ -270,7 +270,7 @@ intro__vm:
     sub rsp, 16
     and rsp, -16
 #ifdef _WIN32
-    lea    rcx, .invalid_msg
+    lea    rcx, .invalid_msg[rip]
     xor    edx, edx
     mov    dl, byte ptr[rdi - 1]
     call   printf
@@ -278,7 +278,7 @@ intro__vm:
     mov    rcx, 1
     call   exit
 #else
-    lea    rdi, .invalid_msg
+    lea    rdi, .invalid_msg[rip]
     xor    esi, esi
     mov    sil, byte ptr[rdi - 1]
     call   printf
