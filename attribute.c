@@ -940,6 +940,8 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
 
     struct {IntroType * key; uint32_t value;} * propagated_map = NULL;
 
+    HashTable * attr_spec_set = new_table(1024);
+
     for (int data_i=0; data_i < hmlen(ctx->attribute_data_map); data_i++) {
         AttributeDataMap content = ctx->attribute_data_map[data_i];
         IntroType * type = content.key.type;
@@ -958,8 +960,10 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
             }
         }
         int count_16_byte_sections_needed = 1 + ((count_without_flags * sizeof(uint32_t)) + 15) / 16;
+        size_t prev_len = arrlen(o_info->attr.spec_buffer);
         IntroAttributeSpec * spec = arraddnptr(o_info->attr.spec_buffer, count_16_byte_sections_needed);
-        memset(spec, 0, count_16_byte_sections_needed * sizeof(*spec));
+        size_t data_size = count_16_byte_sections_needed * sizeof(*spec);
+        memset(spec, 0, data_size);
 
         for (int i=0; i < count; i++) {
             uint32_t bitset_index = attr_data[i].id >> 5; 
@@ -971,6 +975,20 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
                 uint32_t * value_offsets = (uint32_t *)(spec + 1);
                 memcpy(&value_offsets[i], &attr_data[i].v, sizeof(uint32_t));
             }
+        }
+
+        HashEntry entry = {
+            .key_data = spec,
+            .key_size = data_size,
+        };
+        
+        uint32_t lookup_index = table_get(attr_spec_set, &entry);
+        if (lookup_index != TABLE_INVALID_INDEX) {
+            spec_index = entry.value;
+            arrsetlen(o_info->attr.spec_buffer, prev_len);
+        } else {
+            entry.value = spec_index;
+            table_set(attr_spec_set, entry);
         }
 
         switch(member_index) {
@@ -996,6 +1014,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         arrfree(attr_data);
     }
     hmfree(ctx->attribute_data_map);
+    free_table(attr_spec_set);
 
     // set inhertited attribute data for declarations without attribute directives
     for (int type_i=0; type_i < arrlen(o_info->types); type_i++) {

@@ -231,8 +231,9 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     }
     strputf(&s, "};\n\n");
 
-    strputf(&s, "const unsigned char __intro_attr_data [] = {");
-    for (int i=0; i < arrlen(info->attr.spec_buffer) * sizeof(info->attr.spec_buffer[0]); i++) {
+    size_t attr_data_size = arrlen(info->attr.spec_buffer) * sizeof(info->attr.spec_buffer[0]);
+    strputf(&s, "const unsigned char __intro_attr_data [%u] = {", (unsigned int)attr_data_size);
+    for (int i=0; i < attr_data_size; i++) {
         if (i % 16 == 0) {
             strputf(&s, "\n");
         }

@@ -32,7 +32,6 @@ attribute:
     allow attributes in more places
         functions
         function arguments
-    impl: cache matching data
 
     @imply trait: applies additional attributes along when applied
         example: cstring: flag @imply(string, terminated 0)

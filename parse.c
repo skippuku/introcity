@@ -404,7 +404,6 @@ parse_struct(ParseContext * ctx, TokenIndex * tidx) {
 
         IntroMember member = {0};
         member.type = decl.type;
-        //member.bitfield = decl.bitfield; // TODO
 
         assert(member.type->align != 0);
         if (total_align < member.type->align) {
