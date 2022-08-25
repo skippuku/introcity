@@ -325,7 +325,7 @@ tk_at(const TokenIndex * tidx) {
     return tidx->list[tidx->index];
 }
 
-static inline Token UNUSED
+static inline Token
 tk_last(const TokenIndex * tidx) {
     return tidx->list[tidx->index - 1];
 }

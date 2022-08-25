@@ -595,7 +595,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         if (data.id == ctx->builtin.type) {
             IntroType * mtype = type->members[member_index].type;
             if (!(mtype->category == INTRO_POINTER && strcmp(mtype->of->name, "IntroType") == 0)) {
-                parse_error(ctx, tk, "Member must be of type 'IntroType *' to have type attribute.");
+                parse_error(ctx, tk_last(tidx), "Member must be of type 'IntroType *' to have type attribute.");
                 char typename [1024];
                 intro_sprint_type_name(typename, mtype);
                 fprintf(stderr, "member type is %s\n", typename);
@@ -709,7 +709,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     }break;
 
     case INTRO_AT_TYPE: {
-        parse_error(ctx, tk, "Not implemented.");
+        parse_error(ctx, tk_last(tidx), "Not implemented.");
     }break;
 
     case INTRO_AT_COUNT: assert(0);
