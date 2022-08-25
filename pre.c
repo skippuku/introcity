@@ -21,6 +21,8 @@ typedef enum {
     MACRO_BASE_FILE,
     MACRO_FILE_NAME,
     MACRO_TIMESTAMP,
+    MACRO_has_include,
+    MACRO_has_include_next,
 } SpecialMacro;
 
 typedef struct {
@@ -119,7 +121,7 @@ strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char 
     strputf(p_s, "\n");
 }
 
-static inline int
+static int
 count_newlines_unaligned(char * start, int count) {
     int result = 0;
     char * s = start;
@@ -391,6 +393,43 @@ tk_cat(Token ** p_list, const Token * ext, bool space) {
     dest[0].preceding_space = space;
 }
 
+typedef struct {
+    Token tk;
+    char * name;
+    bool exists;
+    bool is_quote;
+    bool is_next;
+} IncludeFile;
+
+bool
+pre_get_include_path(PreContext * ctx, const char * file_dir, IncludeFile inc_file, char * o_path) {
+    if (inc_file.is_quote) {
+        path_join(o_path, file_dir, inc_file.name);
+        if (access(o_path, F_OK) == 0) {
+            return true;
+        }
+    }
+
+    for (int i=0; i < arrlen(ctx->include_paths); i++) {
+        const char * include_path = ctx->include_paths[i];
+        if (inc_file.is_next) {
+            if (0==strcmp(file_dir, include_path)) {
+                inc_file.is_next = false;
+            }
+            continue;
+        }
+        path_join(o_path, include_path, inc_file.name);
+        if (access(o_path, F_OK) == 0) {
+            if (i >= ctx->sys_header_first && i <= ctx->sys_header_last) {
+                ctx->is_sys_header = true;
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static bool macro_scan(PreContext * ctx, int macro_tk_index);
 
 static Token
@@ -632,6 +671,80 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             strftime(static_buf, sizeof(static_buf), "%a %b %d %H:%M:%S %Y", date);
 
             strputf(&buf, "\"%s\"", static_buf);
+        }break;
+
+        case MACRO_has_include: {
+            if (!ctx->expand_ctx.in_expression) {
+                return false;
+            }
+
+            IncludeFile inc_file = {0};
+
+            bool preceding_space = macro_tk->preceding_space;
+            int index = macro_tk_index;
+            Token tk = internal_macro_next_token(ctx, &index);
+
+            bool is_paren = false;
+            if (tk.type == TK_L_PARENTHESIS) {
+                is_paren = true;
+                tk = internal_macro_next_token(ctx, &index);
+            }
+
+            const char * start;
+            const char * end;
+
+            if (tk.type == TK_STRING) {
+                start = tk.start + 1;
+                end = tk.start + tk.length - 1;
+                inc_file.is_quote = true;
+            } else if (tk.type == TK_L_ANGLE) {
+                start = tk.start + 1;
+                while (1) {
+                    tk = internal_macro_next_token(ctx, &index);
+                    if (tk.type == TK_R_ANGLE) {
+                        break;
+                    }
+                    if (tk.type == TK_END) {
+                        // TODO
+                        exit(1);
+                    }
+                }
+                end = tk.start;
+            } else {
+                preprocess_error(&tk, "Expected include file.");
+                exit(1);
+            }
+            STACK_TERMINATE(inc_filename, start, start - end);
+            inc_file.name = inc_filename;
+
+            char file_dir [1024];
+            char static_buf_ [1024];
+            path_dir(file_dir, inc_filename, &inc_file.name);
+
+            bool found_file = pre_get_include_path(ctx, file_dir, inc_file, static_buf_);
+
+            char * replace = (found_file)? "1" : "0";
+
+            if (is_paren) {
+                tk = internal_macro_next_token(ctx, &index);
+                if (tk.type != TK_R_PARENTHESIS) {
+                    preprocess_error(&tk, "Expected ')'.");
+                    exit(1);
+                }
+            }
+
+            Token replace_tk = (Token){
+                .start = replace,
+                .length = 1,
+                .type = TK_NUMBER,
+                .preceding_space = preceding_space,
+            };
+            arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2) + (inc_file.is_quote * 2));
+            ctx->expand_ctx.list[macro_tk_index] = replace_tk;
+            return true;
+        }break;
+
+        case MACRO_has_include_next: {
         }break;
         }
 
@@ -888,7 +1001,7 @@ pre_skip(PreContext * ctx, TokenIndex * tidx, bool elif_ok) {
 
 int
 pre_handle_intro_pragma(PreContext * ctx, TokenIndex * tidx, Token * o_tk) {
-#define SET_BITS(var, mask, state) (var = state? var | mask : var & ~mask)
+#define SET_BITS(var, mask, state) (var = (state)? var | mask : var & ~mask)
     static const struct{const char * key; NoticeState value;} elements [] = {
         {"functions", NOTICE_FUNCTIONS},
         {"macros", NOTICE_MACROS},
@@ -977,12 +1090,8 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
     while (1) {
         int32_t start_of_line = tidx->index;
         ctx->expansion_site = tk_at(tidx).start;
-        struct {
-            bool exists;
-            bool is_quote;
-            bool is_next;
-            Token tk;
-        } inc_file = {0};
+
+        IncludeFile inc_file = {0};
         Token tk = next_token(tidx);
         bool def_forced = false;
 
@@ -1168,7 +1277,7 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                 return -1;
             }
 
-        nextline:
+          nextline:
             // find next line
             while (tk.type != TK_NEWLINE && tk.type != TK_END) tk = next_token(tidx);
 
@@ -1181,42 +1290,26 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                     goto skip_and_add_include_dep;
                 }
                 char inc_filepath [1024];
-                bool is_from_sys = ctx->is_sys_header;
-                if (inc_file.is_quote) {
-                    path_join(inc_filepath, file_dir, inc_filename);
-                    if (access(inc_filepath, F_OK) == 0) {
-                        goto include_matched_file;
-                    }
-                }
-                for (int i=0; i < arrlen(ctx->include_paths); i++) {
-                    const char * include_path = ctx->include_paths[i];
-                    if (inc_file.is_next) {
-                        if (0==strcmp(file_dir, include_path)) {
-                            inc_file.is_next = false;
-                        }
+
+                bool prev = ctx->is_sys_header;
+
+                inc_file.name = inc_filename;
+                bool file_found = pre_get_include_path(ctx, file_dir, inc_file, inc_filepath);
+
+                if (!file_found) {
+                    if (ctx->m_options.G) {
+                      skip_and_add_include_dep: ;
+                        char * inc_filepath_stored = copy_and_terminate(ctx->arena, inc_filename, strlen(inc_filename));
+                        shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
                         continue;
+                    } else {
+                        preprocess_error(&inc_file.tk, "File not found.");
+                        return -1;
                     }
-                    path_join(inc_filepath, include_path, inc_filename);
-                    if (access(inc_filepath, F_OK) == 0) {
-                        if (i >= ctx->sys_header_first && i <= ctx->sys_header_last) {
-                            is_from_sys = true;
-                        }
-                        goto include_matched_file;
-                    }
-                }
-                if (ctx->m_options.G) {
-                skip_and_add_include_dep: ;
-                    char * inc_filepath_stored = copy_and_terminate(ctx->arena, inc_filename, strlen(inc_filename));
-                    shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
-                    continue;
-                } else {
-                    preprocess_error(&inc_file.tk, "File not found.");
-                    return -1;
                 }
 
-            include_matched_file: ;
                 char * inc_filepath_stored = copy_and_terminate(ctx->arena, inc_filepath, strlen(inc_filepath));
-                if (!(ctx->m_options.no_sys && is_from_sys)) {
+                if (!(ctx->m_options.no_sys && ctx->is_sys_header)) {
                     shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
                 } else {
                     if (ctx->minimal_parse) {
@@ -1224,8 +1317,6 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                     }
                 }
 
-                bool prev = ctx->is_sys_header;
-                ctx->is_sys_header = is_from_sys;
                 ctx->include_level++;
 
                 arrpush(ctx->notice_stack, ctx->notice);
@@ -1468,6 +1559,8 @@ run_preprocessor(int argc, char ** argv) {
         {"__BASE_FILE__", MACRO_BASE_FILE},
         {"__FILE_NAME__", MACRO_FILE_NAME},
         {"__TIMESTAMP__", MACRO_TIMESTAMP},
+        //{"__has_include", MACRO_has_include},
+        //{"__has_include_next", MACRO_has_include_next},
     };
     for (int i=0; i < LENGTH(special_macros); i++) {
         Define special = {0};

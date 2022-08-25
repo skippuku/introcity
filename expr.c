@@ -75,24 +75,6 @@ struct ExprNode {
     Token tk;
 };
 
-typedef enum {
-    REG_VALUE,
-    REG_LAST_RESULT,
-    REG_POP_STACK,
-} ExprInstructionRegisterType; // TODO: remove
-
-typedef struct {
-    ExprOp op;
-    ExprInstructionRegisterType left_type, right_type;
-    intmax_t left_value, right_value;
-} ExprInstruction; // TODO: remove
-
-typedef struct {
-    int stack_size;
-    int count_instructions;
-    ExprInstruction instructions [];
-} ExprProcedure; // TODO: remove
-
 static void UNUSED
 free_expr_context(ExprContext * ectx) {
     free_arena(ectx->arena);
