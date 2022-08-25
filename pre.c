@@ -1573,6 +1573,7 @@ run_preprocessor(int argc, char ** argv) {
         special.key = special_macros[i].name;
         special.special = special_macros[i].value;
         special.is_defined = true;
+        special.forced = true;
         shputs(ctx->defines, special);
     }
 

@@ -5,6 +5,7 @@
 
 typedef enum {
     OP_NUMBER = 0x01,
+    OP_LITERAL,
     OP_OTHER,
     OP_MACCESS,
     OP_PTR_MACCESS,
@@ -179,7 +180,7 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
             node->op = OP_NUMBER;
         }break;
 
-        case TK_STRING:        node->op = OP_OTHER; break;
+        case TK_STRING:        node->op = OP_LITERAL; break;
 
         case TK_PLUS:          node->op = (next_is_unary)? OP_UNARY_ADD : OP_ADD; break;
         case TK_HYPHEN:        node->op = (next_is_unary)? OP_UNARY_SUB : OP_SUB; break;
@@ -365,8 +366,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
                 }
                 node = node->right;
 
-                assert(0);
-                // TODO....
+                assert(0); // TODO
             }break;
 
             default:
@@ -476,6 +476,13 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         }
     }break;
 
+    case OP_LITERAL: {
+        if (node->tk.type == TK_STRING) {
+            put_imm_int(&proc, 1);
+            // TODO
+        }
+    }break;
+
     case OP_MACCESS:
     case OP_PTR_MACCESS:
     case OP_CONTAINER:
@@ -483,9 +490,11 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         assert(0);
 
     case OP_DEREF: {
+        // TODO
     }break;
 
     case OP_ADDRESS: {
+        // TODO
     }break;
 
     case OP_CAST: {
