@@ -505,5 +505,6 @@ nanointerval() {
 }
 
 static void parse_error(ParseContext * ctx, Token tk, char * message);
+static void preprocess_message_internal(LocationContext * lctx, const Token * tk, char * message, int msg_type);
 
 #endif // GLOBAL_C

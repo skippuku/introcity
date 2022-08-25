@@ -61,6 +61,7 @@ struct ExprContext {
     struct{char * key; intmax_t value;} * constant_map;
     MemArena * arena;
     ParseContext * ctx;
+    LocationContext * ploc;
     enum {
         MODE_PRE,
         MODE_PARSE,
@@ -304,7 +305,12 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
         case TK_R_ARROW:       node->op = OP_PTR_MACCESS; break;
 
         default: {
-            parse_error(ectx->ctx, tk, "Invalid token.");
+            char * msg = "Invalid token in expression.";
+            if (ectx->mode == MODE_PARSE) {
+                parse_error(ectx->ctx, tk, msg);
+            } else {
+                preprocess_message_internal(ectx->ploc, &tk, msg, 0);
+            }
             return NULL;
         }break;
         }

@@ -1566,6 +1566,7 @@ run_preprocessor(int argc, char ** argv) {
     ctx->expr_ctx = calloc(1, sizeof(*ctx->expr_ctx));
     ctx->expr_ctx->mode = MODE_PRE;
     ctx->expr_ctx->arena = new_arena(EXPR_BUCKET_CAP);
+    ctx->expr_ctx->ploc = &ctx->loc;
 
     ctx->notice = NOTICE_DEFAULT;
     ctx->notice_stack = NULL;
@@ -1604,7 +1605,7 @@ run_preprocessor(int argc, char ** argv) {
 
     Token *const undef_replace_list = NULL; // reserve an address. remains unused
     Token * default_replace_list = NULL;
-    arrput(default_replace_list, ((Token){.start = "1", .length = 1}));
+    arrput(default_replace_list, ((Token){.start = "1", .length = 1, .type = TK_NUMBER}));
     Define * deferred_defines = NULL;
 
     for (int i=1; i < argc; i++) {
@@ -1647,10 +1648,26 @@ run_preprocessor(int argc, char ** argv) {
             }break;
 
             case 'D': {
-                Define new_def;
-                new_def.key = ADJACENT();
-                new_def.replace_list = default_replace_list;
-                // TODO: define option
+                Define new_def = {.is_defined = true};
+                char * opt_str = ADJACENT();
+                Token * tklist = create_token_list(opt_str);
+                if (arrlen(tklist) > 2) {
+                    if (!(arrlen(tklist) >= 4 && tklist[1].type == TK_EQUAL)) {
+                        fprintf(stderr, "Invalid -D option.\n");
+                        exit(1);
+                    }
+
+                    (void) arrpop(tklist); // remove TK_END token
+
+                    new_def.key = copy_and_terminate(ctx->arena, tklist[0].start, tklist[0].length);
+
+                    arrdeln(tklist, 0, 2); // remove NAME = tokens
+                    new_def.replace_list = tklist;
+                } else {
+                    new_def.key = ADJACENT();
+                    new_def.replace_list = default_replace_list;
+                    arrfree(tklist);
+                }
                 arrput(deferred_defines, new_def);
             }break;
 
