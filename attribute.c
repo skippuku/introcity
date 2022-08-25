@@ -872,8 +872,15 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
 
     for (int directive_i=0; directive_i < arrlen(ctx->attribute_directives); directive_i++) {
         AttributeDirective directive = ctx->attribute_directives[directive_i];
-        int ret = parse_attributes(ctx, &directive);
-        if (ret) exit(1);
+        if (!directive.attr_data) {
+            int ret = parse_attributes(ctx, &directive);
+            if (ret) exit(1);
+        } else {
+            for (int attr_i=0; attr_i < directive.count; attr_i++) {
+                uint32_t old_id = directive.attr_data[attr_i].id;
+                directive.attr_data[attr_i].id = shget(ctx->attribute_map, g_builtin_attributes[old_id].key).final_id;
+            }
+        }
 
         // add propagated type attributes
         bool found_inheritance = false;

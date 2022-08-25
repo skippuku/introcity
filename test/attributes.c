@@ -83,6 +83,12 @@ typedef enum {
     I(alias third) SKP_THIRD,
 } SkpEnum;
 
+typedef struct {
+    int a : 3;
+    int b : 1;
+    int c : 10;
+} BitfieldTest;
+
 #include "attributes.c.intro"
 
 void
@@ -281,6 +287,20 @@ main() {
         assert(intro_attribute_value_x(INTRO_CTX, NULL, e[0].attr, IATTR_alias, &var) && 0==strcmp((char *)var.data, "first"));
         assert(intro_attribute_value_x(INTRO_CTX, NULL, e[1].attr, IATTR_alias, &var) && 0==strcmp((char *)var.data, "second"));
         assert(intro_attribute_value_x(INTRO_CTX, NULL, e[2].attr, IATTR_alias, &var) && 0==strcmp((char *)var.data, "third"));
+    }
+
+    // bitfield test
+    {
+        int32_t field;
+
+        const IntroMember *m_a = intro_member_by_name(ITYPE(BitfieldTest), a)
+                        , *m_b = intro_member_by_name(ITYPE(BitfieldTest), b)
+                        , *m_c = intro_member_by_name(ITYPE(BitfieldTest), c)
+                        ;
+
+        assert(intro_attribute_int(m_a, bitfield, &field) && field == 3);
+        assert(intro_attribute_int(m_b, bitfield, &field) && field == 1);
+        assert(intro_attribute_int(m_c, bitfield, &field) && field == 10);
     }
 
     return 0;

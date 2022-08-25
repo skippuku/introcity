@@ -35,17 +35,27 @@ CHANGELOG
                                  gui: min 0.0, max 100.0,
                                  my: flag, id 4)
 
+		Bitfield sizes are now available as the built-in 'bitfield'
+		arrtribute.
+
         New @propagate trait: declares that an attribute is passed down to
         typedef's and members of that type. Formerly, this was the default
         for every attribute and could not be disabled.
 
-        Builtin attributes beginning with 'i_' have been moved into the global
+        Built-in attributes beginning with 'i_' have been moved into the global
         attribute namespace.
 
-    EXPRESSION IMPROVEMENTS
+		The built-in 'default' attribute has been renamed to 'fallback'.
+
+    OTHER
         The expression parser now supports floating-point types.
 
-        Several internal fixes and improvements.
+		The preprocessor now supports __has_include and __has_include_next.
+
+		The proprocessor now supports defining a macro value on the
+		command-line with '-DNAME=VALUE'.
+
+        Various internal fixes and improvements
 
 0.2 (Beta)
     API SIMPLIFICATION

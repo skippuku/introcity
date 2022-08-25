@@ -1,8 +1,7 @@
 lib:
     move parts of the parser into a library separate from introlib
         preprocessor
-        parser
-    interface for creating types/contexts
+        interface for creating types/contexts
     sprint/mprint version of everything that uses stdout
     accurate type print
         would be useful for metaprogramming
@@ -61,7 +60,6 @@ parse:
     vector types (__m128, etc)
     store type location information
     ParseInfo: have everything, strip away unwated stuff at gen
-    fix bitfield regression
     parse globals (for libraries that use extern)
     rudimentary C++ support
         templates?

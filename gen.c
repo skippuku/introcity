@@ -393,7 +393,7 @@ generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
         strputf(s, "syn keyword Function %s\n", func->name);
     }
 
-    strputf(s, "\nsyn keyword IntroAttribute");
+    strputf(s, "\nsyn keyword IntroAttribute contained");
     for (int attr_i=0; attr_i < info->attr.count_available; attr_i++) {
         IntroAttribute attr = info->attr.available[attr_i];
         strputf(s, " %s", attr.name);

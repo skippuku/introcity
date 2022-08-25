@@ -63,12 +63,6 @@ typedef struct {
 } AttributeDataMap;
 
 typedef struct {
-    ptrdiff_t value_offset;
-    void * data;
-    size_t data_size;
-} PtrStore;
-
-typedef struct {
     IntroType * type;
     int32_t member_index, attr_id;
     uint32_t value;
@@ -78,6 +72,12 @@ typedef struct {
     IntroType * type;
     int32_t index;
 } ContainerMapValue;
+
+typedef struct {
+    ptrdiff_t value_offset;
+    void * data;
+    size_t data_size;
+} PtrStore;
 
 struct ParseContext {
     Token * tk_list;
@@ -1121,7 +1121,23 @@ find_end: ;
         } else if (tk.type == TK_EQUAL) {
             in_expr = true;
         } else if (tk.type == TK_COLON && decl->state == DECL_MEMBERS) {
-            UNUSED intmax_t bitfield = parse_constant_expression(ctx, tidx);
+            intmax_t field_value = parse_constant_expression(ctx, tidx);
+
+            AttributeData * list = NULL, attr = {
+                .id = 1,
+                .v.i = (int32_t)field_value,
+            };
+            arrput(list, attr);
+
+            AttributeDirective bitfield_directive = {
+                .type = NULL,
+                .location = tk.index,
+                .member_index = decl->member_index,
+                .count = 1,
+                .attr_data = list,
+            };
+
+            arrput(ctx->attribute_directives, bitfield_directive);
             continue;
         } else {
             bool do_find_closing = false;
