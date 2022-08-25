@@ -459,7 +459,7 @@ union IntroRegisterData intro_run_bytecode(uint8_t * code, const void * data);
 #define LENGTH(a) (sizeof(a)/sizeof(*(a)))
 #endif
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) && defined(__has_include) && __has_include(<x86intrin.h>)
   #include <x86intrin.h>
   #define INTRO_POPCNT32 __popcntd
   #define INTRO_BSR64 __bsrq

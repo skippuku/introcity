@@ -304,6 +304,20 @@ location_note(LocationContext * lctx, IntroLocation location, const char * msg) 
     message_internal(start_of_line, location.path, line, tk.start, tk.start + tk.length, msg, 1);
 }
 
+void
+strput_tokens(char ** p_str, Token * list) {
+    for (int i=0; i < arrlen(list); i++) {
+        Token tk = list[i];
+        if (tk.preceding_space) {
+            arrput(*p_str, ' ');
+        }
+        char * dst = arraddnptr(*p_str, tk.length);
+        memcpy(dst, tk.start, tk.length);
+    }
+    arrsetcap(*p_str, arrlen(*p_str) + 1);
+    (*p_str)[arrlen(*p_str)] = 0;
+}
+
 static Token
 create_stringized(PreContext * ctx, Token * list) {
     char * buf = NULL;
@@ -1955,17 +1969,14 @@ run_preprocessor(int argc, char ** argv) {
     for (int def_i=0; def_i < shlen(ctx->defines); def_i++) {
         Define def = ctx->defines[def_i];
         if (def.file) {
-            char * replace_text;
+            char * replace_text = NULL;
             if (def.replace_list) {
-                replace_text = create_stringized(ctx, def.replace_list).start;
-            } else {
-                replace_text = "\"\"";
+                strput_tokens(&replace_text, def.replace_list);
             }
             IntroMacro macro = {
                 .name = def.key,
                 .parameters = (const char **)def.arg_list,
                 .count_parameters = def.arg_count,
-                // TODO: string is stored here escaped, which does not work for --gen-city
                 .replace = replace_text,
                 .location = {.path = def.file->filename, .offset = def.file_offset},
             };

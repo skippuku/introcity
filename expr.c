@@ -1,6 +1,8 @@
 #include "lexer.c"
 #include "global.c"
 
+#include <ctype.h>
+
 #define EXPR_BUCKET_CAP (1<<12)
 
 typedef enum {
@@ -103,6 +105,99 @@ insert_node_into_tree(ExprNode ** p_base, ExprNode * node) {
         }
         p_slot = &slot->right;
     }
+}
+
+char *
+parse_escaped_string(Token * str_tk, size_t * o_length) {
+    char * result = malloc(str_tk->length);
+    char * src = str_tk->start + 1;
+    char * dst = result;
+    while (src < str_tk->start + str_tk->length - 1) {
+        if (*src == '\\') {
+            src++;
+            char c;
+            if (*src >= '0' && *src <= '9') {
+                char * end;
+                long num = strtol(src, &end, 8);
+                if (end - src > 3) return NULL;
+                src = end - 1;
+                c = (char)num;
+            } else {
+                switch(*src) {
+                case 'n':  c = '\n'; break;
+                case 't':  c = '\t'; break;
+                case '\\': c = '\\'; break;
+                case '\'': c = '\''; break;
+                case '\"': c = '\"'; break;
+                case 'b':  c = '\b'; break;
+                case 'v':  c = '\v'; break;
+                case 'r':  c = '\r'; break;
+                case 'f':  c = '\f'; break;
+                case '?':  c = '?' ; break;
+                case 'x': {
+                    char * end;
+                    src++;
+                    long num = strtol(src, &end, 16);
+                    if (end - src != 2) return NULL;
+                    src = end - 1;
+                    c = (char)num;
+                }break;
+                default: {
+                    return NULL;
+                }break;
+                }
+            }
+            *dst++ = c;
+        } else {
+            *dst++ = *src;
+        }
+        src++;
+    }
+    *dst++ = 0;
+    *o_length = dst - result;
+    return result;
+}
+
+char *
+create_escaped_string(const char * str) {
+    const char * src = str - 1;
+    const char *const end = str + strlen(str);
+    char * result = NULL;
+    arrsetcap(result, end - src + 5);
+
+    arrput(result, '"');
+    while (++src < end) {
+        char esc;
+
+        switch (*src) {
+        case '\n': esc = 'n'; break;
+        case '\t': esc = 't'; break;
+        case '\r': esc = 'r'; break;
+        case '\b': esc = 'b'; break;
+        case '\a': esc = 'a'; break;
+        case '\f': esc = 'f'; break;
+        case '\v': esc = 'v'; break;
+        case '\\': esc = '\\'; break;
+        case '\"': esc = '\"'; break;
+        default: {
+            if (isprint(*src)) {
+                arrput(result, *src);
+                continue;
+            } else {
+                strputf(&result, "\\x%02x", (unsigned int)*src);
+                continue;
+            }
+        }break;
+        }
+
+        char * dst = arraddnptr(result, 2);
+        dst[0] = '\\';
+        dst[1] = esc;
+    }
+    arrput(result, '"');
+    arrput(result, '\0');
+
+    return result;
 }
 
 ExprNode *

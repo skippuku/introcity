@@ -203,60 +203,6 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
     return 0;
 }
 
-static char *
-parse_escaped_string(Token * str_tk, size_t * o_length) {
-    char * result = NULL;
-    char * src = str_tk->start + 1;
-    while (src < str_tk->start + str_tk->length - 1) {
-        if (*src == '\\') {
-            src++;
-            char c;
-            if (*src >= '0' && *src <= '9') {
-                char * end;
-                long num = strtol(src, &end, 8);
-                if (end - src > 3) return NULL;
-                src = end - 1;
-                c = (char)num;
-            } else {
-                switch(*src) {
-                case 'n':  c = '\n'; break;
-                case 't':  c = '\t'; break;
-                case '\\': c = '\\'; break;
-                case '\'': c = '\''; break;
-                case '\"': c = '\"'; break;
-                case 'b':  c = '\b'; break;
-                case 'v':  c = '\v'; break;
-                case 'r':  c = '\r'; break;
-                case 'f':  c = '\f'; break;
-                case '?':  c = '?' ; break;
-                case 'x': {
-                    char * end;
-                    src++;
-                    long num = strtol(src, &end, 16);
-                    if (end - src != 2) return NULL;
-                    src = end - 1;
-                    c = (char)num;
-                }break;
-                default: {
-                    return NULL;
-                }break;
-                }
-            }
-            arrput(result, c);
-        } else {
-            arrput(result, *src);
-        }
-        src++;
-    }
-    arrput(result, 0);
-
-    char * ret = malloc(arrlen(result));
-    memcpy(ret, result, arrlen(result));
-    *o_length = arrlen(result);
-    arrfree(result);
-    return ret;
-}
-
 ptrdiff_t
 store_value(ParseContext * ctx, const void * value, size_t value_size) {
     void * storage = arraddnptr(ctx->value_buffer, value_size);

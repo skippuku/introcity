@@ -281,7 +281,17 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
             strputf(&s, "0, ");
         }
 
-        strputf(&s, "%s, {\"%s\", %u}, %u},\n", macro.replace, macro.location.path, macro.location.offset, macro.count_parameters);
+        char * replace_string;
+        bool do_free;
+        if (macro.replace) {
+            replace_string = create_escaped_string(macro.replace);
+            do_free = true;
+        } else {
+            replace_string = "\"\"";
+            do_free = false;
+        }
+        strputf(&s, "%s, {\"%s\", %u}, %u},\n", replace_string, macro.location.path, macro.location.offset, macro.count_parameters);
+        if (do_free) arrfree(replace_string);
     }
     strputf(&s, "};\n\n");
 
