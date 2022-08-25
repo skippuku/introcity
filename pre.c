@@ -399,28 +399,34 @@ typedef struct {
     bool exists;
     bool is_quote;
     bool is_next;
+    bool test_only;
 } IncludeFile;
 
 bool
 pre_get_include_path(PreContext * ctx, const char * file_dir, IncludeFile inc_file, char * o_path) {
-    if (inc_file.is_quote) {
-        path_join(o_path, file_dir, inc_file.name);
-        if (access(o_path, F_OK) == 0) {
-            return true;
+    int start_search_index = 0;
+    if (inc_file.is_next) {
+        for (int i=0; i < arrlen(ctx->include_paths); i++) {
+            const char * include_path = ctx->include_paths[i];
+            if (0==strcmp(file_dir, include_path)) {
+                start_search_index = i + 1;
+                break;
+            }
+        }
+    } else {
+        if (inc_file.is_quote) {
+            path_join(o_path, file_dir, inc_file.name);
+            if (access(o_path, F_OK) == 0) {
+                return true;
+            }
         }
     }
 
-    for (int i=0; i < arrlen(ctx->include_paths); i++) {
+    for (int i = start_search_index; i < arrlen(ctx->include_paths); i++) {
         const char * include_path = ctx->include_paths[i];
-        if (inc_file.is_next) {
-            if (0==strcmp(file_dir, include_path)) {
-                inc_file.is_next = false;
-            }
-            continue;
-        }
         path_join(o_path, include_path, inc_file.name);
         if (access(o_path, F_OK) == 0) {
-            if (i >= ctx->sys_header_first && i <= ctx->sys_header_last) {
+            if (!inc_file.test_only && i >= ctx->sys_header_first && i <= ctx->sys_header_last) {
                 ctx->is_sys_header = true;
             }
             return true;
@@ -598,7 +604,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 .type = TK_NUMBER,
                 .preceding_space = preceding_space,
             };
-            arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2));
+            arrdeln(ctx->expand_ctx.list, macro_tk_index, index - macro_tk_index);
             ctx->expand_ctx.list[macro_tk_index] = replace_tk;
             return true;
         }break;
@@ -673,12 +679,15 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             strputf(&buf, "\"%s\"", static_buf);
         }break;
 
+        case MACRO_has_include_next:
         case MACRO_has_include: {
             if (!ctx->expand_ctx.in_expression) {
                 return false;
             }
 
             IncludeFile inc_file = {0};
+            inc_file.is_next = (macro->special == MACRO_has_include_next);
+            inc_file.test_only = true;
 
             bool preceding_space = macro_tk->preceding_space;
             int index = macro_tk_index;
@@ -699,13 +708,14 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 inc_file.is_quote = true;
             } else if (tk.type == TK_L_ANGLE) {
                 start = tk.start + 1;
+                Token opening = tk;
                 while (1) {
                     tk = internal_macro_next_token(ctx, &index);
                     if (tk.type == TK_R_ANGLE) {
                         break;
                     }
                     if (tk.type == TK_END) {
-                        // TODO
+                        preprocess_error(&opening, "No closing '>'.");
                         exit(1);
                     }
                 }
@@ -714,12 +724,13 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 preprocess_error(&tk, "Expected include file.");
                 exit(1);
             }
-            STACK_TERMINATE(inc_filename, start, start - end);
+            STACK_TERMINATE(inc_filename, start, end - start);
             inc_file.name = inc_filename;
 
             char file_dir [1024];
             char static_buf_ [1024];
-            path_dir(file_dir, inc_filename, &inc_file.name);
+            char * filename = NULL;
+            path_dir(file_dir, ctx->current_file->filename, &filename);
 
             bool found_file = pre_get_include_path(ctx, file_dir, inc_file, static_buf_);
 
@@ -739,12 +750,10 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
                 .type = TK_NUMBER,
                 .preceding_space = preceding_space,
             };
-            arrdeln(ctx->expand_ctx.list, macro_tk_index, 1 + (is_paren * 2) + (inc_file.is_quote * 2));
+            arrdeln(ctx->expand_ctx.list, macro_tk_index, index - macro_tk_index);
             ctx->expand_ctx.list[macro_tk_index] = replace_tk;
-            return true;
-        }break;
 
-        case MACRO_has_include_next: {
+            return true;
         }break;
         }
 
@@ -1525,9 +1534,6 @@ static char intro_defs [] =
 "#define_forced __volatile__(x) \n"
 "#endif\n"
 
-// clang
-"#define __has_include_next(x) 0\n" // TODO: should probably implement this instead of just lying
-
 "#define_forced bool bool\n"
 "typedef bool _Bool;\n"
 ;
@@ -1559,8 +1565,8 @@ run_preprocessor(int argc, char ** argv) {
         {"__BASE_FILE__", MACRO_BASE_FILE},
         {"__FILE_NAME__", MACRO_FILE_NAME},
         {"__TIMESTAMP__", MACRO_TIMESTAMP},
-        //{"__has_include", MACRO_has_include},
-        //{"__has_include_next", MACRO_has_include_next},
+        {"__has_include", MACRO_has_include},
+        {"__has_include_next", MACRO_has_include_next},
     };
     for (int i=0; i < LENGTH(special_macros); i++) {
         Define special = {0};

@@ -3,6 +3,22 @@
 #include ".//../test////basic.h"
 #include "../test/../lib/intro.h"
 
+#if !__has_include("../lib/intro.h")
+  #error "__has_include failed"
+#endif
+
+#if !__has_include(<stdio.h>)
+  #error  "__has_include failed"
+#endif
+
+#if !__has_include_next(<stdio.h>)
+  #error "__has_include_next failed"
+#endif
+
+#if __has_include("somefile.h")
+  #error "__has_include should have failed"
+#endif
+
 struct Undefined1;
 typedef struct Undefined2 Undefined2;
 enum UndefEnum;
