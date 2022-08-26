@@ -3,6 +3,9 @@
 #include ".//../test////basic.h"
 #include "../test/../lib/intro.h"
 
+// no longer needs to be included at the bottom of the file
+#include "test.h.intro"
+
 #if !__has_include("../lib/intro.h")
   #error "__has_include failed"
 #endif
@@ -70,7 +73,9 @@ typedef struct Nest {
     } daughter;
 
     Skills skills;
-} Nest I(
+} Nest;
+
+I(apply_to (Nest) (
     fallback {
         .id = 5,
         .name = "Emerald Power",
@@ -81,8 +86,8 @@ typedef struct Nest {
             .son.favorite_fruit = FRUIT_PEACH,
         },
         .daughter.speed = 7.5,
-    }
-);
+    },
+))
 
 typedef struct TestAttributes {
     u8 * buffer I(1, length buffer_size);
@@ -188,5 +193,3 @@ typedef struct {
     int yay;
     bool yeah;
 } ThisShouldShowUp;
-
-#include "test.h.intro"

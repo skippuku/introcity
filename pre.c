@@ -207,6 +207,8 @@ get_location_info(LocationContext * lctx, int32_t tk_index, NoticeState * o_noti
 static FileInfo *
 find_origin(LocationContext * lctx, FileInfo * current, char * ptr) {
     int i = arrlen(lctx->file_buffers);
+    if (i == 0) return NULL;
+
     FileInfo * file = (current)? current : lctx->file_buffers[--i];
     while (1) {
         if (ptr >= file->buffer && ptr < (file->buffer + file->buffer_size)) {
