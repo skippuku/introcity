@@ -87,17 +87,11 @@ Follow typedefs until the original type is found, then return that type.
 
 Containers are used to preserve context when working on data.
 
-### `intro_container`
+### `intro_cntr`
 ```C
 IntroContainer intro_container(void * data, const IntroType * type);
 ```
 Create a container with `data` and `type`.
-
-### `intro_get_attr`
-```C
-uint32_t intro_get_attr(IntroContainer cntr);
-```
-Return the attribute specification value for `cntr`.
 
 ### `intro_push`
 ```C
@@ -105,14 +99,26 @@ IntroContainer intro_push(const IntroContainer * parent, int32_t index);
 ```
 Create a child container with `parent`. `index` is the member index if `parent` is a struct or union, or it is the array index for pointers and arrays.
 
+### `intro_get_attr`
+```C
+uint32_t intro_get_attr(IntroContainer cntr);
+```
+Return the attribute specification value for `cntr`.
+
+## `intro_get_member`
+```C
+const IntroMember * intro_get_member(IntroContainer cntr);
+```
+If `cntr` represents a member of a struct or union, return the `IntroMember` information for that member. Otherwise, return NULL.
+
 # Attribute information
 
 **NOTE:** This section assumes you understand attributes. Please read the [attribute documentation](ATTRIBUTE.md).
-**ALSO NOTE:** These are all macros. Use the name of the attribute *with its namespace* to represent the attribute. This gets internally expanded to an enum value.
+**ALSO NOTE:** These are all macros. Use the name of the attribute type *with its namespace* to represent the attribute. This gets internally expanded to an enum value.
 
 ### `intro_has_attribute`
 ```C
-bool intro_has_attribute(const IntroMebmer * member, attribute);
+bool intro_has_attribute(const IntroMebmer * member, IntroAttributeType attr_type);
 ```
 Return true if `member` has the attribute `attribute`.
 
@@ -128,7 +134,7 @@ for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
 
 ### `intro_attribute_value`
 ```C
-bool intro_attribute_value(const IntroMember * member, attribute, IntroVariant * o_var);
+bool intro_attribute_value(const IntroMember * member, IntroAttributeType attr_type, IntroVariant * o_var);
 ```
 If `member` has the specified `value` attribute, write the value to o\_var and return true. Otherwise return false.  
 If the attribute type is not a pointer, var.data will point to the value. If the attribute type is a pointer, var.data will be the value itself.
@@ -147,13 +153,13 @@ if (intro_attriute_value(member, gui_note, &var)) {
 
 ### `intro_attribute_int`
 ```C
-bool intro_attribute_int(const IntroMember * member, attribute, int32_t * o_int);
+bool intro_attribute_int(const IntroMember * member, IntroAttributeType attr_type, int32_t * o_int);
 ```
 If `member` contains the specified `int` attribute, write the attribute's value as an int to `o_int` and return true. Otherwise, return false.    
 
 ### `intro_attribute_member`
 ```C
-bool intro_attribute_member(const IntroMember * member, attribute, int32_t * o_member_index);
+bool intro_attribute_member(const IntroMember * member, IntroAttributeType attr_type, int32_t * o_member_index);
 ```
 If `member` has the specified `member` attribute, write the member index to `o_member_index` and return true. Otherwise return false.
 
@@ -171,7 +177,7 @@ for (int m_index=0; m_index < type->i_struct->count_members; m_index++) {
 
 ### `intro_attribute_float`
 ```C
-bool intro_attribute_float(const IntroMember * member, int32_t attribute, float * o_float);
+bool intro_attribute_float(const IntroMember * member, IntroAttributeType attr_type, float * o_float);
 ```
 If `member` has the specified `float` attribute, write the attribute's value as a float to `o_float` and return true. Otherwise, return false.    
 This is only valid if the value type of `attribute` is [float](#./ATTRIBUTE.md#float).
@@ -217,49 +223,34 @@ for (int m_index=0; m_index < ITYPE(Object)->count; m_index++) {
 
 ### `intro_attribute_run_expr`
 ```C
-bool intro_attribute_run_expr(IntroContainer cntr, int32_t attribute, int64_t * o_result)
+bool intro_attribute_run_expr(IntroContainer cntr, IntroAttributeType attr_type, int64_t * o_result)
 ```
-If `cntr` has a [expr](#./ATTRIBUTE.md#expr) attribute, run the expression and write the result to `o_result` and return true. Otherwise, return false.
+If `cntr` has an attribute of type `attr_type` which is of the category [expr](#./ATTRIBUTE.md#expr), run the expression and write the result to `o_result` and return true. Otherwise, return false.
 
-### `intro_set_defaults`
+### `intro_fallback`
 ```C
-void intro_set_defaults(void * dest, const IntroType * type);
+void intro_fallback(void * dest, const IntroType * type);
 ```
-Set all of the members in a struct to the value specified by the [default][attr_default] attribute or `0` if there is no specified default. This is equivilant to `intro_set_values(dest, type, INTRO_ATTR_DEFAULT)`.
-
-**example:**
-```C
-Object obj;
-intro_set_defaults(&obj, ITYPE(Object));
-```
-**See also:** [intro\_set\_values](#intro_set_values)
-
-### `intro_set_values`
-```C
-void intro_set_values(void * dest, const IntroType * type, int attribute);
-```
-Set all the members in a struct to the value specified by the value attribute `attribute` or `0` if there is no specified value.
+Set dest to its 'fallback' value.
 
 **example:**
 ```C
 Object obj;
-intro_set_values(&obj, ITYPE(Object), MY_ATTR_VALUE);
+intro_fallback(&obj, ITYPE(Object));
 ```
-**See also:** [intro\_set\_defaults](#intro_set_defaults)
+**See also:** [intro\_set\_value](#intro_set_value)
 
-### `intro_set_member_value`
+### `intro_set_value`
 ```C
-void intro_set_member_value(void * dest_struct, const IntroType * struct_type, int member_index, int attribute);
+void intro_set_value(void * dest, const IntroType * type, IntroAttributeType attr_type);
 ```
-Set the value of a single member specified by `member_index` in the struct `dest_struct`. Used internally by [intro\_set\_values](#intro_set_values).
+Set the data in `dest` to the value specified with `attr_type`.
 
 **example:**
 ```C
 Object obj;
-intro_set_defaults(&obj, ITYPE(Object));
-intro_set_member_value(&obj, ITYPE(Object), 2, MY_ATTR_VALUE);
+intro_set_value(&obj, ITYPE(Object), my_value);
 ```
-**See also:** [intro\_set\_values](#intro_set_values), [intro\_set\_defaults](#intro_set_defaults)
 
 # Printers
 

@@ -242,9 +242,10 @@ store_type(ParseContext * ctx, IntroType type, int32_t tk_index) {
         if (typedef_deps) {
             for (int i=0; i < stbds_header(typedef_deps)->length; i++) {
                 IntroType * t = typedef_deps[i];
-                const char * temp_name = t->name;
+                IntroType last = *t;
                 *t = type;
-                t->name = temp_name;
+                t->name = last.name;
+                t->flags |= (last.flags & INTRO_PERSISTENT_FLAGS);
             }
             arrfree(typedef_deps);
             (void) hmdel(ctx->incomplete_typedefs, stored);
@@ -815,15 +816,17 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     if (t) {
         decl->base = t;
     } else {
-        if (no_const_name) {
-            t = shget(ctx->type_map, no_const_name);
-            arrfree(no_const_name);
-            if (t) {
-                type = *t;
-                type.name = type_name;
-                type.parent = t;
-                type.flags |= INTRO_CONST;
-                decl->base = store_type(ctx, type, -1);
+        if (no_const_name && (t = shget(ctx->type_map, no_const_name))) {
+            type = *t;
+            type.name = type_name;
+            type.parent = t;
+            type.flags |= INTRO_CONST;
+            decl->base = store_type(ctx, type, -1);
+
+            if (t->category == INTRO_UNKNOWN) {
+                IntroType ** list = hmget(ctx->incomplete_typedefs, t);
+                arrput(list, decl->base);
+                hmput(ctx->incomplete_typedefs, t, list);
             }
         } else if (type.category || is_typedef) {
             type.name = type_name;

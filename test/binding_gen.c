@@ -12,6 +12,7 @@ typedef struct {
     const char * lib_name;
     const char * func_prefix;
     const char * type_prefix;
+    bool do_const_pointer_arg_to_by_ptr_value;
 } OdinGenOptions;
 
 void
@@ -22,20 +23,26 @@ do_indent(FILE * out, const char * tab, int count) {
 enum {
     HAS_C_PREFIX = 0x01,
     HAS_LIB_PREFIX = 0x02,
+    HAS_C_CONST = 0x04,
 };
 
 const char *
 get_odin_name(const char * type_name, const char * prefix, int * o_flags) {
     int flags = 0;
 
+    if (0==strncmp(type_name, "const ", strlen("const "))) {
+        type_name += strlen("const ");
+        flags |= HAS_C_CONST;
+    }
+
     if (0==strncmp(type_name, "struct ", strlen("struct "))) {
-        type_name = type_name + strlen("struct ");
+        type_name += strlen("struct ");
         flags |= HAS_C_PREFIX;
     } else if (0==strncmp(type_name, "union ", strlen("union "))) {
-        type_name = type_name + strlen("union ");
+        type_name += strlen("union ");
         flags |= HAS_C_PREFIX;
     } else if (0==strncmp(type_name, "enum ", strlen("enum "))) {
-        type_name = type_name + strlen("enum ");
+        type_name += strlen("enum ");
         flags |= HAS_C_PREFIX;
     }
 
@@ -58,14 +65,18 @@ fprint_odin_type(FILE * out, const OdinGenOptions * opt, IntroContainer cntr, in
         if (type->of == ITYPE(void)) {
             fprintf(out, "rawptr");
             return;
-        } else if (type->of == ITYPE(char) && intro_has_attribute_x(INTRO_CTX, attr, IATTR_cstring)) {
+        } else if (intro_has_attribute_x(INTRO_CTX, attr, IATTR_cstring)) {
             fprintf(out, "cstring");
             return;
         } else {
             if (intro_has_attribute_x(INTRO_CTX, attr, IATTR_length)) {
                 fprintf(out, "[^]");
             } else {
-                fprintf(out, "^");
+                if (opt->do_const_pointer_arg_to_by_ptr_value && (cntr.type->of->flags & INTRO_CONST) != 0) {
+                    fprintf(out, "#by_ptr ");
+                } else {
+                    fprintf(out, "^");
+                }
             }
         }
         fprint_odin_type(out, opt, intro_push(&cntr, 0), depth);
@@ -168,6 +179,7 @@ main() {
         .func_prefix = "intro_",
         .tab         = "\t",
         .lib_name    = "intro",
+        .do_const_pointer_arg_to_by_ptr_value = false,
     }, * opt = &_opt;
 
     assert(opt->lib_name);
@@ -208,6 +220,7 @@ main() {
         if (!(flags & HAS_LIB_PREFIX)) continue;
 
         fprintf(out, "%s%s :: proc(", opt->tab, func_name);
+        opt->do_const_pointer_arg_to_by_ptr_value = true;
         for (int arg_i=0; arg_i < func.count_args; arg_i++) {
             if (arg_i > 0) fprintf(out, ", ");
             const char * name = func.arg_names[arg_i];
@@ -215,6 +228,7 @@ main() {
             fprintf(out, "%s: ", name);
             fprint_odin_type(out, opt, intro_cntr(NULL, type), 1);
         }
+        opt->do_const_pointer_arg_to_by_ptr_value = false;
         if (func.return_type && func.return_type->category != INTRO_UNKNOWN) {
             fprintf(out, ") -> ");
             fprint_odin_type(out, opt, intro_cntr(NULL, func.return_type), 1);

@@ -117,6 +117,9 @@ typedef enum IntroFlags {
 
     // reused
     INTRO_IS_SEQUENTIAL = INTRO_HAS_BODY,
+
+    // persistent
+    INTRO_PERSISTENT_FLAGS = INTRO_CONST | INTRO_EXPLICITLY_GENERATED,
 } IntroFlags;
 
 typedef struct IntroType IntroType I(~gui_edit);
@@ -267,7 +270,7 @@ union IntroRegisterData {
 I(apply_to (char *) (cstring))
 I(apply_to (void *) (~city))
 
-// TODO: do this automatically
+// TODO: this should happen automatically
 I(apply_to (const char *) (cstring))
 I(apply_to (const void *) (~city))
 
@@ -362,11 +365,6 @@ intro_cntr(void * data, const IntroType * type) {
     return cntr;
 }
 
-INTRO_API_INLINE IntroContainer
-intro_container(void * data, const IntroType * type) {
-    return intro_cntr(data, type);
-}
-
 INTRO_API_INLINE IntroAttributeDataId
 intro_get_attr(IntroContainer cntr) {
     if (cntr.parent && intro_has_members(cntr.parent->type)) {
@@ -412,7 +410,7 @@ void intro_set_value_x(IntroContext * ctx, IntroContainer cntr, uint32_t attr_id
 // PRINTERS
 void intro_sprint_type_name(char * dest, const IntroType * type);
 void intro_print_type_name(const IntroType * type);
-#define intro_print(DATA, TYPE, OPT) intro_print_x(INTRO_CTX, intro_container(DATA, TYPE), OPT)
+#define intro_print(DATA, TYPE, OPT) intro_print_x(INTRO_CTX, intro_cntr(DATA, TYPE), OPT)
 void intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOptions * opt);
 
 void intro_sprint_json_x(IntroContext * ctx, char * buf, const void * data, const IntroType * type, const IntroPrintOptions * opt);
@@ -430,7 +428,7 @@ void * intro_create_city_x(IntroContext * ctx, const void * src, const IntroType
 int intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, void * data, size_t data_size);
 
 // DEAR IMGUI (must link with intro_imgui.cpp to use)
-#define intro_imgui_edit(data, data_type) intro_imgui_edit_x(INTRO_CTX, intro_container(data, data_type), #data)
+#define intro_imgui_edit(data, data_type) intro_imgui_edit_x(INTRO_CTX, intro_cntr(data, data_type), #data)
 void intro_imgui_edit_x(IntroContext * ctx, IntroContainer cont, const char * name);
 
 // MISC
@@ -2084,7 +2082,7 @@ intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_t
     src_buf.size = packed_size(city, s_type);
 
     arr_append(city->buffers, src_buf);
-    city__serialize(city, 0, intro_container((void *)src, s_type));
+    city__serialize(city, 0, intro_cntr((void *)src, s_type));
 
     for (size_t i=0; i < arr_len(city->deferred_ptrs); i++) {
         CityDeferredPointer dptr = city->deferred_ptrs[i];
@@ -2421,7 +2419,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
 
     const IntroType * s_type = info_by_id[arr_len(info_by_id) - 1];
 
-    int copy_result = city__load_into(city, intro_container(dest, d_type), city->data, s_type);
+    int copy_result = city__load_into(city, intro_cntr(dest, d_type), city->data, s_type);
 
     arr_free(info_by_id);
     free_arena(arena);

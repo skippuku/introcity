@@ -42,12 +42,20 @@ CHANGELOG
         typedef's and members of that type. Formerly, this was the default
         for every attribute and could not be disabled.
 
+		Attribute terminology has been reworked as it was inconsistent.
+
         Built-in attributes beginning with 'i_' have been moved into the global
         attribute namespace.
 
 		The built-in 'default' attribute has been renamed to 'fallback'.
 
+		The handle used to get attribute information (type->attr /
+		member.attr) is now a distinc type: 'IntroAttributeDataId'.
+
     OTHER
+		Const is no longer ignored by the compiler.
+			This was done in order to facilitate binding generation.
+
         The expression parser now supports floating-point types.
 
 		The preprocessor now supports __has_include and __has_include_next.

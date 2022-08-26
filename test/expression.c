@@ -60,7 +60,7 @@ main() {
     test.count_collected_ids = 2;
 
     int64_t value;
-    IntroContainer cntr = intro_container(&test, ITYPE(AttrTest));
+    IntroContainer cntr = intro_cntr(&test, ITYPE(AttrTest));
     IntroContainer stat_cntr = intro_push(&cntr, 0);
     assert(intro_attribute_expr_x(INTRO_CTX, intro_push(&cntr, 1),      IATTR_when, &value) && value == 1);
     assert(intro_attribute_expr_x(INTRO_CTX, intro_push(&cntr, 4),      IATTR_when, &value) && value == 1);

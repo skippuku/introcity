@@ -6,51 +6,103 @@ Attributes are used to define extra information about types they are declared an
 #endif
 ```
 
-## Declaring Attributes
-Attributes are created with the following syntax:
+## Terminology
+```
+              Namespace
+              v
+  I(attribute my_ (
+      category_string: value(char *) @propagate,   <-- Attribute Type Declaration
+      ^                ^              ^
+      Type             Category       Trait
+  ))
+
+    Attribute     Namespace Label
+    v---------v   v
+  I(fallback -1, gui: min -1, max 100) int some_member;
+   |_________________________________|-> Attribute Directive
+```
+
+## Declaring Attribute Types
+Attribute types are created with the following syntax:
 ```C
 I(attribute namespace_ (
-    name1: type,
-    name2: type,
+    name1: category,
+    name2: category,
     ...
 ))
 ```
 
-Builtin attributes are defined in the same way as custom attributes. You can see how they are defined in [lib/intro.h](../lib/intro.h).   
+Builtin attribute types are defined in the same way as custom attribute types. You can see how they are defined in [lib/intro.h](../lib/intro.h).   
   
-See the [types](#types) section for information on available attribute types.  
+See the [categories](#attribute-categories) section for information on available attribute categories.  
 
-## Applying attributes
-Attributes can be applied to struct member declarations and typedef declarations using the `I` macro.  
+## Applying Attributes
+Attributes can be applied to struct member declarations, typedef declarations, and enum values using an attribute directive.  
   
-The `I` macro can be placed directly before a declaration or directly after, preceeding the `;` or `,`. Multiple attributes can be applied using multiple macros or with commas.
+The directive can be placed directly before a declaration or directly after, preceeding the `;` or `,`. Multiple attributes can be applied using multiple directives or with commas.
   
 ```C
 struct {
     int a I(id 1, =2);          // OK
 
-    int b I(note "hello"),
+    int b I(gui_note "hello"),
         c I(~city) I(alias c0); // OK
 
-    char * name; I(id 3)        // POTENTIAL BUG: attribute 'id 3' will be aplied to is_open, not name
+    char * name; I(id 3)        // OOPS! attribute 'id 3' will be aplied to is_open, not name
 
     I(4) bool is_open;          // OK
 
-    I(note "many many attributes")
-    I(gui_min -1.0, gui_max 12.0, gui_scale 0.05)
+    I(gui_note "many, many attributes")
+    I(gui: min -1.0, max 12.0, scale 0.05)
     float stuff I(id 7);        // OK
 };
 
 typedef float Vector2 [2] I(vector, color {0,255,255,255});
-```
 
-Attributes can be referenced without their namespace if there are no name conflicts.  
+enum SomeEnum {
+    SOME_FIRST I(id 0),     // OK
+    SOME_SECOND = 25 I(1),  // OK (must be after the assignment expression in this case)
+
+    SOME_PENULTIMATE, I(2) // WOOPS! this would get applied to SOME_LAST
+
+    I(3)
+    SOME_LAST,  // OK
+};
+```
   
 Attributes can also be applied to a previously defined type using `apply_to`. For example the following is used in [lib/intro.h](../lib/intro.h):
 ```C
 I(apply_to (char *) (cstring))
 ```
-The type must be contained in parenthesis like a cast. Following the type is a list of attributes as if they were declared directly on a member.
+The type must be contained in parenthesis like a cast. Following the type is an attribute directive.
+
+## Namespacing rules
+
+Attributes are declared with a namespace like `gui_`. That namespace gets prepended to all of the attribute type names. To avoid verbosity you can use a label to automatically prepend a namespace in an attribute directive. the global namespace can still be used, but if there exists an attribute type in the currently used namespace with the same name, the namespaced attribute takes priority.
+
+```C
+I(attribute My_ (
+    special:  flag,
+    joint:    member,
+    alias:    float,
+    fallback: value(@inherit),
+))
+
+I(My_special,
+  // directives always start in the global namespcae. alias refers to the built-in attribute here
+  alias "name",
+
+  // if the namespace ends with an underscore, the underscore can be optionally ommitted in the label
+  gui: note "im stuff", My_special,
+
+  // fallback refers to My_fallback, but id still refers to the built-in id from the global namespace
+  My: joint some_member, fallback {-1.0, 1.0}), id 5,
+
+  // you can return to the global namespace with @global, now fallback refers to the built-in attribute type
+  @global: fallback {0, 0},
+)
+typedef Vector2 MyVec2;
+```
 
 ## Retrieving attributes
 
@@ -59,10 +111,10 @@ For information on how to retrieve attribute information in your program, see [L
 # Builtin Attributes
 These are the attributes provided by *intro*.
 
-## Namespace: i_
+## Namespace: @global
 
 ### remove
-Removes a previously applied attribute. Typically, the shorthand `~` is used.
+Removes a previously applied attribute. Typically, the shorthand `~` is used. Useful for removing global or propagated attributes.
 ```C
     int   some_constant I(remove gui_edit);
     float hidden I(~gui_show);
@@ -79,22 +131,21 @@ If there is a stray integer with no attribute defined, it is assumed to be an id
     float c I(2);    // ERROR, duplicate ID
 ```
 
-### btfld
+### bitfield
 **type:** [int](#int)
 Can be used to retrieve the bitfield width of a member. It cannot be applied using the `I` macro.
 ```C
 int32_t bit_width;
-intro_attribute_int(member, i_btfld, &bit_width);
+intro_attribute_int(member, bitfield, &bit_width);
 ```
 
-### default
+### fallback @propagate
 **type:** [value(@inherit)](#value)   
-**NOTE**: Some types might not support defaults. This is a work in progress.    
-Defines the default used by [intro\_set\_defaults][intro_set_defaults] or [intro\_load\_city][intro_load_city] when no value is present in the city file.    
+Defines the default used by [intro\_load\_city][intro_load_city] when no value is present in the city file.    
 You can also use an equal sign `=` instead of the word default, for convenience.
 
 ```C
-    int   a I(default 5);
+    int   a I(fallback 5);
     float b I(= 3.56);
     uint8_t arr [4] I(= {1, 2, 3, 4});
 ```
@@ -124,7 +175,7 @@ Determines that a value that is a pointer will be serialized by the city impleme
     CacheMap * internal_cache I(~city);
 ```
 
-### cstring
+### cstring @propagate
 **type:** [flag](#flag)
 Determines that a pointer is to a null-terminated string. This is automatically applied to any value of type `char *`.
 ```C
@@ -157,26 +208,26 @@ Defines a "help" note to be displayed with a member.
 **type:** [value(char \*)](#value)
 Defines an alternative "friendly name" for a member.
 
-### min
+### min @propagate
 **type:** [value(@inherit)](#value)
 Defines a minimum allowed value for a scalar.
 
-### max
+### max @propagate
 **type:** [value(@inherit)](#value)
 Defines a maximum allowed value for a scalar.
 
-### format
-**type:** [string](#string)
+### format @propagate
+**type:** [value(char \*)](#value)
 Defines the display format used for a scalar.
 ```C
     float speed I(gui_format "%3.2f");
 ```
 
-### color
+### color @propagate
 **type:** [value(uint8\_t [4])](#value)
 Changes the color of a member.
 
-### vector
+### vector @propagate
 **type:** [flag](#flag)
 Determines that a member is a vector.
 
@@ -188,15 +239,15 @@ Determines that a member is displayed.
 **type:** [flag](#flag)
 Determines that a member can be edited by the user.
 
-### edit\_color
+### edit\_color @propagate
 **type:** [flag](#flag)
 Determines that a member is a color, and uses a specialized color editing widget.
 
-### edit\_text
+### edit\_text @propagate
 **type:** [flag](#flag)
 Determines that a member is a buffer of editable text.
 
-# Attribute Types
+# Attribute Categories
 
 ### int
 Attribute is defined as an integer of type `int32_t`.
@@ -239,6 +290,9 @@ struct Variant {
 ### flag
 Attribute is defined with no data. Flags can have the `@global` trait which means that they are applied to every type and member by default.
 
+# The @propagate trait
+
+The `@propagate` trait can be applied to an attribute type of any category. Attributes of a propagated type will be inherited by typedefs and members of a C type.
 
 [intro_set_defaults]: ./LIB.md#intro_set_defaults
 [intro_load_city]:    ./LIB.md#intro_load_city

@@ -114,7 +114,7 @@ special_alloc(void * dest_struct, const IntroType * type) {
                 {
                     int element_size = m->type->of->size;
                     int64_t length;
-                    IntroContainer parent = intro_container(dest_struct, type);
+                    IntroContainer parent = intro_cntr(dest_struct, type);
                     assert( intro_attribute_length(intro_push(&parent, mi), &length) );
 
                     struct _JoinInfo info;
