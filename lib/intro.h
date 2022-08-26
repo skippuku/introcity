@@ -109,12 +109,13 @@ typedef struct IntroLocation {
 
 typedef enum IntroFlags {
     INTRO_EMBEDDED_DEFINITION = 0x01,
-    // unallocated
+    INTRO_CONST = 0x02,
+    // ? 0x04
     INTRO_EXPLICITLY_GENERATED = 0x08,
     INTRO_HAS_BODY = 0x10,
     INTRO_IS_FLAGS = 0x20,
 
-    // reuse
+    // reused
     INTRO_IS_SEQUENTIAL = INTRO_HAS_BODY,
 } IntroFlags;
 
@@ -265,6 +266,10 @@ union IntroRegisterData {
 
 I(apply_to (char *) (cstring))
 I(apply_to (void *) (~city))
+
+// TODO: do this automatically
+I(apply_to (const char *) (cstring))
+I(apply_to (const void *) (~city))
 
 I(attribute @global (
     id:       int,

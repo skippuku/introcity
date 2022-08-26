@@ -313,7 +313,6 @@ static bool
 is_ignored(int keyword) {
     switch(keyword) {
     case KEYW_STATIC:
-    case KEYW_CONST:
     case KEYW_VOLATILE:
     case KEYW_EXTERN:
     case KEYW_INLINE:
@@ -604,23 +603,31 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 
     Token first;
     while (1) {
-        first = next_token(tidx);
-        if (first.type == TK_IDENTIFIER) {
-            first_keyword = get_keyword(ctx, first);
+        Token tk = next_token(tidx);
+        if (tk.type == TK_IDENTIFIER) {
+            first_keyword = get_keyword(ctx, tk);
             if (!is_ignored(first_keyword)) {
                 if (!is_typedef && first_keyword == KEYW_TYPEDEF) {
                     is_typedef = true;
+                } else if (first_keyword == KEYW_CONST) {
+                    if ((type.flags & INTRO_CONST) != 0) {
+                        parse_error(ctx, tk, "Double const.");
+                        return -1;
+                    }
+                    type.flags |= INTRO_CONST;
                 } else {
+                    first = tk;
                     break;
                 }
             }
-        } else if (first.type == TK_END) {
+        } else if (tk.type == TK_END) {
             return RET_FOUND_END;
         } else {
+            first = tk;
             break;
         }
     }
-    int32_t first_index = tidx->index - 1;
+    int first_index = tidx->index - 1;
     if (first.type != TK_IDENTIFIER) {
         if (decl->state == DECL_ARGS && first.type == TK_PERIOD) {
             for (int i=0; i < 2; i++) {
@@ -787,17 +794,42 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 
     if (is_typedef) decl->state = DECL_TYPEDEF;
 
+    if (tk_equal(&tidx->list[tidx->index], "const")) {
+        if ((type.flags & INTRO_CONST) != 0) {
+            parse_error(ctx, tk_at(tidx), "Double const.");
+            return -1;
+        }
+        type.flags |= INTRO_CONST;
+        tidx->index++;
+    }
+
+    char * no_const_name = NULL;
+    if ((type.flags & INTRO_CONST)) {
+        char * const_name = NULL;
+        strputf(&const_name, "const %s", type_name);
+        no_const_name = type_name;
+        type_name = const_name;
+    }
+    
     IntroType * t = shget(ctx->type_map, type_name);
     if (t) {
-        arrfree(type_name);
         decl->base = t;
     } else {
-        if (type.category || is_typedef) {
+        if (no_const_name) {
+            t = shget(ctx->type_map, no_const_name);
+            arrfree(no_const_name);
+            if (t) {
+                type = *t;
+                type.name = type_name;
+                type.parent = t;
+                type.flags |= INTRO_CONST;
+                decl->base = store_type(ctx, type, -1);
+            }
+        } else if (type.category || is_typedef) {
             type.name = type_name;
-            IntroType * stored = store_type(ctx, type, -1);
-            arrfree(type_name);
-            decl->base = stored;
+            decl->base = store_type(ctx, type, -1);
         } else {
+            arrfree(type_name);
             if (decl->state == DECL_CAST) {
                 return RET_NOT_TYPE;
             } else {
@@ -806,6 +838,10 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             }
         }
     }
+
+    if (type_name) arrfree(type_name);
+    if (no_const_name) arrfree(no_const_name);
+
     return 0;
 }
 
@@ -820,17 +856,20 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 
     const int32_t POINTER = -1;
     const int32_t FUNCTION = -2;
+    const int32_t CONST_POINTER = -3;
     Token tk;
     int32_t end = tidx->index;
     memset(&decl->name_tk, 0, sizeof(decl->name_tk));
     do {
         paren = -1;
 
-        int pointer_level = 0;
         while (1) {
             tk = next_token(tidx);
             if (tk.type == TK_STAR) {
-                pointer_level += 1;
+                arrput(indirection, POINTER);
+            } else if (tk.type == TK_IDENTIFIER && tk_equal(&tk, "const")) {
+                assert(arrlast(indirection) == POINTER);
+                arrlast(indirection) = CONST_POINTER;
             } else if (is_ignored(get_keyword(ctx, tk))) {
                 continue;
             } else {
@@ -866,7 +905,7 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
             TokenIndex tempidx = {.list = tidx->list, .index = tidx->index - 1};
             int32_t closing_bracket = find_closing(tempidx) - 1;
             if (closing_bracket == 0) {
-                parse_error(ctx, tk, "No closing ')'.");
+                parse_error(ctx, tk, "No closing ']'.");
                 return -1;
             }
             int32_t num;
@@ -886,9 +925,6 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
 
         if (tidx->index > end) end = tidx->index;
 
-        for (int i=0; i < pointer_level; i++) {
-            arrput(indirection, POINTER);
-        }
         for (int i = arrlen(temp) - 1; i >= 0; i--) {
             arrput(indirection, temp[i]);
         }
@@ -898,13 +934,15 @@ parse_type_annex(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
     IntroType * last_type = decl->base;
     for (int i=0; i < arrlen(indirection); i++) {
         int32_t it = indirection[i];
-        IntroType new_type;
-        memset(&new_type, 0, sizeof(new_type));
-        if (it == POINTER) {
+        IntroType new_type = {0};
+        if (it == POINTER || it == CONST_POINTER) {
             new_type.category = INTRO_POINTER;
             new_type.of = last_type;
             new_type.size = 8; // TODO: base on architecture
             new_type.align = 8;
+            if (it == CONST_POINTER) {
+                new_type.flags |= INTRO_CONST;
+            }
         } else if (it == FUNCTION) {
             IntroType ** arg_types = arrpop(func_args_stack);
             if (last_type == NULL) last_type = ctx->type_set[0].value;

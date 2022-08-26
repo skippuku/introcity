@@ -51,8 +51,6 @@ attribute:
 parse:
     !! GNU and MS alignment attributes
     !! GNU and MS pack attributes/pragma
-    detect const
-        this can be used for function arguments, to generate better wrappers
     vector types (__m128, etc)
     store type location information
     ParseInfo: have everything, strip away unwated stuff at gen
@@ -67,12 +65,14 @@ parse:
         parse struct defaults as intro defaults?
 
 expr:
-    support globals
+    !! ability to return a value of any type
     array subscript
-    ability to return a value of any type
     compound literals
+
+    support globals
     handle character literals including L'x'
     handle strings next to each other
+
     optimise pass
         opt out constant parts
 
