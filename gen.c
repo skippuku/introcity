@@ -78,7 +78,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
                         strputf(&mbr, "{0, ");
                     }
                     strputf(&mbr, "&__intro_t[%i], %u, %u},\n",
-                                  member_type_index, m.offset, m.attr);
+                                  member_type_index, m.offset, m.attr.offset);
                 }
                 struct_member_index += t->count;
             }break;
@@ -87,7 +87,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
                 hmput(complex_type_map, t->__data, enum_value_index);
                 for (int v_i=0; v_i < t->count; v_i++) {
                     IntroEnumValue v = t->values[v_i];
-                    strputf(&ev, "{\"%s\", %i, %u},\n", v.name, v.value, v.attr);
+                    strputf(&ev, "{\"%s\", %i, %u},\n", v.name, v.value, v.attr.offset);
                 }
                 enum_value_index += t->count;
             }break;
@@ -197,7 +197,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
             strputf(&s, "0, ");
         }
 
-        strputf(&s, "%u, %u, %u, 0x%02x, %u, 0x%02x},\n", t->count, t->attr, t->size, t->flags, t->align, t->category);
+        strputf(&s, "%u, %u, %u, 0x%02x, %u, 0x%02x},\n", t->count, t->attr.offset, t->size, t->flags, t->align, t->category);
     }
     strputf(&s, "};\n\n");
 
@@ -218,9 +218,9 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     strputf(&s, "};\n\n");
 
     // attributes
-    strputf(&s, "const IntroAttribute __intro_attr_t [] = {\n");
+    strputf(&s, "const IntroAttributeTypeInfo __intro_attr_t [] = {\n");
     for (int attr_index = 0; attr_index < info->attr.count_available; attr_index++) {
-        IntroAttribute attr = info->attr.available[attr_index];
+        IntroAttributeTypeInfo attr = info->attr.available[attr_index];
         strputf(&s, "{\"%s\", %u, %u, %u},\n", attr.name, attr.attr_type, attr.type_id, attr.propagated);
     }
     strputf(&s, "};\n\n");
@@ -231,13 +231,13 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     }
     strputf(&s, "};\n\n");
 
-    size_t attr_data_size = arrlen(info->attr.spec_buffer) * sizeof(info->attr.spec_buffer[0]);
+    size_t attr_data_size = arrlen(info->attr.data) * sizeof(info->attr.data[0]);
     strputf(&s, "const unsigned char __intro_attr_data [%u] = {", (unsigned int)attr_data_size);
     for (int i=0; i < attr_data_size; i++) {
         if (i % 16 == 0) {
             strputf(&s, "\n");
         }
-        uint8_t byte = ((uint8_t *)info->attr.spec_buffer)[i];
+        uint8_t byte = ((uint8_t *)info->attr.data)[i];
         strputf(&s, "0x%02x,", byte);
     }
     strputf(&s, "\n};\n\n");
@@ -309,8 +309,8 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     strputf(&s, "%u,", (uint32_t)arrlen(pre_info->macros));
     strputf(&s, "\n");
 
-    strputf(&s, "{(IntroAttribute *)__intro_attr_t, ");
-    strputf(&s, "(IntroAttributeSpec *)__intro_attr_data, ");
+    strputf(&s, "{(IntroAttributeTypeInfo *)__intro_attr_t, ");
+    strputf(&s, "(IntroAttributeData *)__intro_attr_data, ");
     strputf(&s, "%u, ", info->attr.count_available);
     strputf(&s, "%u,{", info->attr.first_flag);
     for (int i=0; i < LENGTH(g_builtin_attributes); i++) {
@@ -396,7 +396,7 @@ generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
 
     strputf(s, "\nsyn keyword IntroAttribute contained");
     for (int attr_i=0; attr_i < info->attr.count_available; attr_i++) {
-        IntroAttribute attr = info->attr.available[attr_i];
+        IntroAttributeTypeInfo attr = info->attr.available[attr_i];
         strputf(s, " %s", attr.name);
     }
 

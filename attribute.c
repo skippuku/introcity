@@ -467,7 +467,7 @@ store_deferred_ptrs(ParseContext * ctx) {
 
 int
 handle_value_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int member_index, AttributeData * data, Token * p_tk) {
-    IntroAttribute attr_info = ctx->p_info->attr.available[data->id];
+    IntroAttributeTypeInfo attr_info = ctx->p_info->attr.available[data->id];
     IntroType * v_type;
     if (attr_info.type_id == 0) {
         if (member_index >= 0) {
@@ -537,10 +537,10 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         return -1;
     }
     data.id = attr_info.final_id;
-    IntroAttributeType attribute_type = attr_info.type;
+    IntroAttributeTypeCategory attribute_category = attr_info.type;
 
     char * end;
-    switch(attribute_type) {
+    switch(attribute_category) {
     case INTRO_AT_FLAG: {
         if (data.id == ctx->builtin.type) {
             IntroType * mtype = type->members[member_index].type;
@@ -767,7 +767,7 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
 
 static void
 add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info, char * name) {
-    IntroAttribute attribute = {
+    IntroAttributeTypeInfo attribute = {
         .name = name,
         .attr_type = info->type,
         .type_id = hmget(o_info->index_by_ptr_map, info->type_ptr),
@@ -885,7 +885,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
     }
     arrfree(flags);
 
-    IntroAttributeSpec * empty = arraddnptr(o_info->attr.spec_buffer, 1);
+    IntroAttributeData * empty = arraddnptr(o_info->attr.data, 1);
     memset(empty, 0, sizeof(*empty));
 
     for (int directive_i=0; directive_i < arrlen(ctx->attribute_directives); directive_i++) {
@@ -956,9 +956,9 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
 
     handle_deferred_defaults(ctx);
 
-    struct {IntroType * key; uint32_t value;} * propagated_map = NULL;
+    struct {IntroType * key; IntroAttributeDataId value;} * propagated_map = NULL;
 
-    HashTable * attr_spec_set = new_table(1024);
+    HashTable * attr_data_set = new_table(1024);
 
     for (int data_i=0; data_i < hmlen(ctx->attribute_data_map); data_i++) {
         AttributeDataMap content = ctx->attribute_data_map[data_i];
@@ -966,7 +966,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         int32_t member_index = content.key.member_index;
         AttributeData * attr_data = content.value;
 
-        uint32_t spec_index = arrlen(o_info->attr.spec_buffer);
+        uint32_t data_index = arrlen(o_info->attr.data);
         int32_t count = arrlen(attr_data);
 
         qsort(attr_data, count, sizeof(attr_data[0]), &attribute_data_sort_callback);
@@ -978,51 +978,52 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
             }
         }
         int count_16_byte_sections_needed = 1 + ((count_without_flags * sizeof(uint32_t)) + 15) / 16;
-        size_t prev_len = arrlen(o_info->attr.spec_buffer);
-        IntroAttributeSpec * spec = arraddnptr(o_info->attr.spec_buffer, count_16_byte_sections_needed);
-        size_t data_size = count_16_byte_sections_needed * sizeof(*spec);
-        memset(spec, 0, data_size);
+        size_t prev_len = arrlen(o_info->attr.data);
+        IntroAttributeData * data = arraddnptr(o_info->attr.data, count_16_byte_sections_needed);
+        size_t data_size = count_16_byte_sections_needed * sizeof(*data);
+        memset(data, 0, data_size);
 
         for (int i=0; i < count; i++) {
             uint32_t bitset_index = attr_data[i].id >> 5; 
             uint32_t bit_index = attr_data[i].id & 31;
             uint32_t attr_bit = 1 << bit_index;
-            spec->bitset[bitset_index] |= attr_bit;
+            data->bitset[bitset_index] |= attr_bit;
 
             if (attr_data[i].id < o_info->attr.first_flag) {
-                uint32_t * value_offsets = (uint32_t *)(spec + 1);
+                uint32_t * value_offsets = (uint32_t *)(data + 1);
                 memcpy(&value_offsets[i], &attr_data[i].v, sizeof(uint32_t));
             }
         }
 
         HashEntry entry = {
-            .key_data = spec,
+            .key_data = data,
             .key_size = data_size,
         };
         
-        uint32_t lookup_index = table_get(attr_spec_set, &entry);
+        uint32_t lookup_index = table_get(attr_data_set, &entry);
         if (lookup_index != TABLE_INVALID_INDEX) {
-            spec_index = entry.value;
-            arrsetlen(o_info->attr.spec_buffer, prev_len);
+            data_index = entry.value;
+            arrsetlen(o_info->attr.data, prev_len);
         } else {
-            entry.value = spec_index;
-            table_set(attr_spec_set, entry);
+            entry.value = data_index;
+            table_set(attr_data_set, entry);
         }
 
         switch(member_index) {
         case MIDX_TYPE: {
-            type->attr = spec_index;
+            type->attr = (IntroAttributeDataId){data_index};
         }break;
 
         case MIDX_TYPE_PROPAGATED: {
-            hmput(propagated_map, type, spec_index);
+            IntroAttributeDataId data_id = {data_index};
+            hmput(propagated_map, type, data_id);
         }break;
 
         default: {
             if (intro_has_members(type)) {
-                type->members[member_index].attr = spec_index;
+                type->members[member_index].attr = (IntroAttributeDataId){data_index};
             } else if (type->category == INTRO_ENUM) {
-                type->values[member_index].attr = spec_index;
+                type->values[member_index].attr = (IntroAttributeDataId){data_index};
             } else {
                 assert(0 /* Vibe check failed */);
             }
@@ -1032,19 +1033,19 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         arrfree(attr_data);
     }
     hmfree(ctx->attribute_data_map);
-    free_table(attr_spec_set);
+    free_table(attr_data_set);
 
     // set inhertited attribute data for declarations without attribute directives
     for (int type_i=0; type_i < arrlen(o_info->types); type_i++) {
         IntroType * type = o_info->types[type_i];
-        if (type->attr == 0 && type->parent && type->parent->attr != 0) {
+        if (type->attr.offset == 0 && type->parent && type->parent->attr.offset != 0) {
             type->attr = hmget(propagated_map, type->parent);
             hmput(propagated_map, type, type->attr);
         }
         if (intro_has_members(type)) {
             for (int mi=0; mi < type->count; mi++) {
                 IntroMember * member = &type->members[mi];
-                if (member->attr == 0 && member->type->attr != 0) {
+                if (member->attr.offset == 0 && member->type->attr.offset != 0) {
                     member->attr = hmget(propagated_map, member->type);
                 }
             }
@@ -1058,7 +1059,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         uint32_t bitset_index = id >> 5; 
         uint32_t bit_index = id & 31;
         uint32_t attr_bit = 1 << bit_index;
-        o_info->attr.spec_buffer[0].bitset[bitset_index] |= attr_bit;
+        o_info->attr.data[0].bitset[bitset_index] |= attr_bit;
     }
 
     o_info->attr.count_available = arrlen(o_info->attr.available);

@@ -24,9 +24,6 @@ city:
 attribute:
     !! somehow handle data at an offset to a pointer ex. stb_ds
 
-    come up with a better naming scheme (what the hell is the difference between Attribute, AttributeSpec, AttributeInfo, etc.)
-    distinct type for 'attr'? ex. 'typedef struct { uint32_t i; } AttributeHandle;'
-
     dynamically sized value attributes
         allow multiple aliases
     allow attributes in more places

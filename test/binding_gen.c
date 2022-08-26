@@ -52,7 +52,7 @@ get_odin_name(const char * type_name, const char * prefix, int * o_flags) {
 void
 fprint_odin_type(FILE * out, const OdinGenOptions * opt, IntroContainer cntr, int depth) {
     const IntroType * type = cntr.type;
-    uint32_t attr = intro_get_attr(cntr);
+    IntroAttributeDataId attr = intro_get_attr(cntr);
 
     if (type->category == INTRO_POINTER) {
         if (type->of == ITYPE(void)) {

@@ -113,7 +113,7 @@
 
 static uint64_t g_timer_freq = 0;
 
-#define DEF_BUILTIN(name) {#name, offsetof(IntroBuiltinAttributeIds, name)}
+#define DEF_BUILTIN(NAME) {#NAME, offsetof(struct IntroBuiltinAttributeTypes, NAME)}
 static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(id),
     DEF_BUILTIN(bitfield),

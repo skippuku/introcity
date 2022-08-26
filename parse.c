@@ -3,20 +3,20 @@
 #include "global.c"
 
 static const IntroType known_types [] = {
-    {{}, 0, "void",     0, 0, 0, 0, 0, INTRO_UNKNOWN},
-    {{}, 0, "uint8_t",  0, 0, 1, 0, 1, INTRO_U8},
-    {{}, 0, "uint16_t", 0, 0, 2, 0, 2, INTRO_U16},
-    {{}, 0, "uint32_t", 0, 0, 4, 0, 4, INTRO_U32},
-    {{}, 0, "uint64_t", 0, 0, 8, 0, 8, INTRO_U64},
-    {{}, 0, "int8_t",   0, 0, 1, 0, 1, INTRO_S8},
-    {{}, 0, "int16_t",  0, 0, 2, 0, 2, INTRO_S16},
-    {{}, 0, "int32_t",  0, 0, 4, 0, 4, INTRO_S32},
-    {{}, 0, "int64_t",  0, 0, 8, 0, 8, INTRO_S64}, // 8
-    {{}, 0, "float",    0, 0, 4, 0, 4, INTRO_F32},
-    {{}, 0, "double",   0, 0, 8, 0, 8, INTRO_F64}, // 10
-    {{}, 0, "bool",     0, 0, 1, 0, 1, INTRO_U8},
-    {{}, 0, "va_list",  0, 0, 0, 0, 0, INTRO_VA_LIST},
-    {{}, 0, "__builtin_va_list", 0, 0, 0, 0, 0, INTRO_VA_LIST},
+    {{}, 0, "void",     0, {0}, 0, 0, 0, INTRO_UNKNOWN},
+    {{}, 0, "uint8_t",  0, {0}, 1, 0, 1, INTRO_U8},
+    {{}, 0, "uint16_t", 0, {0}, 2, 0, 2, INTRO_U16},
+    {{}, 0, "uint32_t", 0, {0}, 4, 0, 4, INTRO_U32},
+    {{}, 0, "uint64_t", 0, {0}, 8, 0, 8, INTRO_U64},
+    {{}, 0, "int8_t",   0, {0}, 1, 0, 1, INTRO_S8},
+    {{}, 0, "int16_t",  0, {0}, 2, 0, 2, INTRO_S16},
+    {{}, 0, "int32_t",  0, {0}, 4, 0, 4, INTRO_S32},
+    {{}, 0, "int64_t",  0, {0}, 8, 0, 8, INTRO_S64}, // 8
+    {{}, 0, "float",    0, {0}, 4, 0, 4, INTRO_F32},
+    {{}, 0, "double",   0, {0}, 8, 0, 8, INTRO_F64}, // 10
+    {{}, 0, "bool",     0, {0}, 1, 0, 1, INTRO_U8},
+    {{}, 0, "va_list",  0, {0}, 0, 0, 0, INTRO_VA_LIST},
+    {{}, 0, "__builtin_va_list", 0, {0}, 0, 0, 0, INTRO_VA_LIST},
 };
 
 typedef struct {
@@ -111,7 +111,7 @@ struct ParseContext {
     AttributeData * attribute_globals;
     AttributeDirective * attribute_directives;
     AttributeDataMap * attribute_data_map;
-    IntroBuiltinAttributeIds builtin;
+    struct IntroBuiltinAttributeTypes builtin;
     uint32_t attribute_id_counter;
     uint32_t flag_temp_id_counter;
     ParseInfo * p_info;

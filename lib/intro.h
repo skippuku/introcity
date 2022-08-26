@@ -120,19 +120,20 @@ typedef enum IntroFlags {
 
 typedef struct IntroType IntroType I(~gui_edit);
 
-typedef uint32_t IntroAttributeInfo;
+typedef struct {uint32_t offset;} IntroAttributeDataId;
+typedef uint32_t IntroAttributeType;
 
 typedef struct IntroMember {
     const char * name;
     IntroType * type;
     uint32_t offset;
-    IntroAttributeInfo attr;
+    IntroAttributeDataId attr;
 } IntroMember;
 
 typedef struct IntroEnumValue {
     const char * name;
     int32_t value;
-    IntroAttributeInfo attr;
+    IntroAttributeDataId attr;
 } IntroEnumValue;
 
 struct IntroType {
@@ -146,7 +147,7 @@ struct IntroType {
     IntroType * parent;
     const char * name;
     uint32_t count;
-    IntroAttributeInfo attr;
+    IntroAttributeDataId attr;
     uint32_t size;
     uint16_t flags I(gui_format "0x%02x");
     uint8_t align;
@@ -164,7 +165,7 @@ typedef struct IntroFunction {
     uint16_t flags;
 } IntroFunction;
 
-typedef enum IntroAttributeType {
+typedef enum IntroAttributeTypeCategory {
     INTRO_AT_FLAG = 0,
     INTRO_AT_INT,
     INTRO_AT_FLOAT,
@@ -174,53 +175,51 @@ typedef enum IntroAttributeType {
     INTRO_AT_EXPR,
     INTRO_AT_REMOVE,
     INTRO_AT_COUNT
-} IntroAttributeType;
+} IntroAttributeTypeCategory;
 
-typedef struct IntroAttribute {
+typedef struct IntroAttributeTypeInfo {
     const char * name;
     int attr_type;
     uint32_t type_id;
     bool propagated;
-} IntroAttribute;
+} IntroAttributeTypeInfo;
 
-typedef struct IntroAttributeSpec {
+typedef struct IntroAttributeData {
     INTRO_ALIGN(16) uint32_t bitset [(INTRO_MAX_ATTRIBUTES+31) / 32];
-    //uint32_t value_offsets []; // Flexible array members are not officially part of C++
-} IntroAttributeSpec;
-
-typedef struct IntroBuiltinAttributeIds {
-    uint8_t id;
-    uint8_t bitfield;
-    uint8_t fallback;
-    uint8_t length;
-    uint8_t alias;
-    uint8_t city;
-    uint8_t cstring;
-    uint8_t type;
-    uint8_t when;
-    uint8_t remove;
-
-    uint8_t gui_note;
-    uint8_t gui_name;
-    uint8_t gui_min;
-    uint8_t gui_max;
-    uint8_t gui_format;
-    uint8_t gui_scale;
-    uint8_t gui_vector;
-    uint8_t gui_color;
-    uint8_t gui_show;
-    uint8_t gui_edit;
-    uint8_t gui_edit_color;
-    uint8_t gui_edit_text;
-} IntroBuiltinAttributeIds;
+    //uint32_t value_offsets []; // this is here in spirit. C++ doesn't like flexible array members
+} IntroAttributeData;
 
 typedef struct IntroAttributeContext {
-    IntroAttribute * available I(length count_available);
-    IntroAttributeSpec * spec_buffer;
+    IntroAttributeTypeInfo * available I(length count_available);
+    IntroAttributeData * data;
     uint32_t count_available;
     uint16_t first_flag;
 
-    IntroBuiltinAttributeIds builtin;
+    struct IntroBuiltinAttributeTypes {
+        uint8_t id;
+        uint8_t bitfield;
+        uint8_t fallback;
+        uint8_t length;
+        uint8_t alias;
+        uint8_t city;
+        uint8_t cstring;
+        uint8_t type;
+        uint8_t when;
+        uint8_t remove;
+
+        uint8_t gui_note;
+        uint8_t gui_name;
+        uint8_t gui_min;
+        uint8_t gui_max;
+        uint8_t gui_format;
+        uint8_t gui_scale;
+        uint8_t gui_vector;
+        uint8_t gui_color;
+        uint8_t gui_show;
+        uint8_t gui_edit;
+        uint8_t gui_edit_color;
+        uint8_t gui_edit_text;
+    } builtin;
 } IntroAttributeContext;
 
 typedef struct IntroMacro {
@@ -339,13 +338,13 @@ intro_origin(const IntroType * type) {
 
 #define intro_has_attribute(m, a) intro_has_attribute_x(INTRO_CTX, m->attr, IATTR_##a)
 INTRO_API_INLINE bool
-intro_has_attribute_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id) {
+intro_has_attribute_x(IntroContext * ctx, IntroAttributeDataId data_id, uint32_t attr_id) {
     assert(attr_id < INTRO_MAX_ATTRIBUTES);
-    IntroAttributeSpec * spec = ctx->attr.spec_buffer + attr_spec_location;
+    IntroAttributeData * data = ctx->attr.data + data_id.offset;
     uint32_t bitset_index = attr_id >> 5; 
     uint32_t bit_index = attr_id & 31;
     uint32_t attr_bit = 1 << bit_index;
-    return (spec->bitset[bitset_index] & attr_bit);
+    return (data->bitset[bitset_index] & attr_bit);
 }
 
 INTRO_API_INLINE IntroContainer
@@ -363,7 +362,7 @@ intro_container(void * data, const IntroType * type) {
     return intro_cntr(data, type);
 }
 
-INTRO_API_INLINE uint32_t
+INTRO_API_INLINE IntroAttributeDataId
 intro_get_attr(IntroContainer cntr) {
     if (cntr.parent && intro_has_members(cntr.parent->type)) {
         return cntr.parent->type->members[cntr.index].attr;
@@ -388,17 +387,17 @@ typedef struct {
 
 // ATTRIBUTE INFO
 #define intro_attribute_value(m, a, out) intro_attribute_value_x(INTRO_CTX, m->type, m->attr, IATTR_##a, out)
-bool intro_attribute_value_x(IntroContext * ctx, const IntroType * type, uint32_t attr_spec, uint32_t attr_id, IntroVariant * o_var);
+bool intro_attribute_value_x(IntroContext * ctx, const IntroType * type, IntroAttributeDataId data_id, IntroAttributeType attr_type, IntroVariant * o_var);
 #define intro_attribute_int(m, a, out) intro_attribute_int_x(INTRO_CTX, m->attr, IATTR_##a, out)
-bool intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, int32_t * o_int);
+bool intro_attribute_int_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_type, int32_t * o_int);
 #define intro_attribute_member(m, a, out) intro_attribute_member_x(INTRO_CTX, m->attr, IATTR_##a, out)
-bool intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, int32_t * o_int);
+bool intro_attribute_member_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_type, int32_t * o_int);
 #define intro_attribute_float(m, a, out) intro_attribute_float_x(INTRO_CTX, m->attr, IATTR_##a, out)
-bool intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec, uint32_t attr_id, float * o_float);
+bool intro_attribute_float_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_type, float * o_float);
 #define intro_attribute_length(container, out) intro_attribute_length_x(INTRO_CTX, container, out)
 bool intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t * o_length);
 #define intro_attribute_run_expr(C, A, OUT) intro_attribute_expr_x(INTRO_CTX, C, A, OUT)
-bool intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, uint32_t attr_id, int64_t * o_result);
+bool intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, IntroAttributeType attr_type, int64_t * o_result);
 
 // INITIALIZERS
 #define intro_set_value(DST, TYPE, A) intro_set_value_x(INTRO_CTX, intro_cntr(DST, TYPE), IATTR_##A)
@@ -852,24 +851,24 @@ intro_int_value(const void * data, const IntroType * type) {
 }
 
 static bool
-get_attribute_value_offset(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, uint32_t * out) {
+get_attribute_value_offset(IntroContext * ctx, IntroAttributeDataId data_id, uint32_t attr_id, uint32_t * out) {
     assert(attr_id < INTRO_MAX_ATTRIBUTES);
-    IntroAttributeSpec * spec = &ctx->attr.spec_buffer[attr_spec_location];
+    IntroAttributeData * data = &ctx->attr.data[data_id.offset];
     uint32_t bitset_index = attr_id >> 5; 
     uint32_t bit_index = attr_id & 31;
     uint32_t attr_bit = 1 << bit_index;
     uint32_t pop_count_mask = attr_bit - 1;
-    bool has = spec->bitset[bitset_index] & attr_bit;
+    bool has = data->bitset[bitset_index] & attr_bit;
     if (!has) {
         return false;
     }
 
     int pop = 0;
     for (uint32_t i=0; i < bitset_index; i++) {
-        pop += INTRO_POPCNT32(spec->bitset[i]);
+        pop += INTRO_POPCNT32(data->bitset[i]);
     }
-    pop += INTRO_POPCNT32(spec->bitset[bitset_index] & pop_count_mask);
-    uint32_t * value_offsets = (uint32_t *)(spec + 1);
+    pop += INTRO_POPCNT32(data->bitset[bitset_index] & pop_count_mask);
+    uint32_t * value_offsets = (uint32_t *)(data + 1);
     *out = value_offsets[pop];
 
     return true;
@@ -878,10 +877,10 @@ get_attribute_value_offset(IntroContext * ctx, uint32_t attr_spec_location, uint
 #define ASSERT_ATTR_TYPE(a_type) assert(ctx->attr.available[attr_id].attr_type == a_type)
 
 bool
-intro_attribute_value_x(IntroContext * ctx, const IntroType * type, uint32_t attr_spec_location, uint32_t attr_id, IntroVariant * o_var) {
+intro_attribute_value_x(IntroContext * ctx, const IntroType * type, IntroAttributeDataId data_id, IntroAttributeType attr_id, IntroVariant * o_var) {
     ASSERT_ATTR_TYPE(INTRO_AT_VALUE);
     uint32_t value_offset;
-    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    bool has = get_attribute_value_offset(ctx, data_id, attr_id, &value_offset);
     if (!has) return false;
 
     o_var->data = ctx->values + value_offset;
@@ -897,10 +896,10 @@ intro_attribute_value_x(IntroContext * ctx, const IntroType * type, uint32_t att
 }
 
 bool
-intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int) {
+intro_attribute_int_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_id, int32_t * o_int) {
     ASSERT_ATTR_TYPE(INTRO_AT_INT);
     uint32_t value_offset;
-    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    bool has = get_attribute_value_offset(ctx, data_id, attr_id, &value_offset);
     if (has) {
         memcpy(o_int, &value_offset, sizeof(*o_int));
         return true;
@@ -910,10 +909,10 @@ intro_attribute_int_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t 
 }
 
 bool
-intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, int32_t * o_int) {
+intro_attribute_member_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_id, int32_t * o_int) {
     ASSERT_ATTR_TYPE(INTRO_AT_MEMBER);
     uint32_t value_offset;
-    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    bool has = get_attribute_value_offset(ctx, data_id, attr_id, &value_offset);
     if (has) {
         memcpy(o_int, &value_offset, sizeof(*o_int));
         return true;
@@ -923,10 +922,10 @@ intro_attribute_member_x(IntroContext * ctx, uint32_t attr_spec_location, uint32
 }
 
 bool
-intro_attribute_float_x(IntroContext * ctx, uint32_t attr_spec_location, uint32_t attr_id, float * o_float) {
+intro_attribute_float_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_id, float * o_float) {
     ASSERT_ATTR_TYPE(INTRO_AT_FLOAT);
     uint32_t value_offset;
-    bool has = get_attribute_value_offset(ctx, attr_spec_location, attr_id, &value_offset);
+    bool has = get_attribute_value_offset(ctx, data_id, attr_id, &value_offset);
     if (has) {
         memcpy(o_float, &value_offset, sizeof(*o_float));
         return true;
@@ -953,7 +952,7 @@ intro_expr_data(const IntroContainer * pcntr) {
 }
 
 bool
-intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, uint32_t attr_id, int64_t * o_result) {
+intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, IntroAttributeType attr_id, int64_t * o_result) {
     ASSERT_ATTR_TYPE(INTRO_AT_EXPR);
     uint32_t code_offset;
     const void * data = intro_expr_data(&cntr);
@@ -1162,7 +1161,7 @@ intro__offset_pointers(const IntroContainer * p_base_cntr, void * base) {
 
 void
 intro_set_value_x(IntroContext * ctx, IntroContainer cntr, uint32_t value_attribute) {
-    IntroAttributeInfo attr = intro_get_attr(cntr);
+    IntroAttributeDataId attr = intro_get_attr(cntr);
 
     IntroVariant var;
     if (intro_attribute_value_x(ctx, cntr.type, attr, value_attribute, &var)) {
@@ -1283,7 +1282,7 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
         opt = &opt_default;
     }
 
-    uint32_t attr;
+    IntroAttributeDataId attr;
     if (container.parent && container.parent->type->category == INTRO_STRUCT) {
         attr = container.parent->type->members[container.index].attr;
     } else {
@@ -1970,7 +1969,7 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
         }
 
         int64_t length;
-        uint32_t attr = intro_get_attr(cont);
+        IntroAttributeDataId attr = intro_get_attr(cont);
         if (intro_attribute_length_x(city->ictx, cont, &length)) {
         } else if (intro_has_attribute_x(city->ictx, attr, city->ictx->attr.builtin.cstring)) {
             length = strlen((char *)ptr) + 1;
@@ -2185,7 +2184,7 @@ city__load_into(
                         }
                     }
                 } else {
-                    int32_t sm_id = sm->attr;
+                    int32_t sm_id = (int32_t)sm->attr.offset;
                     int32_t dm_id;
                     if (intro_attribute_int_x(ctx, dm->attr, ctx->attr.builtin.id, &dm_id) && dm_id == sm_id) {
                         match = true;
@@ -2354,7 +2353,7 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
 
                 size_t next = next_uint(&b, city->ptr_size);
                 if ((next & id_test_bit)) {
-                    member.attr = next & (~id_test_bit); // store id directly in attr since that isn't being used for anything else
+                    member.attr.offset = (uint32_t)(next & (~id_test_bit)); // store id directly in attr since that isn't being used for anything else
                 } else {
                     member.name = (char *)(city->data + next);
                 }
