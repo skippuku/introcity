@@ -401,12 +401,9 @@ bool intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t *
 bool intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, uint32_t attr_id, int64_t * o_result);
 
 // INITIALIZERS
-void intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute);
-#define intro_set_values(dest, type, a) intro_set_values_x(INTRO_CTX, dest, type, IATTR_##a)
-void intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute);
-#define intro_set_fallbacks(dest, type) intro_set_fallbacks_x(INTRO_CTX, dest, type)
-#define intro_fallback(dest, type) intro_set_fallbacks_x(INTRO_CTX, dest, type)
-void intro_set_fallbacks_x(IntroContext * ctx, void * dest, const IntroType * type);
+#define intro_set_value(DST, TYPE, A) intro_set_value_x(INTRO_CTX, intro_cntr(DST, TYPE), IATTR_##A)
+void intro_set_value_x(IntroContext * ctx, IntroContainer cntr, uint32_t attr_id);
+#define intro_fallback(dest, type) intro_set_value_x(INTRO_CTX, intro_cntr(dest, type), INTRO_CTX->attr.builtin.fallback)
 
 // PRINTERS
 void intro_sprint_type_name(char * dest, const IntroType * type);
@@ -890,6 +887,7 @@ intro_attribute_value_x(IntroContext * ctx, const IntroType * type, uint32_t att
     o_var->data = ctx->values + value_offset;
     uint32_t type_id = ctx->attr.available[attr_id].type_id;
     o_var->type = (type_id != 0)? &ctx->types[type_id] : type;
+
     if (o_var->type->category == INTRO_POINTER) {
         uintptr_t val = *(uintptr_t *)o_var->data;
         o_var->data = ctx->values + val;
@@ -1147,57 +1145,75 @@ intro_run_bytecode(uint8_t * code, const void * v_data) {
 }
 
 static void
-intro__offset_pointers(void * dest, const IntroType * type, void * base) {
-    if (type->category == INTRO_ARRAY) {
-        if (type->of->category == INTRO_POINTER) {
-            for (uint32_t i=0; i < type->count; i++) {
-                u8 ** o_ptr = (u8 **)((u8 *)dest + i * sizeof(void *));
-                *o_ptr += (uintptr_t)base;
+intro__offset_pointers(const IntroContainer * p_base_cntr, void * base) {
+    const IntroType * type = p_base_cntr->type;
+    if (type->category == INTRO_ARRAY || type->category == INTRO_STRUCT) {
+        for (uint32_t i=0; i < type->count; i++) {
+            IntroContainer cntr = intro_push(p_base_cntr, i);
+            if (cntr.type->category == INTRO_POINTER) {
+                uintptr_t offset = *(uintptr_t *)cntr.data;
+                *(void **)cntr.data = (u8 *)base + offset;
+            } else if (cntr.type->category == INTRO_ARRAY || cntr.type->category == INTRO_STRUCT) {
+                intro__offset_pointers(&cntr, base);
             }
         }
     }
 }
 
 void
-intro_set_member_value_x(IntroContext * ctx, void * dest, const IntroType * struct_type, uint32_t member_index, uint32_t value_attribute) {
-    const IntroMember * m = &struct_type->members[member_index];
-    size_t size = m->type->size;
+intro_set_value_x(IntroContext * ctx, IntroContainer cntr, uint32_t value_attribute) {
+    IntroAttributeInfo attr = intro_get_attr(cntr);
+
     IntroVariant var;
-    if (intro_has_attribute_x(ctx, m->attr, ctx->attr.builtin.type)) {
-        memcpy((u8 *)dest + m->offset, &struct_type, sizeof(void *));
-    } else if (intro_attribute_value_x(ctx, m->type, m->attr, value_attribute, &var)) {
-        assert(var.type == m->type);
-        void * value_ptr = var.data;
-        if (m->type->category == INTRO_POINTER) {
-            memcpy((u8 *)dest + m->offset, &value_ptr, sizeof(size_t));
+    if (intro_attribute_value_x(ctx, cntr.type, attr, value_attribute, &var)) {
+        assert(var.type == cntr.type);
+        if (var.type->category == INTRO_POINTER) {
+            *(void **)cntr.data = var.data;
         } else {
-            memcpy((u8 *)dest + m->offset, value_ptr, size);
-            intro__offset_pointers((u8 *)dest + m->offset, m->type, ctx->values);
+            memcpy(cntr.data, var.data, var.type->size);
+            intro__offset_pointers(&cntr, ctx->values);
         }
-    } else if (m->type->category == INTRO_STRUCT) {
-        intro_set_values_x(ctx, (u8 *)dest + m->offset, m->type, value_attribute);
-    // TODO: this seems inelegant
-    } else if (m->type->category == INTRO_ARRAY && m->type->of->category == INTRO_STRUCT) {
-        int elem_size = m->type->of->size;
-        for (uint32_t i=0; i < m->type->count; i++) {
-            void * elem_address = (u8 *)dest + m->offset + i * elem_size;
-            intro_set_values_x(ctx, elem_address, m->type->of, value_attribute);
+        return;
+    }
+
+    switch (cntr.type->category) {
+    case INTRO_ARRAY: {
+        for (uint32_t i=0; i < cntr.type->count; i++) {
+            intro_set_value_x(ctx, intro_push(&cntr, i), value_attribute);
         }
-    } else {
-        memset((u8 *)dest + m->offset, 0, size);
+        return;
     }
-}
 
-void
-intro_set_values_x(IntroContext * ctx, void * dest, const IntroType * type, uint32_t value_attribute) {
-    for (uint32_t m_index=0; m_index < type->count; m_index++) {
-        intro_set_member_value_x(ctx, dest, type, m_index, value_attribute);
+    case INTRO_STRUCT: {
+        for (uint32_t i=0; i < cntr.type->count; i++) {
+            intro_set_value_x(ctx, intro_push(&cntr, i), value_attribute);
+        }
+        return;
     }
-}
 
-void
-intro_set_fallbacks_x(IntroContext * ctx, void * dest, const IntroType * type) {
-    intro_set_values_x(ctx, dest, type, ctx->attr.builtin.fallback);
+    case INTRO_UNION: {
+        return;
+    }
+
+    case INTRO_POINTER: {
+        bool parent_has_members = (cntr.parent && intro_has_members(cntr.parent->type));
+        if (parent_has_members && intro_has_attribute_x(ctx, attr, ctx->attr.builtin.type)) {
+            memcpy(cntr.data, &cntr.parent->type, cntr.type->size);
+            return;
+        }
+#if 0 // NOTE: maybe at some point in the future it will somehow make sense to allocate a buffer for this
+        int64_t length;
+        if (intro_attribute_length_x(ctx, cntr, &length)) {
+            for (uint32_t i=0; i < length; i++) {
+                intro_set_value_x(ctx, intro_push(&cntr, i), value_attribute);
+            }
+            return;
+        }
+#endif
+    }break;
+    }
+
+    memset(cntr.data, 0, cntr.type->size);
 }
 
 void
@@ -2201,7 +2217,7 @@ city__load_into(
                 }
             }
             if (!found_match) {
-                intro_set_member_value_x(ctx, dest, d_type, dm_i, ctx->attr.builtin.fallback);
+                intro_set_value_x(ctx, intro_push(&d_cont, dm_i), ctx->attr.builtin.fallback);
             }
             arr_header(aliases)->len = 0;
         }
@@ -2240,7 +2256,7 @@ city__load_into(
                 }
             }
         } else {
-            intro_set_member_value_x(ctx, d_cont.parent->data, d_cont.parent->type, d_cont.index, ctx->attr.builtin.fallback);
+            intro_set_value_x(ctx, d_cont, ctx->attr.builtin.fallback);
         }
     }break;
 

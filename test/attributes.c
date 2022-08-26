@@ -181,7 +181,7 @@ main() {
     special_free(&data, ITYPE(JointAllocTest));
 
     AttributeTest test;
-    intro_set_fallbacks(&test, ITYPE(AttributeTest));
+    intro_fallback(&test, ITYPE(AttributeTest));
     {
         int32_t i;
         float f;
@@ -256,7 +256,7 @@ main() {
             assert(intro_attribute_int(m_special_vec2, my_gene_num, &val) && val == -83);
             assert(intro_attribute_int(m_special_vec2, my_non_gene_num, &val) && val == 612);
 
-            intro_set_values(&test, ITYPE(AttributeTest), my_death_value);
+            intro_set_value(&test, ITYPE(AttributeTest), my_death_value);
             assert(test.name == NULL);
             assert(test.v1 == -9);
             assert(test.v2 == 2.5);

@@ -68,7 +68,7 @@ main(int argc, char ** argv) {
     Dumb dumb;
     memset(&dumb, 0xff, sizeof(dumb));
 
-    intro_set_fallbacks(&dumb, ITYPE(Dumb));
+    intro_fallback(&dumb, ITYPE(Dumb));
     printf("dumb = ");
     intro_print(&dumb, ITYPE(Dumb), NULL);
     printf("\n\n");

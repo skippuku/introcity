@@ -227,7 +227,7 @@ ptrdiff_t parse_struct_value(ParseContext * ctx, const IntroType * type, TokenIn
 
 // TODO: change to parse_expression
 ptrdiff_t
-parse_value(ParseContext * ctx, IntroType * type, TokenIndex * tidx, uint32_t * o_count) {
+parse_value(ParseContext * ctx, const IntroType * type, TokenIndex * tidx, uint32_t * o_count) {
     char * end;
     if ((type->category >= INTRO_U8 && type->category <= INTRO_S64) || type->category == INTRO_ENUM) {
         intmax_t result = parse_constant_expression(ctx, tidx);
@@ -376,41 +376,55 @@ parse_struct_value(ParseContext * ctx, const IntroType * type, TokenIndex * tidx
     int member_index = 0;
     while (1) {
         tk = next_token(tidx);
-        if (tk.type == TK_PERIOD) {
-            tk = next_token(tidx);
-            if (tk.type != TK_IDENTIFIER) {
-                parse_error(ctx, tk, "Expected identifier.");
+        bool designated = false;
+        size_t offset = 0;
+        const IntroType * dtype = type;
+
+        if (tk.type == TK_R_BRACE) break;
+
+        while (tk.type == TK_PERIOD) {
+            if (!intro_has_members(dtype)) {
+                parse_error(ctx, tk, "Type does not have fields.");
                 return -1;
             }
+            designated = true;
+
+            EXPECT_IDEN();
+
             bool found_match = false;
-            for (int i=0; i < type->count; i++) {
-                IntroMember check = type->members[i];
+            for (int i=0; i < dtype->count; i++) {
+                IntroMember check = dtype->members[i];
                 if (tk_equal(&tk, check.name)) {
                     found_match = true;
-                    member_index = i;
+                    offset += check.offset;
+                    dtype = check.type;
                     break;
                 }
             }
             if (!found_match) {
                 char buf [1024];
-                if (type->name) {
-                    stbsp_sprintf(buf, "Not a member of %s.", type->name);
+                if (dtype->name) {
+                    stbsp_sprintf(buf, "Not a member of %s.", dtype->name);
                 } else {
                     strcpy(buf, "Invalid member name.");
                 }
                 parse_error(ctx, tk, buf);
                 return -1;
             }
-            EXPECT('=');
-        } else if (tk.type == TK_R_BRACE) {
-            break;
-        } else {
-            tidx->index--;
+
+            tk = next_token(tidx);
         }
 
-        IntroMember member = type->members[member_index];
-        arrsetlen(ctx->value_buffer, member.offset);
-        ptrdiff_t parse_ret = parse_value(ctx, member.type, tidx, NULL);
+        tidx->index--;
+        if (designated) {
+            EXPECT('=');
+        } else {
+            offset = type->members[member_index].offset;
+            dtype = type->members[member_index].type;
+        }
+
+        arrsetlen(ctx->value_buffer, offset);
+        ptrdiff_t parse_ret = parse_value(ctx, dtype, tidx, NULL);
         if (parse_ret < 0) {
             return -1;
         }
@@ -456,7 +470,11 @@ handle_value_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, 
     IntroAttribute attr_info = ctx->p_info->attr.available[data->id];
     IntroType * v_type;
     if (attr_info.type_id == 0) {
-        v_type = type->members[member_index].type;
+        if (member_index >= 0) {
+            v_type = type->members[member_index].type;
+        } else {
+            v_type = type;
+        }
     } else {
         v_type = ctx->p_info->types[attr_info.type_id];
     }

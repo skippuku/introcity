@@ -70,7 +70,19 @@ typedef struct Nest {
     } daughter;
 
     Skills skills;
-} Nest;
+} Nest I(
+    fallback {
+        .id = 5,
+        .name = "Emerald Power",
+        .son = {
+            .name = "Kyle",
+            .id = 6,
+            .son.age = 4,
+            .son.favorite_fruit = FRUIT_PEACH,
+        },
+        .daughter.speed = 7.5,
+    }
+);
 
 typedef struct TestAttributes {
     u8 * buffer I(1, length buffer_size);

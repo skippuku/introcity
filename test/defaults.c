@@ -1,15 +1,12 @@
 #include "test.h"
 
+#define ABS(x) (((x) < 0)? (x) * -1 : (x))
+
 int
 main() {
     TestDefault default_test;
-    intro_set_fallbacks(&default_test, ITYPE(TestDefault));
+    intro_fallback(&default_test, ITYPE(TestDefault));
 
-    printf("default_test = ");
-    intro_print(&default_test, default_test.type, NULL);
-    printf("\n");
-
-#define ABS(x) (((x) < 0)? (x) * -1 : (x))
     assert(default_test.v_int == 123);
     assert(default_test.v_u8 == 1);
     assert(default_test.v_s64 == -54321);
@@ -36,6 +33,23 @@ main() {
     assert(default_test.align.a == 15);
     assert(default_test.align.b == 2001);
     assert(ABS(default_test.align.c - 100456.12) < 0.000001);
+
+    // Nest
+
+    Nest nest;
+    intro_fallback(&nest, ITYPE(Nest));
+
+    printf("nest = ");
+    intro_print(&nest, ITYPE(Nest), NULL);
+    printf("\n");
+
+    assert(nest.id == 5);
+    assert(nest.son.id == 6);
+    assert(nest.son.son.age == 4);
+    assert(nest.son.son.favorite_fruit == FRUIT_PEACH);
+    assert(nest.daughter.speed == 7.5);
+    assert(0==strcmp(nest.name, "Emerald Power"));
+    assert(0==strcmp(nest.son.name, "Kyle"));
 
     return 0;
 }

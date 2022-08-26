@@ -1,7 +1,7 @@
-db_*
 *.intro
 *.cty
 *.exe
+*.bin
 *.o
 *.d
 intro
