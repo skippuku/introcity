@@ -1,3 +1,4 @@
+// NOTE: this doesn't work yet because i don't understand how to make assembly position-independent
     .intel_syntax noprefix
     .global intro__vm
     .text

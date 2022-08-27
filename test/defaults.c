@@ -51,5 +51,28 @@ main() {
     assert(0==strcmp(nest.name, "Emerald Power"));
     assert(0==strcmp(nest.son.name, "Kyle"));
 
+    // Dumb
+
+    Dumb dumb;
+    memset(&dumb, 0xff, sizeof(dumb));
+
+    intro_fallback(&dumb, ITYPE(Dumb));
+    printf("dumb = ");
+    intro_print(&dumb, ITYPE(Dumb), NULL);
+    printf("\n\n");
+
+    const IntroType * strange_array_type = ITYPE(Dumb)->members[0].type;
+    assert(strange_array_type->category == INTRO_ARRAY);
+    assert(strange_array_type->count == LENGTH(dumb.strange_array));
+    for (int i=0; i < LENGTH(dumb.strange_array); i++) {
+        assert(dumb.strange_array[i] == 0);
+    }
+
+    for (int i=0; i < 4; i++) {
+        assert(dumb.anon_struct_array[i].a == 3);
+        assert(dumb.anon_struct_array[i].b == 4);
+        assert(dumb.anon_struct_array[i].u == 5);
+    }
+
     return 0;
 }

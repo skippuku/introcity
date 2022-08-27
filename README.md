@@ -93,30 +93,29 @@ You may want to run `make debug && make test` to ensure everything is working co
 To integrate *intro/city* in your code, you can use the *intro* parser to generate a C header from a source file, then include the generated header somewhere. You also need to include `intro.h`.
 *intro* can trivially be inserted as a step in the build process. For example a Makefile might look like this:
 
-```Makefile
-INTRO_LIB := path/to/intro/lib/
+`intro.h` must be included *before* your types are declared.
 
-main: main.c data_types.h.intro
-    $(CC) -o $@ main.c introlib.o -I$(INTRO_LIB)
+```Makefile
+main: main.c data_types.h.intro intro.h
+    $(CC) -o $@ main.c
     
 data_types.h.intro: data_types.h
     intro -o $@ data_types.h
 ```
 
-`lib/intro.h` must be included *before* your types are declared.
+More information on using intro/city is at [usage](doc/USAGE.md).
 
 ## Disclaimers
-
  - *intro/city* is currently in beta. APIs and implementations are subject to change. If you intend to use this seriously, please be careful about updating. If you run into problems or friction that I am not aware of, please create a new issue on [github](https://github.com/cyman-ide/introcity).
  - *intro/city* currently only supports x86\_64. This may change in the future.
  - the *intro* parser is currently not aware of C++ concepts such as `private` or methods. Only C99 features are fully supported. This may change in the future. You can simply keep relevant types in a separate file.
  - Security against foreign data is not a priority. Don't use these tools with data from a source you don't trust.
 
 ## Documentation
-Documentation is provided in the [doc/](doc/) directory. It may not always be complete, but should cover the important things. It may be useful to look at the tests in [test/](test/) or the library source in [lib/](lib/).    
+Documentation is provided in the [doc/](doc/) directory. It may not always be complete, but should cover the important things. It may be useful to look at the tests in [test/](test/) and [intro.h](lib/intro.h) itself.    
  - [usage (USAGE.md)](doc/USAGE.md)
  - [library reference (LIB.md)](doc/LIB.md)
  - [attribute reference (ATTRIBUTE.md)](doc/ATTRIBUTE.md)
 
 ## Credits
-The *intro* parser makes extensive use of `stb_ds.h` and `stb_sprintf.h` from the [stb libraries](https://github.com/nothings/stb) provided by Sean Barrett.
+The *intro* parser uses `stb_ds.h` and `stb_sprintf.h` from the [stb libraries](https://github.com/nothings/stb) provided by Sean Barrett.
