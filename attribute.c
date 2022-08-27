@@ -102,9 +102,9 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                 parse_error(ctx, tk, "Invalid attribute type.");
                 return -1;
             }
-            info.type = a_tk;
+            info.category = a_tk;
 
-            if (info.type == INTRO_AT_FLAG) {
+            if (info.category == INTRO_AT_FLAG) {
                 info.id = ctx->flag_temp_id_counter++;
             } else {
                 info.id = ctx->attribute_id_counter++;
@@ -148,7 +148,7 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                 temp[tk.length] = 0;
                 a_tk = shget(ctx->attribute_token_map, temp);
                 if (a_tk == ATTR_TK_GLOBAL) {
-                    if (info.type != INTRO_AT_FLAG) {
+                    if (info.category != INTRO_AT_FLAG) {
                         parse_error(ctx, tk, "Only flag attributes can have the trait global.");
                         return -1;
                     }
@@ -532,12 +532,13 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     AttributeData data = {0};
     AttributeParseInfo attr_info;
     Token tk;
+    tk = tk_at(tidx);
 
     if (!parse_attribute_name(ctx, tidx, &attr_info)) {
         return -1;
     }
     data.id = attr_info.final_id;
-    IntroAttributeTypeCategory attribute_category = attr_info.type;
+    IntroAttributeTypeCategory attribute_category = attr_info.category;
 
     char * end;
     switch(attribute_category) {
@@ -769,10 +770,15 @@ static void
 add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info, char * name) {
     IntroAttributeTypeInfo attribute = {
         .name = name,
-        .attr_type = info->type,
-        .type_id = hmget(o_info->index_by_ptr_map, info->type_ptr),
+        .category = info->category,
         .propagated = info->propagate,
     };
+    if (info->type_ptr) {
+        attribute.type_id = hmget(o_info->index_by_ptr_map, info->type_ptr);
+        assert(attribute.type_id != 0);
+    } else {
+        attribute.type_id = 0;
+    }
     int final_id = arrlen(o_info->attr.available);
     arrput(o_info->attr.available, attribute);
     info->final_id = final_id;
@@ -869,7 +875,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
 
     for (int i=0; i < shlen(ctx->attribute_map); i++) {
         AttributeParseInfo * info = &ctx->attribute_map[i].value;
-        if (info->type == INTRO_AT_FLAG) {
+        if (info->category == INTRO_AT_FLAG) {
             arrput(flags, i);
             continue;
         }

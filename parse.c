@@ -3,27 +3,27 @@
 #include "global.c"
 
 static const IntroType known_types [] = {
-    {{}, 0, "void",     0, {0}, 0, 0, 0, INTRO_UNKNOWN},
-    {{}, 0, "uint8_t",  0, {0}, 1, 0, 1, INTRO_U8},
-    {{}, 0, "uint16_t", 0, {0}, 2, 0, 2, INTRO_U16},
-    {{}, 0, "uint32_t", 0, {0}, 4, 0, 4, INTRO_U32},
-    {{}, 0, "uint64_t", 0, {0}, 8, 0, 8, INTRO_U64},
-    {{}, 0, "int8_t",   0, {0}, 1, 0, 1, INTRO_S8},
-    {{}, 0, "int16_t",  0, {0}, 2, 0, 2, INTRO_S16},
-    {{}, 0, "int32_t",  0, {0}, 4, 0, 4, INTRO_S32},
-    {{}, 0, "int64_t",  0, {0}, 8, 0, 8, INTRO_S64}, // 8
-    {{}, 0, "float",    0, {0}, 4, 0, 4, INTRO_F32},
-    {{}, 0, "double",   0, {0}, 8, 0, 8, INTRO_F64}, // 10
-    {{}, 0, "bool",     0, {0}, 1, 0, 1, INTRO_U8},
-    {{}, 0, "va_list",  0, {0}, 0, 0, 0, INTRO_VA_LIST},
-    {{}, 0, "__builtin_va_list", 0, {0}, 0, 0, 0, INTRO_VA_LIST},
+    {{0}, 0, "void",     0, {0}, 0, 0, 0, INTRO_UNKNOWN},
+    {{0}, 0, "uint8_t",  0, {0}, 1, 0, 1, INTRO_U8},
+    {{0}, 0, "uint16_t", 0, {0}, 2, 0, 2, INTRO_U16},
+    {{0}, 0, "uint32_t", 0, {0}, 4, 0, 4, INTRO_U32},
+    {{0}, 0, "uint64_t", 0, {0}, 8, 0, 8, INTRO_U64},
+    {{0}, 0, "int8_t",   0, {0}, 1, 0, 1, INTRO_S8},
+    {{0}, 0, "int16_t",  0, {0}, 2, 0, 2, INTRO_S16},
+    {{0}, 0, "int32_t",  0, {0}, 4, 0, 4, INTRO_S32},
+    {{0}, 0, "int64_t",  0, {0}, 8, 0, 8, INTRO_S64}, // 8
+    {{0}, 0, "float",    0, {0}, 4, 0, 4, INTRO_F32},
+    {{0}, 0, "double",   0, {0}, 8, 0, 8, INTRO_F64}, // 10
+    {{0}, 0, "bool",     0, {0}, 1, 0, 1, INTRO_U8},
+    {{0}, 0, "va_list",  0, {0}, 0, 0, 0, INTRO_VA_LIST},
+    {{0}, 0, "__builtin_va_list", 0, {0}, 0, 0, 0, INTRO_VA_LIST},
 };
 
 typedef struct {
     uint32_t id;
     uint32_t final_id;
     IntroType * type_ptr;
-    IntroAttributeType type;
+    IntroAttributeTypeCategory category;
     bool builtin;
     bool global;
     bool propagate;
@@ -817,6 +817,18 @@ parse_type_base(ParseContext * ctx, TokenIndex * tidx, DeclState * decl) {
         decl->base = t;
     } else {
         if (no_const_name && (t = shget(ctx->type_map, no_const_name))) {
+            t = shget(ctx->type_map, no_const_name);
+            if (!t) {
+                if (type.category || is_typedef) {
+                    type.name = no_const_name;
+                    type.flags &= ~(uint16_t)INTRO_CONST;
+                    t = store_type(ctx, type, -1);
+                } else {
+                    parse_error(ctx, decl->base_tk, "Undeclared type. (const)");
+                    return -1;
+                }
+            }
+
             type = *t;
             type.name = type_name;
             type.parent = t;
@@ -1271,7 +1283,7 @@ add_to_gen_info(ParseContext * ctx, ParseInfo * info, IntroType * type) {
         if (intro_has_of(type)) {
             add_to_gen_info(ctx, info, type->of);
         }
-        if (type->category == INTRO_STRUCT || type->category == INTRO_UNION) {
+        if (intro_has_members(type)) {
             for (int mi=0; mi < type->count; mi++) {
                 const IntroMember * m = &type->members[mi];
                 add_to_gen_info(ctx, info, m->type);
@@ -1368,10 +1380,19 @@ parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
         }
     }
 
+    for (int i=0; i < arrlen(ctx->attribute_directives); i++) {
+        IntroType * type = ctx->attribute_directives[i].type;
+        if (type) {
+            add_to_gen_info(ctx, o_info, type);
+        }
+    }
+
     g_metrics.parse_time += nanointerval();
     ctx->p_info = o_info;
     reset_location_context(&ctx->loc);
+
     handle_attributes(ctx, o_info);
+
     g_metrics.attribute_time += nanointerval();
 
     o_info->count_types = arrlen(o_info->types);

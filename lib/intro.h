@@ -183,7 +183,7 @@ typedef enum IntroAttributeTypeCategory {
 
 typedef struct IntroAttributeTypeInfo {
     const char * name;
-    int attr_type;
+    uint32_t category;
     uint32_t type_id;
     bool propagated;
 } IntroAttributeTypeInfo;
@@ -273,6 +273,8 @@ I(apply_to (void *) (~city))
 // TODO: this should happen automatically
 I(apply_to (const char *) (cstring))
 I(apply_to (const void *) (~city))
+
+//typedef char * _IntroCString; // test
 
 I(attribute @global (
     id:       int,
@@ -877,11 +879,11 @@ get_attribute_value_offset(IntroContext * ctx, IntroAttributeDataId data_id, uin
     return true;
 }
 
-#define ASSERT_ATTR_TYPE(a_type) assert(ctx->attr.available[attr_id].attr_type == a_type)
+#define ASSERT_ATTR_CATEGORY(A_CTGRY) assert(ctx->attr.available[attr_id].category == A_CTGRY)
 
 bool
 intro_attribute_value_x(IntroContext * ctx, const IntroType * type, IntroAttributeDataId data_id, IntroAttributeType attr_id, IntroVariant * o_var) {
-    ASSERT_ATTR_TYPE(INTRO_AT_VALUE);
+    ASSERT_ATTR_CATEGORY(INTRO_AT_VALUE);
     uint32_t value_offset;
     bool has = get_attribute_value_offset(ctx, data_id, attr_id, &value_offset);
     if (!has) return false;
@@ -900,7 +902,7 @@ intro_attribute_value_x(IntroContext * ctx, const IntroType * type, IntroAttribu
 
 bool
 intro_attribute_int_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_id, int32_t * o_int) {
-    ASSERT_ATTR_TYPE(INTRO_AT_INT);
+    ASSERT_ATTR_CATEGORY(INTRO_AT_INT);
     uint32_t value_offset;
     bool has = get_attribute_value_offset(ctx, data_id, attr_id, &value_offset);
     if (has) {
@@ -913,7 +915,7 @@ intro_attribute_int_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAtt
 
 bool
 intro_attribute_member_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_id, int32_t * o_int) {
-    ASSERT_ATTR_TYPE(INTRO_AT_MEMBER);
+    ASSERT_ATTR_CATEGORY(INTRO_AT_MEMBER);
     uint32_t value_offset;
     bool has = get_attribute_value_offset(ctx, data_id, attr_id, &value_offset);
     if (has) {
@@ -926,7 +928,7 @@ intro_attribute_member_x(IntroContext * ctx, IntroAttributeDataId data_id, Intro
 
 bool
 intro_attribute_float_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_id, float * o_float) {
-    ASSERT_ATTR_TYPE(INTRO_AT_FLOAT);
+    ASSERT_ATTR_CATEGORY(INTRO_AT_FLOAT);
     uint32_t value_offset;
     bool has = get_attribute_value_offset(ctx, data_id, attr_id, &value_offset);
     if (has) {
@@ -956,7 +958,7 @@ intro_expr_data(const IntroContainer * pcntr) {
 
 bool
 intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, IntroAttributeType attr_id, int64_t * o_result) {
-    ASSERT_ATTR_TYPE(INTRO_AT_EXPR);
+    ASSERT_ATTR_CATEGORY(INTRO_AT_EXPR);
     uint32_t code_offset;
     const void * data = intro_expr_data(&cntr);
     bool has = get_attribute_value_offset(ctx, intro_get_attr(cntr), attr_id, &code_offset);
@@ -2440,6 +2442,8 @@ intro_load_city_x(IntroContext * ctx, void * dest, const IntroType * d_type, voi
   #error "imgui.h must be included before intro.h when INTRO_IMGUI_IMPL is defined"
 #endif
 
+#include <stdio.h>
+
 #define GUIATTR(x) (ctx->attr.builtin.gui_##x)
 
 namespace intro {
@@ -2485,7 +2489,7 @@ struct IntroImGuiScalarParams {
 };
 
 static IntroImGuiScalarParams
-get_scalar_params(IntroContext * ctx, const IntroType * type, uint32_t attr) {
+get_scalar_params(IntroContext * ctx, const IntroType * type, IntroAttributeDataId attr) {
     IntroImGuiScalarParams result = {};
     result.scale = 1.0f;
     intro_attribute_float_x(ctx, attr, GUIATTR(scale), &result.scale);
@@ -2526,7 +2530,7 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
     if (cont.parent && intro_has_members(cont.parent->type)) {
         m = &cont.parent->type->members[cont.index];
     }
-    uint32_t attr = (m)? m->attr : type->attr;
+    IntroAttributeDataId attr = (m)? m->attr : type->attr;
 
     int64_t expr_result;
     if (
@@ -2754,7 +2758,7 @@ edit_member(IntroContext * ctx, const char * name, IntroContainer cont, int id) 
         if (intro_has_attribute_x(ctx, attr, ctx->attr.builtin.cstring)) {
             ImGui::Text("\"%s\"", (const char *)ptr_data);
         } else if (ptr_data) {
-            ImGui::TextColored(ptr_color, "0x%llx", (uintptr_t)ptr_data);
+            ImGui::TextColored(ptr_color, "0x%lx", (long unsigned int)(uintptr_t)ptr_data);
             if (!has_length) length = 1;
             if (length > 0) {
                 if (is_open) {

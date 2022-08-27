@@ -42,7 +42,8 @@ typedef struct {
     int count_sweet_nothings;
 } JointAllocTest;
 
-I(gui_vector, my_gene_num -83, my_non_gene_num 578)
+I(gui: vector, note "the grungl",
+  my: gene_num -83, non_gene_num 578)
 typedef struct {
     float x, y;
 } Vector2;
@@ -302,6 +303,9 @@ main() {
         assert(intro_attribute_int(m_b, bitfield, &field) && field == 1);
         assert(intro_attribute_int(m_c, bitfield, &field) && field == 10);
     }
+
+    IntroVariant var;
+    assert(intro_attribute_value_x(INTRO_CTX, NULL, ITYPE(Vector2)->attr, IATTR_gui_note, &var) && 0==strcmp((char *)var.data, "the grungl"));
 
     return 0;
 }
