@@ -248,6 +248,8 @@ typedef struct IntroContext {
     uint32_t count_macros;
 
     IntroAttributeContext attr; 
+
+    const char * version;
 } IntroContext;
 
 typedef struct IntroVariant {
@@ -443,6 +445,12 @@ int64_t intro_int_value(const void * data, const IntroType * type);
 #define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 union IntroRegisterData intro_run_bytecode(uint8_t * code, const void * data);
+
+#define INTRO_LIB_VERSION 303
+#if defined static_assert && defined INTRO_GEN_VERSION
+  static_assert(INTRO_LIB_VERSION / 100 == INTRO_GEN_VERSION / 100); // major and minor must match
+  static_assert(INTRO_LIB_VERION - (INTRO_LIB_VERSION / 100) >= INTRO_GEN_VERSION - (INTRO_GEN_VERSION / 100)); // patch level of lib must be more than or equal
+#endif
 
 ///////////////////////////////
 //  INTROLIB IMPLEMENTATION  //

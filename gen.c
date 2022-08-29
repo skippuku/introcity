@@ -325,7 +325,33 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     }
     strputf(&s, "}},\n");
 
+    strputf(&s, "\"%s\",", VERSION);
+
     strputf(&s, "};\n");
+
+    { // version macro
+        static const char *const _version = VERSION;
+
+        const char * pv = _version;
+        char * end;
+        long major = strtol(pv, &end, 10);
+        if (end == pv || *end != '.') {
+            fprintf(stderr, "Unable to determine version.\n");
+        } else {
+            pv = end + 1;
+            long minor = strtol(pv, &end, 10);
+            long patch = 0;
+            pv = end;
+            if (*pv == '-') {
+                pv++;
+                patch = strtol(pv, &end, 10);
+            }
+            long version_num = major * 100 * 100 + minor * 100 + patch;
+            strputf(&s, "\n#ifndef INTRO_GEN_VERSION\n"
+                        "#define INTRO_GEN_VERSION %li\n"
+                        "#endif\n\n", version_num);
+        }
+    }
     strputf(&s, "#endif\n");
 
     hmfree(complex_type_map);
