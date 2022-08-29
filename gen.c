@@ -150,11 +150,11 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
         }
     }
 
-    strputf(&s, "const char * __intro_argnm [%i] = {\n", name_index);
-    if (arrlen(temp) > 0) {
+    if (name_index > 0) {
+        strputf(&s, "const char * __intro_argnm [%i] = {\n", name_index);
         strputf(&s, "%s", temp);
+        strputf(&s, "};\n\n");
     }
-    strputf(&s, "};\n\n");
     arrfree(temp);
 
     // type list
@@ -204,25 +204,27 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
             strputf(&s, "0, ");
         }
 
-        strputf(&s, "%u, %u, %u, 0x%02x, %u, 0x%02x},\n", t->count, t->attr.offset, t->size, t->flags, t->align, t->category);
+        strputf(&s, "%u, {%u}, %u, 0x%02x, %u, 0x%02x},\n", t->count, t->attr.offset, t->size, t->flags, t->align, t->category);
     }
     strputf(&s, "};\n\n");
 
     // function info
     name_index = 0;
-    strputf(&s, "IntroFunction __intro_fn [%u] = {\n", info->count_functions);
-    for (int func_i=0; func_i < info->count_functions; func_i++) {
-        IntroFunction * func = info->functions[func_i];
-        int type_index = hmget(info->index_by_ptr_map, func->type);
-        int return_type_index = hmget(info->index_by_ptr_map, func->return_type);
-        int saved_index = hmget(complex_type_map, func->type->__data);
-        strputf(&s, "{\"%s\", &__intro_t[%i], &__intro_t[%i], &__intro_argnm[%i], &__intro_%x[1], {\"%s\", %u}, %u, %u},\n",
-                    func->name, type_index, return_type_index, name_index, saved_index,
-                    func->location.path, func->location.offset,
-                    func->count_args, func->flags);
-        name_index += func->count_args;
+    if (info->count_functions > 0) {
+        strputf(&s, "IntroFunction __intro_fn [%u] = {\n", info->count_functions);
+        for (int func_i=0; func_i < info->count_functions; func_i++) {
+            IntroFunction * func = info->functions[func_i];
+            int type_index = hmget(info->index_by_ptr_map, func->type);
+            int return_type_index = hmget(info->index_by_ptr_map, func->return_type);
+            int saved_index = hmget(complex_type_map, func->type->__data);
+            strputf(&s, "{\"%s\", &__intro_t[%i], &__intro_t[%i], &__intro_argnm[%i], &__intro_%x[1], {\"%s\", %u}, %u, %u},\n",
+                        func->name, type_index, return_type_index, name_index, saved_index,
+                        func->location.path, func->location.offset,
+                        func->count_args, func->flags);
+            name_index += func->count_args;
+        }
+        strputf(&s, "};\n\n");
     }
-    strputf(&s, "};\n\n");
 
     // attributes
     strputf(&s, "const IntroAttributeTypeInfo __intro_attr_t [%u] = {\n", (unsigned int)info->attr.count_available);
@@ -278,37 +280,39 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     strputf(&s, "};\n\n");
 
     // Macros
-    strputf(&s, "IntroMacro __intro_macros [%lu] = {\n", (long unsigned int)arrlen(pre_info->macros));
-    for (int macro_i=0; macro_i < arrlen(pre_info->macros); macro_i++) {
-        IntroMacro macro = pre_info->macros[macro_i];
-        strputf(&s, "{\"%s\", ", macro.name);
-        if (macro.parameters) {
-            strputf(&s, "&__intro_argnm[%i], ", name_index);
-            name_index += macro.count_parameters;
-        } else {
-            strputf(&s, "0, ");
-        }
+    if (arrlen(pre_info->macros) > 0) {
+        strputf(&s, "IntroMacro __intro_macros [%lu] = {\n", (long unsigned int)arrlen(pre_info->macros));
+        for (int macro_i=0; macro_i < arrlen(pre_info->macros); macro_i++) {
+            IntroMacro macro = pre_info->macros[macro_i];
+            strputf(&s, "{\"%s\", ", macro.name);
+            if (macro.parameters) {
+                strputf(&s, "&__intro_argnm[%i], ", name_index);
+                name_index += macro.count_parameters;
+            } else {
+                strputf(&s, "0, ");
+            }
 
-        char * replace_string;
-        bool do_free;
-        if (macro.replace) {
-            replace_string = create_escaped_string(macro.replace);
-            do_free = true;
-        } else {
-            replace_string = "\"\"";
-            do_free = false;
+            char * replace_string;
+            bool do_free;
+            if (macro.replace) {
+                replace_string = create_escaped_string(macro.replace);
+                do_free = true;
+            } else {
+                replace_string = "\"\"";
+                do_free = false;
+            }
+            strputf(&s, "%s, {\"%s\", %u}, %u},\n", replace_string, macro.location.path, macro.location.offset, macro.count_parameters);
+            if (do_free) arrfree(replace_string);
         }
-        strputf(&s, "%s, {\"%s\", %u}, %u},\n", replace_string, macro.location.path, macro.location.offset, macro.count_parameters);
-        if (do_free) arrfree(replace_string);
+        strputf(&s, "};\n\n");
     }
-    strputf(&s, "};\n\n");
 
     // context
     strputf(&s, "IntroContext __intro_ctx = {\n");
     strputf(&s, "__intro_t,\n");
     strputf(&s, "__intro_values,\n");
-    strputf(&s, "__intro_fn,\n");
-    strputf(&s, "__intro_macros,\n");
+    strputf(&s, "%s,\n", (info->count_functions > 0)? "__intro_fn" : "0");
+    strputf(&s, "%s,\n", (arrlen(pre_info->macros) > 0)? "__intro_macros" : "0");
 
     strputf(&s, "%u,", info->count_types);
     strputf(&s, "%i,", (int)arrlenu(info->value_buffer));
