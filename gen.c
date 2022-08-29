@@ -77,7 +77,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
                     } else {
                         strputf(&mbr, "{0, ");
                     }
-                    strputf(&mbr, "&__intro_t[%i], %u, %u},\n",
+                    strputf(&mbr, "&__intro_t[%i], %u, {%u}},\n",
                                   member_type_index, m.offset, m.attr.offset);
                 }
                 struct_member_index += t->count;
@@ -87,7 +87,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
                 hmput(complex_type_map, t->__data, enum_value_index);
                 for (int v_i=0; v_i < t->count; v_i++) {
                     IntroEnumValue v = t->values[v_i];
-                    strputf(&ev, "{\"%s\", %i, %u},\n", v.name, v.value, v.attr.offset);
+                    strputf(&ev, "{\"%s\", %i, {%u}},\n", v.name, v.value, v.attr.offset);
                 }
                 enum_value_index += t->count;
             }break;
@@ -110,8 +110,8 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     arrput(ev, 0);
     arrput(ct, 0);
 
-    strputf(&s, "IntroMember __intro_mbr [] = {\n%s};\n\n", mbr);
-    strputf(&s, "IntroEnumValue __intro_ev [] = {\n%s};\n\n", ev);
+    strputf(&s, "IntroMember __intro_mbr [%i] = {\n%s};\n\n", struct_member_index, mbr);
+    strputf(&s, "IntroEnumValue __intro_ev [%i] = {\n%s};\n\n", enum_value_index, ev);
     strputf(&s, "%s", ct);
 
     arrfree(mbr);
@@ -119,20 +119,21 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     arrfree(ct);
 
     // function & macro arg/param names
+
+    char * temp = NULL;
     int name_index = 0;
-    strputf(&s, "const char * __intro_argnm [] = {\n");
     for (int func_i=0; func_i < info->count_functions; func_i++) {
         IntroFunction * func = info->functions[func_i];
         for (int name_i=0; name_i < func->count_args; name_i++) {
             const char * name = func->arg_names[name_i];
             if (name) {
-                strputf(&s, "\"%s\",", name);
+                strputf(&temp, "\"%s\",", name);
             } else {
-                strputf(&s, "0,");
+                strputf(&temp, "0,");
             }
             name_index++;
             if ((name_index & 7) == 0) {
-                strputf(&s, "\n");
+                strputf(&temp, "\n");
             }
         }
     }
@@ -140,15 +141,21 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
         IntroMacro macro = pre_info->macros[macro_i];
         for (int name_i=0; name_i < macro.count_parameters; name_i++) {
             const char * name = macro.parameters[name_i];
-            strputf(&s, "\"%s\",", name);
+            strputf(&temp, "\"%s\",", name);
 
             name_index++;
             if ((name_index & 7) == 0) {
-                strputf(&s, "\n");
+                strputf(&temp, "\n");
             }
         }
     }
+
+    strputf(&s, "const char * __intro_argnm [%i] = {\n", name_index);
+    if (arrlen(temp) > 0) {
+        strputf(&s, "%s", temp);
+    }
     strputf(&s, "};\n\n");
+    arrfree(temp);
 
     // type list
     strputf(&s, "IntroType __intro_t [%u] = {\n", info->count_types);
@@ -218,7 +225,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     strputf(&s, "};\n\n");
 
     // attributes
-    strputf(&s, "const IntroAttributeTypeInfo __intro_attr_t [] = {\n");
+    strputf(&s, "const IntroAttributeTypeInfo __intro_attr_t [%u] = {\n", (unsigned int)info->attr.count_available);
     for (int attr_index = 0; attr_index < info->attr.count_available; attr_index++) {
         IntroAttributeTypeInfo attr = info->attr.available[attr_index];
         strputf(&s, "{\"%s\", %u, %u, %u},\n", attr.name, attr.category, attr.type_id, attr.propagated);
@@ -271,7 +278,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     strputf(&s, "};\n\n");
 
     // Macros
-    strputf(&s, "IntroMacro __intro_macros [] = {\n");
+    strputf(&s, "IntroMacro __intro_macros [%lu] = {\n", (long unsigned int)arrlen(pre_info->macros));
     for (int macro_i=0; macro_i < arrlen(pre_info->macros); macro_i++) {
         IntroMacro macro = pre_info->macros[macro_i];
         strputf(&s, "{\"%s\", ", macro.name);

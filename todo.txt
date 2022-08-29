@@ -1,4 +1,5 @@
 lib:
+    !! check version against generated header
     move parts of the parser into a library separate from introlib
         preprocessor
         interface for creating types/contexts
