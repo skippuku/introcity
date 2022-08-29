@@ -25,7 +25,7 @@ main() {
 
     bool from_file = intro_load_city_file(&save, ITYPE(SaveData), "save.cty");
     if (!from_file) {
-        intro_set_fallbacks(&save, ITYPE(SaveData));
+        intro_fallback(&save, ITYPE(SaveData));
     }
 
     printf("Save file contents:\n");
