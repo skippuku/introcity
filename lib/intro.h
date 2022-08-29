@@ -32,8 +32,10 @@ extern "C" {
 #include <stdbool.h>
 #include <assert.h>
 
-#ifndef __INTRO__
-#define I(...)
+#ifdef __INTRO__
+  #define_forced I I
+#else
+  #define I(...)
 #endif
 
 #ifndef INTRO_CTX
