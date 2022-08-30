@@ -198,7 +198,9 @@ typedef struct IntroAttributeTypeInfo {
     const char * name;
     uint32_t category;
     uint32_t type_id;
+    bool global;
     bool propagated;
+    bool transient;
 } IntroAttributeTypeInfo;
 
 typedef struct IntroAttributeData {
@@ -289,8 +291,6 @@ I(apply_to (void *) (~city))
 I(apply_to (const char *) (cstring))
 I(apply_to (const void *) (~city))
 
-//typedef char * _IntroCString; // test
-
 I(attribute @global (
     id:       int,
     bitfield: int,
@@ -301,7 +301,7 @@ I(attribute @global (
     imitate:  type,
     city:     flag @global,
     cstring:  flag @propagate,
-    remove:   __remove,
+    remove:   __remove @transient,
 ))
 
 I(attribute gui_ (

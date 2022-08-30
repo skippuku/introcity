@@ -37,10 +37,6 @@ attribute:
     'terminated' attribute?
         specify the terminator (optionally?)
 
-    'none' attribute type
-        makes an attribute not generate any information
-        useful for when an attribute is only relevant at compile-time
-
     members of complex type can specify an attribute as a value: I(default default)
     value(@inherit_base): inherit base of pointer or array type
 
@@ -91,7 +87,7 @@ gen:
     typeof with _Generic?
 
     more generation options:
-        odin "header"
+        odin package
         json info
 
 config:

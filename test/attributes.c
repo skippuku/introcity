@@ -16,6 +16,7 @@ I(attribute my_ (
 
     gene_num: int @propagate,
     non_gene_num: int,
+    comp_only: flag @transient,
 ))
 
 I(attribute Skp (
@@ -67,7 +68,7 @@ typedef struct {
     Vector2 internal_vec I(gui: ~show, ~vector);
 
     SpecialVec2 special_vec1;
-    SpecialVec2 special_vec2 I(my_: non_gene_num 612);
+    SpecialVec2 special_vec2 I(my_: non_gene_num 612, comp_only);
 
     I(
         ~city,      // start in global namespace
@@ -233,6 +234,8 @@ main() {
         assert(intro_has_attribute(m_accel, gui_scale));
         assert(!intro_has_attribute(m_internal_vec, gui_show));
         assert(!intro_has_attribute(m_internal_vec, gui_vector));
+
+        assert(!intro_has_attribute(m_special_vec2, my_comp_only));
 
         // PROPAGATION TESTS
         {

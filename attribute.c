@@ -4,6 +4,7 @@ enum AttributeToken {
     ATTR_TK_ATTRIBUTE,
     ATTR_TK_APPLY_TO,
     ATTR_TK_PROPAGATE,
+    ATTR_TK_TRANSIENT,
     ATTR_TK_INVALID
 };
 
@@ -19,10 +20,11 @@ attribute_parse_init(ParseContext * ctx) {
         {"expr",    INTRO_AT_EXPR},
         {"__remove",INTRO_AT_REMOVE},
         {"attribute", ATTR_TK_ATTRIBUTE},
-        {"apply_to", ATTR_TK_APPLY_TO},
-        {"global",  ATTR_TK_GLOBAL},
-        {"inherit", ATTR_TK_INHERIT},
+        {"apply_to",  ATTR_TK_APPLY_TO},
+        {"global",    ATTR_TK_GLOBAL},
+        {"inherit",   ATTR_TK_INHERIT},
         {"propagate", ATTR_TK_PROPAGATE},
+        {"transient", ATTR_TK_TRANSIENT},
     };
     shdefault(ctx->attribute_token_map, ATTR_TK_INVALID);
     for (int i=0; i < LENGTH(attribute_keywords); i++) {
@@ -147,16 +149,22 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                 memcpy(temp, tk.start, tk.length);
                 temp[tk.length] = 0;
                 a_tk = shget(ctx->attribute_token_map, temp);
-                if (a_tk == ATTR_TK_GLOBAL) {
+                switch (a_tk) {
+                case ATTR_TK_GLOBAL:
                     if (info.category != INTRO_AT_FLAG) {
                         parse_error(ctx, tk, "Only flag attributes can have the trait global.");
                         return -1;
                     }
                     info.global = true;
                     info.propagate = true;
-                } else if (a_tk == ATTR_TK_PROPAGATE) {
+                    break;
+                case ATTR_TK_PROPAGATE:
                     info.propagate = true;
-                } else {
+                    break;
+                case ATTR_TK_TRANSIENT:
+                    info.transient = true;
+                    break;
+                default:
                     parse_error(ctx, tk, "Invalid trait.");
                     return -1;
                 }
@@ -775,7 +783,9 @@ add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info,
     IntroAttributeTypeInfo attribute = {
         .name = name,
         .category = info->category,
+        .global = info->global,
         .propagated = info->propagate,
+        .transient = info->transient,
     };
     if (info->type_ptr) {
         attribute.type_id = hmget(o_info->index_by_ptr_map, info->type_ptr);
@@ -806,7 +816,7 @@ attribute_data_sort_callback(const void * p_a, const void * p_b) {
 }
 
 void
-apply_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_index, AttributeData * data, int32_t count) {
+apply_attributes(ParseContext * ctx, IntroType * type, int32_t member_index, AttributeData * data, int32_t count) {
     AttributeDataKey key = {
         .type = type,
         .member_index = member_index,
@@ -818,19 +828,18 @@ apply_attributes_to_member(ParseContext * ctx, IntroType * type, int32_t member_
         assert(pcontent != NULL);
     }
     for (int i=0; i < count; i++) {
-        bool propagated = ctx->p_info->attr.available[data[i].id].propagated;
-        if (member_index == MIDX_TYPE_PROPAGATED && !propagated) {
+        IntroAttributeTypeInfo attr_info = ctx->p_info->attr.available[data[i].id];
+        if (member_index == MIDX_TYPE_PROPAGATED && !attr_info.propagated) {
             continue;
         }
-        bool do_remove = data[i].id == ctx->builtin.remove;
-        uint32_t check_id = (do_remove)? data[i].v.i : data[i].id;
+        uint32_t check_id = (data[i].id == ctx->builtin.remove)? data[i].v.i : data[i].id;
         for (int j=0; j < arrlen(pcontent->value); j++) {
             if (pcontent->value[j].id == check_id) {
                 arrdelswap(pcontent->value, j);
                 break;
             }
         }
-        if (!do_remove) arrput(pcontent->value, data[i]);
+        if (!attr_info.transient) arrput(pcontent->value, data[i]);
     }
 }
 
@@ -939,18 +948,18 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
                 }
             }
             if (type_attr_data && arrlen(type_attr_data) > 0) {
-                apply_attributes_to_member(ctx, directive.type, directive.member_index, type_attr_data, arrlen(type_attr_data));
+                apply_attributes(ctx, directive.type, directive.member_index, type_attr_data, arrlen(type_attr_data));
                 found_inheritance = true;
             }
         }
 
         // add global flags if nothing could be inherited
         if (!found_inheritance) {
-            apply_attributes_to_member(ctx, directive.type, directive.member_index, ctx->attribute_globals, arrlen(ctx->attribute_globals));
+            apply_attributes(ctx, directive.type, directive.member_index, ctx->attribute_globals, arrlen(ctx->attribute_globals));
         }
 
         // add attributes from directive
-        apply_attributes_to_member(ctx, directive.type, directive.member_index, directive.attr_data, directive.count);
+        apply_attributes(ctx, directive.type, directive.member_index, directive.attr_data, directive.count);
 
         // add to heritable (propagated) attributes if this is for a type
         if (directive.member_index == MIDX_TYPE) {
@@ -959,7 +968,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
 
             if (arrlen(all_data) > 0) {
                 // function ignores non-propagated attributes
-                apply_attributes_to_member(ctx, directive.type, MIDX_TYPE_PROPAGATED, all_data, arrlen(all_data));
+                apply_attributes(ctx, directive.type, MIDX_TYPE_PROPAGATED, all_data, arrlen(all_data));
             }
         }
     }
