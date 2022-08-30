@@ -222,25 +222,6 @@ generate_config(int argc, char ** argv) {
     cfg.defines = read_stream(fp);
     pclose(fp);
 
-#if 0
-    static const char * type_info_program =
-    "#include <limits.h>\n"
-    "#include <stdio.h>\n"
-    "#define CFG_SIZE(t) printf(\"%s = %i\\n\", #t, sizeof(t));\n"
-    "int main(void) {\n"
-    "  CFG_SIZE(void *)\n"
-    "  CFG_SIZE(char)\n"
-    "  CFG_SIZE(short)\n"
-    "  CFG_SIZE(int)\n"
-    "  CFG_SIZE(long)\n"
-    "  CFG_SIZE(long long)\n"
-    "  CFG_SIZE(long double)\n"
-    "  CFG_SIZE(_Bool)\n"
-    "  printf(\"char_is_signed = %u\\n\", CHAR_MIN < 0);\n"
-    "  return 0;\n"
-    "}\n";
-#endif
-
     cfg.type_info = (CTypeInfo){
         .size_ptr = sizeof(void *),
         .size_short = sizeof(short),

@@ -303,7 +303,7 @@ I(attribute @global (
 
 I(attribute gui_ (
     note:   value(char *),
-    name:   value(char *), // TODO: rename to friendly, move to @global
+    name:   value(char *),
     min:    value(@inherit) @propagate,
     max:    value(@inherit) @propagate,
     format: value(char *)   @propagate,
@@ -456,7 +456,7 @@ int64_t intro_int_value(const void * data, const IntroType * type);
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 union IntroRegisterData intro_run_bytecode(uint8_t * code, const void * data);
 
-#define INTRO_LIB_VERSION 304
+#define INTRO_LIB_VERSION 311
 #if defined static_assert && defined INTRO_GEN_VERSION
   static_assert(INTRO_LIB_VERSION / 100 == INTRO_GEN_VERSION / 100); // major and minor must match
   static_assert(INTRO_LIB_VERION - (INTRO_LIB_VERSION / 100) >= INTRO_GEN_VERSION - (INTRO_GEN_VERSION / 100)); // patch level of lib must be more than or equal
@@ -2070,8 +2070,6 @@ city__serialize(CityContext * city, uint32_t data_offset, IntroContainer cont) {
 
 void *
 intro_create_city_x(IntroContext * ictx, const void * src, const IntroType * s_type, size_t *o_size) {
-    assert(s_type->category == INTRO_STRUCT); // TODO: remove
-
     // init context
     CityContext _city, * city = &_city;
 

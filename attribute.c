@@ -598,9 +598,6 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         data.v.f = result;
     } break;
 
-    // TODO: error check: member used as length can't have a value if the member it is the length of has a value
-    // TODO: error check: if multiple members use the same member for length, values can't have different lengths
-    // NOTE: the previous 2 todo's do not apply if the values are for different attributes
     case INTRO_AT_VALUE: {
         if (data.id == ctx->builtin.alias && tk_at(tidx).type == TK_IDENTIFIER) {
             tk = next_token(tidx);
@@ -872,42 +869,6 @@ apply_attributes(ParseContext * ctx, IntroType * type, int32_t member_index, Att
 }
 
 static void
-handle_deferred_defaults(ParseContext * ctx) {
-    // TODO: not sure how to handle this now that length is an expression...
-#if 0
-    for (int i=0; i < arrlen(ctx->deferred_length_defaults); i++) {
-        DeferredDefault def = ctx->deferred_length_defaults[i];
-        AttributeDataKey key = {
-            .type = def.type,
-            .member_index = def.member_index,
-        };
-        AttributeDataMap * pcontent = hmgetp_null(ctx->attribute_data_map, key);
-        assert(pcontent != NULL);
-
-        IntroMember * length_member = NULL;
-        int32_t length_member_index = -1;
-        for (int a=0; a < arrlen(pcontent->value); a++) {
-            if (pcontent->value[a].id == ctx->builtin.length) {
-                length_member_index = pcontent->value[a].v.i;
-                length_member = &def.type->members[length_member_index];
-                break;
-            }
-        }
-        if (!length_member) continue;
-
-        ptrdiff_t value_offset = store_value(ctx, &def.value, length_member->type->size);
-        AttributeData data = {
-            .id = def.attr_id,
-            .v.i = value_offset,
-        };
-
-        apply_attributes_to_member(ctx, def.type, length_member_index, &data, 1);
-    }
-    arrsetlen(ctx->deferred_length_defaults, 0);
-#endif
-}
-
-static void
 handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
     int * flags = NULL;
     arrsetcap(flags, 16);
@@ -1011,8 +972,6 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
             }
         }
     }
-
-    handle_deferred_defaults(ctx);
 
     struct {IntroType * key; IntroAttributeDataId value;} * propagated_map = NULL;
 

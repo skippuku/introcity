@@ -244,6 +244,7 @@ enum ReturnCode {
     RET_FOUND_END = 6,
     RET_NOT_TYPE = 7,
     RET_DECL_VA_LIST = 8,
+    RET_ALREADY_INCLUDED = 9,
 };
 
 typedef struct ExprContext ExprContext;

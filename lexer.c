@@ -96,12 +96,6 @@ is_iden(char c) {
     return is_digit(c) || is_alpha(c) || c == '_';
 }
 
-static bool // TODO(remove) i don't thing this is useful actually
-ignore_newline_at(char * s) {
-    while (*--s != '\n' && is_space(*s));
-    return *s == '\\';
-}
-
 Token
 pre_next_token(char ** o_s) {
     Token tk = {0};
@@ -217,10 +211,13 @@ pre_next_token(char ** o_s) {
         bool is_comment = false;
         if (*(s+1) == '/') {
             is_comment = true;
+            bool ignore_newline = false;
             while (*++s != '\0') {
-                if (*s == '\n' && !ignore_newline_at(s)) {
+                if (*s == '\n' && !ignore_newline) {
                     break;
                 }
+                if (ignore_newline && !is_space(*s)) ignore_newline = false;
+                if (*s == '\\') ignore_newline = true;
             }
         } else if (*(s+1) == '*') {
             is_comment = true;

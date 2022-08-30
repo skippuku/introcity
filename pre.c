@@ -1083,10 +1083,72 @@ pre_handle_intro_pragma(PreContext * ctx, TokenIndex * tidx, Token * o_tk) {
     return 0;
 }
 
-int preprocess_filename(PreContext * ctx, char * filename);
+int
+preprocess_set_file(PreContext * ctx, char * filename) {
+    char * file_buffer = NULL;
+    size_t file_size;
+
+    // search for buffer or create it if it doesn't exist
+    for (int i=0; i < arrlen(ctx->loc.file_buffers); i++) {
+        FileInfo * fb = ctx->loc.file_buffers[i];
+        if (strcmp(filename, fb->filename) == 0) {
+            if (fb->once) {
+                return RET_ALREADY_INCLUDED;
+            }
+            file_buffer = fb->buffer;
+            file_size = fb->buffer_size;
+            ctx->current_file = fb;
+            break;
+        }
+    }
+    if (!file_buffer) {
+        time_t mtime;
+        if (filename == filename_stdin) {
+            file_buffer = read_stream(stdin);
+            file_size = arrlen(file_buffer);
+            time(&mtime);
+        } else {
+            file_buffer = intro_read_file(filename, &file_size);
+            struct stat file_stat;
+            stat(filename, &file_stat);
+            mtime = file_stat.st_mtime;
+        }
+        if (!file_buffer) {
+            return RET_FILE_NOT_FOUND;
+        }
+
+        FileInfo * new_buf = calloc(1, sizeof(*new_buf));
+        new_buf->filename = filename;
+        new_buf->buffer = file_buffer;
+
+        g_metrics.pre_time += nanointerval();
+        new_buf->tk_list = create_token_list(file_buffer);
+        g_metrics.lex_time += nanointerval();
+
+        if (ctx->get_metrics) {
+            for (int i=0; i < arrlen(new_buf->tk_list); i++) {
+                if (new_buf->tk_list[i].type == TK_NEWLINE) {
+                    g_metrics.count_pre_lines++;
+                }
+            }
+            g_metrics.count_pre_tokens += arrlen(new_buf->tk_list);
+        }
+
+        new_buf->buffer_size = file_size;
+        new_buf->mtime = mtime;
+        ctx->current_file = new_buf;
+        arrput(ctx->loc.file_buffers, new_buf);
+    }
+
+    if (ctx->include_level == 0) {
+        ctx->base_file = filename;
+    }
+
+    return 0;
+}
 
 int
-preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
+preprocess_file(PreContext * ctx) {
     FileInfo * file = ctx->current_file;
     char * filename = file->filename;
 
@@ -1354,7 +1416,17 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                 bool enable_notice = (ctx->notice & NOTICE_INCLUDES) && !(ctx->is_sys_header && !(ctx->notice & NOTICE_SYS_HEADERS));
                 SET_BITS(ctx->notice, NOTICE_ENABLED, enable_notice);
 
-                int error = preprocess_filename(ctx, inc_filepath_stored);
+                int ret = preprocess_set_file(ctx, inc_filepath_stored);
+                if (ret == RET_FILE_NOT_FOUND) {
+                    preprocess_error(&inc_file.tk, "Failed to read file.");
+                    return -1;
+                } else if (ret == RET_ALREADY_INCLUDED) {
+                } else if (ret == 0) {
+                    ret = preprocess_file(ctx);
+                    if (ret < 0) return -1;
+                } else {
+                    return -1;
+                }
 
                 ctx->notice = arrpop(ctx->notice_stack);
 
@@ -1362,11 +1434,6 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
                 ctx->include_level--;
                 ctx->current_file = file;
 
-                if (error == RET_FILE_NOT_FOUND) {
-                    preprocess_error(&inc_file.tk, "Failed to read file.");
-                    return -1;
-                }
-                if (error < 0) return -1;
             }
         } else if (tk.type == TK_END) {
             if (!ctx->minimal_parse) ignore_section(paste, tidx->index - 1, -1);
@@ -1451,70 +1518,6 @@ preprocess_buffer(PreContext * ctx) { // TODO combine with preprocess_filename
     }
 
     return 0;
-}
-
-int
-preprocess_filename(PreContext * ctx, char * filename) {
-    char * file_buffer = NULL;
-    size_t file_size;
-
-    // search for buffer or create it if it doesn't exist
-    for (int i=0; i < arrlen(ctx->loc.file_buffers); i++) {
-        FileInfo * fb = ctx->loc.file_buffers[i];
-        if (strcmp(filename, fb->filename) == 0) {
-            if (fb->once) {
-                return 0;
-            }
-            file_buffer = fb->buffer;
-            file_size = fb->buffer_size;
-            ctx->current_file = fb;
-            break;
-        }
-    }
-    if (!file_buffer) {
-        time_t mtime;
-        if (filename == filename_stdin) {
-            file_buffer = read_stream(stdin);
-            file_size = arrlen(file_buffer);
-            time(&mtime);
-        } else {
-            file_buffer = intro_read_file(filename, &file_size);
-            struct stat file_stat;
-            stat(filename, &file_stat);
-            mtime = file_stat.st_mtime;
-        }
-        if (!file_buffer) {
-            return RET_FILE_NOT_FOUND;
-        }
-
-        FileInfo * new_buf = calloc(1, sizeof(*new_buf));
-        new_buf->filename = filename;
-        new_buf->buffer = file_buffer;
-
-        g_metrics.pre_time += nanointerval();
-        new_buf->tk_list = create_token_list(file_buffer);
-        g_metrics.lex_time += nanointerval();
-
-        if (ctx->get_metrics) {
-            for (int i=0; i < arrlen(new_buf->tk_list); i++) {
-                if (new_buf->tk_list[i].type == TK_NEWLINE) {
-                    g_metrics.count_pre_lines++;
-                }
-            }
-            g_metrics.count_pre_tokens += arrlen(new_buf->tk_list);
-        }
-
-        new_buf->buffer_size = file_size;
-        new_buf->mtime = mtime;
-        ctx->current_file = new_buf;
-        arrput(ctx->loc.file_buffers, new_buf);
-    }
-
-    if (ctx->include_level == 0) {
-        ctx->base_file = filename;
-    }
-
-    return preprocess_buffer(ctx);
 }
 
 static char help_dialog [] =
@@ -1824,7 +1827,7 @@ run_preprocessor(int argc, char ** argv) {
                 config_file->filename = copy_and_terminate(ctx->arena, path, strlen(path));
                 arrput(ctx->loc.file_buffers, config_file);
                 ctx->current_file = config_file;
-                int ret = preprocess_buffer(ctx);
+                int ret = preprocess_file(ctx);
                 if (ret < 0) {
                     info.ret = -1;
                     return info;
@@ -1853,7 +1856,7 @@ run_preprocessor(int argc, char ** argv) {
         intro_defs_file->filename = "__INTRO_DEFS__";
         arrput(ctx->loc.file_buffers, intro_defs_file);
         ctx->current_file = intro_defs_file;
-        int ret = preprocess_buffer(ctx);
+        int ret = preprocess_file(ctx);
         if (ret < 0) {
             info.ret = -1;
             return info;
@@ -1888,7 +1891,7 @@ run_preprocessor(int argc, char ** argv) {
         strputf(&info.output_filename, "%s%s", filepath, ext);
     }
 
-    int error = preprocess_filename(ctx, filepath);
+    int error = preprocess_set_file(ctx, filepath);
     if (error) {
         if (error == RET_FILE_NOT_FOUND) {
             fprintf(stderr, "File not found.\n");
@@ -1896,6 +1899,12 @@ run_preprocessor(int argc, char ** argv) {
         info.ret = -1;
         return info;
     }
+    error = preprocess_file(ctx);
+    if (error) {
+        info.ret = error;
+        return info;
+    }
+
     Token endtk = {.type = TK_END};
     arrput(ctx->result_list, endtk);
 
@@ -1975,15 +1984,6 @@ run_preprocessor(int argc, char ** argv) {
         fwrite(pretext, 1, arrlen(pretext), stdout);
         exit(0);
     }
-
-#if 0 // needed for error messages
-    for (int def_i=0; def_i < shlen(ctx->defines); def_i++) {
-        Define def = ctx->defines[def_i];
-        arrfree(def.arg_list);
-        arrfree(def.replace_list);
-    }
-    shfree(ctx->defines);
-#endif
 
     for (int def_i=0; def_i < shlen(ctx->defines); def_i++) {
         Define def = ctx->defines[def_i];
