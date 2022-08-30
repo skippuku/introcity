@@ -230,7 +230,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     strputf(&s, "const IntroAttributeTypeInfo __intro_attr_t [%u] = {\n", (unsigned int)info->attr.count_available);
     for (int attr_index = 0; attr_index < info->attr.count_available; attr_index++) {
         IntroAttributeTypeInfo attr = info->attr.available[attr_index];
-        strputf(&s, "{\"%s\", %u, %u, %u},\n", attr.name, attr.category, attr.type_id, attr.propagated);
+        strputf(&s, "{\"%s\", %u, %u},\n", attr.name, attr.category, attr.type_id);
     }
     strputf(&s, "};\n\n");
 

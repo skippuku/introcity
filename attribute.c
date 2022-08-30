@@ -5,6 +5,7 @@ enum AttributeToken {
     ATTR_TK_APPLY_TO,
     ATTR_TK_PROPAGATE,
     ATTR_TK_TRANSIENT,
+    ATTR_TK_IMPLY,
     ATTR_TK_INVALID
 };
 
@@ -25,6 +26,7 @@ attribute_parse_init(ParseContext * ctx) {
         {"inherit",   ATTR_TK_INHERIT},
         {"propagate", ATTR_TK_PROPAGATE},
         {"transient", ATTR_TK_TRANSIENT},
+        {"imply",     ATTR_TK_IMPLY},
     };
     shdefault(ctx->attribute_token_map, ATTR_TK_INVALID);
     for (int i=0; i < LENGTH(attribute_keywords); i++) {
@@ -106,12 +108,6 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
             }
             info.category = a_tk;
 
-            if (info.category == INTRO_AT_FLAG) {
-                info.id = ctx->flag_temp_id_counter++;
-            } else {
-                info.id = ctx->attribute_id_counter++;
-            }
-
             tk = next_token(tidx);
             if (tk.type == TK_L_PARENTHESIS && a_tk == INTRO_AT_VALUE) {
                 tk = next_token(tidx);
@@ -164,11 +160,35 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                 case ATTR_TK_TRANSIENT:
                     info.transient = true;
                     break;
+                case ATTR_TK_IMPLY: {
+                    EXPECT('(');
+                    tidx->index -= 1;
+                    int closing = find_closing(*tidx);
+                    if (closing == 0) {
+                        parse_error(ctx, tk_at(tidx), "No closing ')'.");
+                        return -1;
+                    }
+                    AttributeDirective directive = {
+                        .type = NULL,
+                        .location = tidx->index,
+                        .member_index = MIDX_IMPLY,
+                    };
+                    tidx->index = closing + 1;
+                    info.imply_directive_index = arrlen(ctx->attribute_directives);
+                    arrput(ctx->attribute_directives, directive);
+                }break;
+
                 default:
                     parse_error(ctx, tk, "Invalid trait.");
                     return -1;
                 }
                 tk = next_token(tidx);
+            }
+
+            if (info.category == INTRO_AT_FLAG || info.transient) {
+                info.id = ctx->flag_temp_id_counter++;
+            } else {
+                info.id = ctx->attribute_id_counter++;
             }
 
             shput(ctx->attribute_map, namespaced, info);
@@ -783,9 +803,6 @@ add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info,
     IntroAttributeTypeInfo attribute = {
         .name = name,
         .category = info->category,
-        .global = info->global,
-        .propagated = info->propagate,
-        .transient = info->transient,
     };
     if (info->type_ptr) {
         attribute.type_id = hmget(o_info->index_by_ptr_map, info->type_ptr);
@@ -796,6 +813,7 @@ add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info,
     int final_id = arrlen(o_info->attr.available);
     arrput(o_info->attr.available, attribute);
     info->final_id = final_id;
+    hmput(ctx->parse_info_by_id, final_id, info);
     int builtin_offset = shget(ctx->builtin_map, name);
     if (builtin_offset >= 0) {
         *((uint8_t *)&ctx->builtin + builtin_offset) = (uint8_t)final_id;
@@ -828,10 +846,18 @@ apply_attributes(ParseContext * ctx, IntroType * type, int32_t member_index, Att
         assert(pcontent != NULL);
     }
     for (int i=0; i < count; i++) {
-        IntroAttributeTypeInfo attr_info = ctx->p_info->attr.available[data[i].id];
-        if (member_index == MIDX_TYPE_PROPAGATED && !attr_info.propagated) {
+        AttributeParseInfo * info = hmget(ctx->parse_info_by_id, data[i].id);
+        assert(info != NULL);
+
+        if (member_index == MIDX_TYPE_PROPAGATED && !info->propagate) {
             continue;
         }
+
+        if (info->imply_directive_index != 0) {
+            AttributeDirective implied_directive = ctx->attribute_directives[info->imply_directive_index];
+            apply_attributes(ctx, type, member_index, implied_directive.attr_data, implied_directive.count);
+        }
+
         uint32_t check_id = (data[i].id == ctx->builtin.remove)? data[i].v.i : data[i].id;
         for (int j=0; j < arrlen(pcontent->value); j++) {
             if (pcontent->value[j].id == check_id) {
@@ -839,7 +865,8 @@ apply_attributes(ParseContext * ctx, IntroType * type, int32_t member_index, Att
                 break;
             }
         }
-        if (!attr_info.transient) arrput(pcontent->value, data[i]);
+
+        if (!info->transient) arrput(pcontent->value, data[i]);
     }
 }
 
@@ -907,8 +934,19 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
     IntroAttributeData * empty = arraddnptr(o_info->attr.data, 1);
     memset(empty, 0, sizeof(*empty));
 
+    // parse implied directives first
+    for (int directive_i=0; directive_i < arrlen(ctx->attribute_directives); directive_i++) {
+        AttributeDirective * p_directive = &ctx->attribute_directives[directive_i];
+        if (p_directive->type != NULL) continue;
+
+        int ret = parse_attributes(ctx, p_directive);
+        if (ret) exit(1);
+    }
+
     for (int directive_i=0; directive_i < arrlen(ctx->attribute_directives); directive_i++) {
         AttributeDirective directive = ctx->attribute_directives[directive_i];
+        if (directive.type == NULL) continue;
+
         if (!directive.attr_data) {
             int ret = parse_attributes(ctx, &directive);
             if (ret) exit(1);

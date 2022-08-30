@@ -24,6 +24,7 @@ typedef struct {
     uint32_t final_id;
     IntroType * type_ptr;
     IntroAttributeTypeCategory category;
+    uint32_t imply_directive_index;
     bool builtin;
     bool global;
     bool propagate;
@@ -35,6 +36,7 @@ enum SpecialMemberIndex {
     MIDX_TYPE_PROPAGATED,
     MIDX_ALL, // not implemented
     MIDX_ALL_RECURSE, // not implemented
+    MIDX_IMPLY,
 };
 
 typedef struct {
@@ -101,6 +103,7 @@ struct ParseContext {
     struct {char * key; AttributeParseInfo value;} * attribute_map;
     struct {char * key; int value;}                * attribute_token_map;
     struct {char * key; int value;}                * builtin_map;
+    struct {IntroAttributeType key; AttributeParseInfo * value;} * parse_info_by_id;
     NameSet * attribute_namespace_set;
     const char * current_namespace;
 

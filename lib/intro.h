@@ -196,11 +196,8 @@ typedef enum IntroAttributeTypeCategory {
 
 typedef struct IntroAttributeTypeInfo {
     const char * name;
-    uint32_t category;
-    uint32_t type_id;
-    bool global;
-    bool propagated;
-    bool transient;
+    IntroAttributeTypeCategory category;
+    IntroAttributeType type_id;
 } IntroAttributeTypeInfo;
 
 typedef struct IntroAttributeData {

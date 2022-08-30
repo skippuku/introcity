@@ -23,11 +23,18 @@ I(attribute Skp (
     id: value(SkpID),
     city: value(SkpCity),
     num: int,
+    Header: type,
+    Array:  flag @transient @imply(SkpHeader SkpArrayHeader),
 ))
 
 I(attribute @global (
     num: float,
 ))
+
+typedef struct {
+    size_t len;
+    size_t cap;
+} SkpArrayHeader;
 
 typedef struct {
     char * name I(length length_name, my_handle);
@@ -77,6 +84,8 @@ typedef struct {
         @global: num 5.0, id 5, // clear specified namespace
      )
     int big_test;
+
+    int * some_nums I(SkpArray);
 } AttributeTest;
 
 typedef enum {
@@ -314,6 +323,13 @@ main() {
     {
         assert(intro_attribute_type(intro_member_by_name(ITYPE(IntroType), flags), imitate) == ITYPE(IntroFlags));
         assert(intro_attribute_type(intro_member_by_name(ITYPE(IntroType), category), imitate) == ITYPE(IntroCategory));
+    }
+
+    // imply test
+    {
+        const IntroMember *m_some_nums = intro_member_by_name(ITYPE(AttributeTest), some_nums);
+        assert(!intro_has_attribute(m_some_nums, SkpArray));
+        assert(intro_attribute_type(m_some_nums, SkpHeader) == ITYPE(SkpArrayHeader));
     }
 
     return 0;
