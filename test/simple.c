@@ -18,6 +18,10 @@ main(int argc, char ** argv) {
     intro_print(&obj, t_obj, NULL);
     printf("\n\n");
 
+    printf("ITYPE(TestAttributes) = ");
+    intro_print(ITYPE(TestAttributes), ITYPE(IntroType), NULL);
+    printf("\n\n");
+
     /*=====================*/
 
     Nest nest = {

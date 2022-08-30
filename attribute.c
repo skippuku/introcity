@@ -543,16 +543,6 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     char * end;
     switch(attribute_category) {
     case INTRO_AT_FLAG: {
-        if (data.id == ctx->builtin.type) {
-            IntroType * mtype = type->members[member_index].type;
-            if (!(mtype->category == INTRO_POINTER && strcmp(mtype->of->name, "IntroType") == 0)) {
-                parse_error(ctx, tk_last(tidx), "Member must be of type 'IntroType *' to have type attribute.");
-                char typename [1024];
-                intro_sprint_type_name(typename, mtype);
-                fprintf(stderr, "member type is %s\n", typename);
-                return -1;
-            }
-        }
         data.v.i = 0;
     } break;
 
@@ -660,7 +650,21 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     }break;
 
     case INTRO_AT_TYPE: {
-        parse_error(ctx, tk_last(tidx), "Not implemented.");
+        DeclState decl = {.state = DECL_ARGS};
+        int ret = parse_declaration(ctx, tidx, &decl);
+        if (ret == RET_DECL_FINISHED || RET_DECL_CONTINUE) {
+            uint32_t type_id = hmget(ctx->p_info->index_by_ptr_map, decl.type);
+            if (type_id == 0) {
+                parse_error(ctx, decl.base_tk, "Undeclared type.");
+                return -1;
+            }
+            data.v.i = type_id;
+        } else if (ret >= 0) {
+            parse_error(ctx, tk_last(tidx), "Unknown error.");
+            return -1;
+        } else {
+            return -1;
+        }
     }break;
 
     case INTRO_AT_COUNT: assert(0);

@@ -307,5 +307,11 @@ main() {
     IntroVariant var;
     assert(intro_attribute_value_x(INTRO_CTX, NULL, ITYPE(Vector2)->attr, IATTR_gui_note, &var) && 0==strcmp((char *)var.data, "the grungl"));
 
+    // type test
+    {
+        assert(intro_attribute_type(intro_member_by_name(ITYPE(IntroType), flags), imitate) == ITYPE(IntroFlags));
+        assert(intro_attribute_type(intro_member_by_name(ITYPE(IntroType), category), imitate) == ITYPE(IntroCategory));
+    }
+
     return 0;
 }

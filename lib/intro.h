@@ -166,9 +166,9 @@ struct IntroType {
     uint32_t count;
     IntroAttributeDataId attr;
     uint32_t size;
-    uint16_t flags I(gui_format "0x%02x");
+    uint16_t flags I(imitate IntroFlags);
     uint8_t align;
-    uint8_t category I(gui_format "0x%02x");
+    uint8_t category I(imitate IntroCategory);
 };
 
 typedef struct IntroFunction {
@@ -217,11 +217,11 @@ typedef struct IntroAttributeContext {
         uint8_t bitfield;
         uint8_t fallback;
         uint8_t length;
+        uint8_t when;
         uint8_t alias;
+        uint8_t imitate;
         uint8_t city;
         uint8_t cstring;
-        uint8_t type;
-        uint8_t when;
         uint8_t remove;
 
         uint8_t gui_note;
@@ -298,9 +298,9 @@ I(attribute @global (
     length:   expr,
     when:     expr,
     alias:    value(char *),
+    imitate:  type,
     city:     flag @global,
     cstring:  flag @propagate,
-    type:     flag,
     remove:   __remove,
 ))
 
@@ -418,6 +418,8 @@ bool intro_attribute_float_x(IntroContext * ctx, IntroAttributeDataId data_id, I
 bool intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t * o_length);
 #define intro_attribute_run_expr(C, A, OUT) intro_attribute_expr_x(INTRO_CTX, C, A, OUT)
 bool intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, IntroAttributeType attr_type, int64_t * o_result);
+#define intro_attribute_type(M, A) intro_attribute_type_x(INTRO_CTX, M->attr, IATTR_##A)
+const IntroType * intro_attribute_type_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_type);
 
 // INITIALIZERS
 #define intro_set_value(DST, TYPE, A) intro_set_value_x(INTRO_CTX, intro_cntr(DST, TYPE), IATTR_##A)
@@ -960,6 +962,18 @@ intro_attribute_float_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroA
     }
 }
 
+const IntroType *
+intro_attribute_type_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_id) {
+    ASSERT_ATTR_CATEGORY(INTRO_AT_TYPE);
+    uint32_t type_id;
+    bool has = get_attribute_value_offset(ctx, data_id, attr_id, &type_id);
+    if (has) {
+        return &ctx->types[type_id];
+    } else {
+        return NULL;
+    }
+}
+
 bool
 intro_attribute_length_x(IntroContext * ctx, IntroContainer cntr, int64_t * o_length) {
     assert(cntr.parent && intro_has_members(cntr.parent->type));
@@ -1205,15 +1219,10 @@ intro_set_value_x(IntroContext * ctx, IntroContainer cntr, uint32_t value_attrib
     }
 
     case INTRO_UNION: {
-        return;
+        break;
     }
 
     case INTRO_POINTER: {
-        bool parent_has_members = (cntr.parent && intro_has_members(cntr.parent->type));
-        if (parent_has_members && intro_has_attribute_x(ctx, attr, ctx->attr.builtin.type)) {
-            memcpy(cntr.data, &cntr.parent->type, cntr.type->size);
-            return;
-        }
 #if 0 // NOTE: maybe at some point in the future it will somehow make sense to allocate a buffer for this
         int64_t length;
         if (intro_attribute_length_x(ctx, cntr, &length)) {
@@ -1254,6 +1263,39 @@ intro_print_type_name(const IntroType * type) {
     char buf [1024];
     intro_sprint_type_name(buf, type);
     fputs(buf, stdout);
+}
+
+void
+intro_print_enum_value(const IntroType * type, long value) {
+    if ((type->flags & INTRO_IS_SEQUENTIAL)) {
+        if (value >= 0 && value < (int64_t)type->count) {
+            printf("%s", type->u.values[value].name);
+        } else {
+            printf("%li", value);
+        }
+    } else if ((type->flags & INTRO_IS_FLAGS)) {
+        bool more_than_one = false;
+        if (value) {
+            for (uint32_t f=0; f < type->count; f++) {
+                if (value & type->u.values[f].value) {
+                    if (more_than_one) printf(" | ");
+                    printf("%s", type->u.values[f].name);
+                    more_than_one = true;
+                }
+            }
+        } else {
+            printf("0");
+        }
+    } else {
+        for (uint32_t i=0; i < type->count; i++) {
+            IntroEnumValue ev = type->u.values[i];
+            if ((long)ev.value == value) {
+                printf("%s", ev.name);
+                return;
+            }
+        }
+        printf("%li", value);
+    }
 }
 
 static void
@@ -1313,7 +1355,12 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     case INTRO_S8: case INTRO_S16: case INTRO_S32: case INTRO_S64:
     {
         int64_t value = intro_int_value(data, type);
-        printf((fmt)? fmt : "%li", (long int)value);
+        const IntroType * imitate_type = intro_attribute_type_x(ctx, attr, ctx->attr.builtin.imitate);
+        if (imitate_type && imitate_type->category == INTRO_ENUM) {
+            intro_print_enum_value(imitate_type, value);
+        } else {
+            printf((fmt)? fmt : "%li", (long int)value);
+        }
     }break;
 
     case INTRO_F32: {
@@ -1389,29 +1436,8 @@ intro_print_x(IntroContext * ctx, IntroContainer container, const IntroPrintOpti
     }break;
 
     case INTRO_ENUM: {
-        int value = *(int *)data;
-        if ((type->flags & INTRO_IS_SEQUENTIAL)) {
-            if (value >= 0 && value < (int)type->count) {
-                printf("%s", type->u.values[value].name);
-            } else {
-                printf("%i", value);
-            }
-        } else if ((type->flags & INTRO_IS_FLAGS)) {
-            bool more_than_one = false;
-            if (value) {
-                for (uint32_t f=0; f < type->count; f++) {
-                    if (value & type->u.values[f].value) {
-                        if (more_than_one) printf(" | ");
-                        printf("%s", type->u.values[f].name);
-                        more_than_one = true;
-                    }
-                }
-            } else {
-                printf("0");
-            }
-        } else {
-            printf("%i", value);
-        }
+        int64_t value = (int64_t)*(int *)data;
+        intro_print_enum_value(type, value);
     }break;
 
     case INTRO_ARRAY: {
@@ -2161,11 +2187,6 @@ city__load_into(
             if (do_skip) continue;
 #endif
             const IntroMember * dm = &d_type->u.members[dm_i];
-
-            if (intro_has_attribute_x(ctx, dm->attr, ctx->attr.builtin.type)) {
-                *(const IntroType **)((u8 *)dest + dm->offset) = d_type;
-                continue;
-            }
 
             arr_append(aliases, dm->name);
             IntroVariant var;

@@ -11,7 +11,6 @@ main() {
     assert(default_test.v_u8 == 1);
     assert(default_test.v_s64 == -54321);
     assert(ABS(default_test.v_float - 3.14159) < 0.0001);
-    assert(default_test.type == ITYPE(TestDefault));
     assert(0==strcmp(default_test.name, "Brian"));
     assert(0==memcmp(default_test.numbers, &(uint8_t[8]){4, 5, 8, 9, 112, 9}, sizeof(default_test.numbers)));
     assert(0==strcmp(default_test.words[3], "apple"));

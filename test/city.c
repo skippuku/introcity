@@ -93,7 +93,6 @@ typedef struct {
     int32_t b2 I(3, alias b);
     uint8_t array [8] I(4);
     bool has_c I(7);
-    IntroType * type I(type);
 
     struct {
         int a, b, c;
@@ -229,7 +228,7 @@ main() {
     assert(load_ok);
 
     printf("obj_load: BasicPlus = ");
-    intro_print(&obj_load, obj_load.type, NULL);
+    intro_print(&obj_load, ITYPE(BasicPlus), NULL);
     printf("\n");
     report_LinkNodeLoad(obj_load.linked);
 

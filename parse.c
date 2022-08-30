@@ -502,7 +502,7 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
     IntroEnumValue * values = NULL;
     arrsetcap(values, 8);
     int next_int = 0;
-    int mask = 0;
+    //int mask = 0;
     while (1) {
         IntroEnumValue v = {0};
         Token name = next_token(tidx);
@@ -543,8 +543,11 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
             return -1;
         }
 
-        if (mask & v.value) is_flags = false;
-        mask |= v.value;
+        if (v.value != 0 && (1 << INTRO_BSR64((uint64_t)v.value) != (uint64_t)v.value)) {
+            is_flags = false;
+        }
+        //if (mask & v.value) is_flags = false;
+        //mask |= v.value;
 
         arrput(values, v);
         shput(ctx->expr_ctx->constant_map, v.name, (intmax_t)v.value);

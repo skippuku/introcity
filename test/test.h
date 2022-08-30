@@ -146,7 +146,6 @@ typedef struct {
     uint8_t v_u8 I(=1);
     int64_t v_s64 I(=-54321);
     float v_float I(= 3.14159);
-    IntroType * type I(type);
     char * name I(= "Brian");
 
     uint8_t numbers [8] I(= {4, 5, 8, 9, 112, 9});

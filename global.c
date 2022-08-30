@@ -119,11 +119,11 @@ static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(bitfield),
     DEF_BUILTIN(fallback),
     DEF_BUILTIN(length),
+    DEF_BUILTIN(when),
     DEF_BUILTIN(alias),
+    DEF_BUILTIN(imitate),
     DEF_BUILTIN(city),
     DEF_BUILTIN(cstring),
-    DEF_BUILTIN(type),
-    DEF_BUILTIN(when),
     DEF_BUILTIN(remove),
 
     DEF_BUILTIN(gui_note),

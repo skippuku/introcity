@@ -1,8 +1,7 @@
 lib:
-    !! check version against generated header
     move parts of the parser into a library separate from introlib
         preprocessor
-        interface for creating types/contexts
+        !! interface for creating types/contexts
     sprint/mprint version of everything that uses stdout
     accurate type print
         would be useful for metaprogramming
@@ -16,9 +15,8 @@ lib:
     allocation options as part of context
 
 city:
-    !! allocation options
+    !! attribute to specify allocators
     version for "release" without as much information where types are assumed to match
-    attribute to specify allocation function
     type id's?
         could also check against type names or maybe name hashes
 
@@ -39,9 +37,6 @@ attribute:
     'terminated' attribute?
         specify the terminator (optionally?)
 
-    'type' attribute type
-        'as_enum' for when you want an integer to be treated like an enum
-            (or maybe just a general 'as')
     'none' attribute type
         makes an attribute not generate any information
         useful for when an attribute is only relevant at compile-time
