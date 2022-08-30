@@ -22,12 +22,6 @@ CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
 SRC := intro.c
 MAGIC_DEFAULT_PROFILE := debug
 
-ifneq (,$(USE_ASM_VM))
-  CFLAGS += -DINTRO_USE_ASM_VM
-  SRC += lib/vm.S
-  LDFLAGS += -Wl,-z -Wl,noexecstack
-endif
-
 define PROFILE.release
   CFLAGS += -O2
   LDFLAGS += -s

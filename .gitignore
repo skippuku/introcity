@@ -15,3 +15,4 @@ tags
 .ctags
 test/libintro.dll
 test/libintro.so
+doc/_notes.c

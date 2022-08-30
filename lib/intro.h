@@ -1017,10 +1017,6 @@ intro_attribute_id_by_string_literal_x(IntroContext * ctx, const char * str) {
 }
 #endif
 
-#ifndef INTRO_USE_ASM_VM
-#define INTRO_USE_ASM_VM 0
-#endif
-
 typedef enum {
     I_INVALID = 0,
     I_RETURN = 1,
@@ -1066,7 +1062,6 @@ typedef enum {
 
 union IntroRegisterData
 intro_run_bytecode(uint8_t * code, const void * v_data) {
-#if INTRO_USE_ASM_VM == 0
     const uint8_t * data = (uint8_t *)v_data;
     union IntroRegisterData stack [1024];
     union IntroRegisterData r0, r1, r2;
@@ -1160,13 +1155,6 @@ intro_run_bytecode(uint8_t * code, const void * v_data) {
         case I_COUNT: case I_INVALID: assert(0);
         }
     }
-#else
-    extern  __attribute__((sysv_abi)) int64_t intro__vm(void * bytecode, const void * data);
-
-    union IntroRegisterData reg;
-    reg.si = intro__vm(code, v_data);
-    return reg;
-#endif
 }
 
 static void
