@@ -458,11 +458,7 @@ int64_t intro_int_value(const void * data, const IntroType * type);
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 union IntroRegisterData intro_run_bytecode(const uint8_t * code, const void * data);
 
-#define INTRO_LIB_VERSION 311
-#if defined static_assert && defined INTRO_GEN_VERSION
-  static_assert(INTRO_LIB_VERSION / 100 == INTRO_GEN_VERSION / 100); // major and minor must match
-  static_assert(INTRO_LIB_VERION - (INTRO_LIB_VERSION / 100) >= INTRO_GEN_VERSION - (INTRO_GEN_VERSION / 100)); // patch level of lib must be more than or equal
-#endif
+#define INTRO_LIB_VERSION 313
 
 ///////////////////////////////
 //  INTROLIB IMPLEMENTATION  //

@@ -1908,6 +1908,39 @@ run_preprocessor(int argc, char ** argv) {
     Token endtk = {.type = TK_END};
     arrput(ctx->result_list, endtk);
 
+    Define lib_version_macro = shgets(ctx->defines, "INTRO_LIB_VERSION");
+    if (lib_version_macro.is_defined) {
+        Token lib_version_tk = lib_version_macro.replace_list[0];
+        long lib_version = strtol(lib_version_tk.start, NULL, 10);
+
+        static const char *const _version = VERSION;
+
+        const char * pv = _version;
+        char * end;
+        long major = strtol(pv, &end, 10);
+        if (end == pv || *end != '.') {
+            fprintf(stderr, "warn: Unable to determine version.\n");
+        } else {
+            pv = end + 1;
+            long minor = strtol(pv, &end, 10);
+            long patch = 0;
+            pv = end;
+            if (*pv == '-') {
+                pv++;
+                patch = strtol(pv, &end, 10);
+            }
+            long version_num = major * 100 * 100 + minor * 100 + patch;
+
+            if (version_num / 100 != lib_version / 100) {
+                preprocess_warning(&lib_version_tk, "intro.h version does not match generator version.");
+                fprintf(stderr, "generator version: %s\n", VERSION);
+            } else if (lib_version < version_num) {
+                preprocess_warning(&lib_version_tk, "intro.h has a lower patch level than the generator.");
+                fprintf(stderr, "generator version: %s\n", VERSION);
+            }
+        }
+    }
+
     if (ctx->m_options.enabled) {
         char * ext = strrchr(filepath, '.');
         int len_basename = (ext)? ext - filepath : strlen(filepath);
