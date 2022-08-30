@@ -24,7 +24,7 @@ I(attribute Skp (
     city: value(SkpCity),
     num: int,
     Header: type,
-    Array:  flag @transient @imply(SkpHeader SkpArrayHeader),
+    Array:  flag @transient @imply(Header SkpArrayHeader),
 ))
 
 I(attribute @global (

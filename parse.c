@@ -49,6 +49,7 @@ typedef struct {
 
 typedef struct {
     IntroType * type;
+    const char * namespace;
     int32_t location;
     int32_t member_index;
     uint32_t count;

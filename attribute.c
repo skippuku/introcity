@@ -172,6 +172,7 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                         .type = NULL,
                         .location = tidx->index,
                         .member_index = MIDX_IMPLY,
+                        .namespace = namespace,
                     };
                     tidx->index = closing + 1;
                     info.imply_directive_index = arrlen(ctx->attribute_directives);
@@ -703,7 +704,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
 }
 
 int
-parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
+parse_attribute_directive(ParseContext * ctx, AttributeDirective * directive) {
     TokenIndex _tidx, * tidx = &_tidx;
     tidx->list = ctx->tk_list;
     tidx->index = directive->location;
@@ -715,7 +716,7 @@ parse_attributes(ParseContext * ctx, AttributeDirective * directive) {
         return -1;
     }
 
-    ctx->current_namespace = NULL;
+    ctx->current_namespace = directive->namespace;
 
     while (1) {
         tk = next_token(tidx);
@@ -939,7 +940,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         AttributeDirective * p_directive = &ctx->attribute_directives[directive_i];
         if (p_directive->type != NULL) continue;
 
-        int ret = parse_attributes(ctx, p_directive);
+        int ret = parse_attribute_directive(ctx, p_directive);
         if (ret) exit(1);
     }
 
@@ -948,7 +949,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
         if (directive.type == NULL) continue;
 
         if (!directive.attr_data) {
-            int ret = parse_attributes(ctx, &directive);
+            int ret = parse_attribute_directive(ctx, &directive);
             if (ret) exit(1);
         } else {
             for (int attr_i=0; attr_i < directive.count; attr_i++) {
