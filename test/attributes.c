@@ -1,5 +1,7 @@
 #include "basic.h"
 #include <intro.h>
+
+#define STB_DS_IMPLEMENTATION
 #include "../ext/stb_ds.h"
 
 typedef struct {uint32_t i;} SkpID;
@@ -23,12 +25,15 @@ I(attribute Skp (
     id: value(SkpID),
     city: value(SkpCity),
     num: int,
-    Header: type,
-    Array:  flag @transient @imply(Header SkpArrayHeader),
+    Array:  flag @transient @imply(header SkpArrayHeader, length .len, num 5),
 ))
 
 I(attribute @global (
     num: float,
+))
+
+I(attribute stb_ (
+    array: flag @transient @imply(header stbds_array_header, length .length),
 ))
 
 typedef struct {
@@ -86,6 +91,8 @@ typedef struct {
     int big_test;
 
     int * some_nums I(SkpArray);
+
+    int * stb_arr I(stb_array);
 } AttributeTest;
 
 typedef enum {
@@ -325,11 +332,34 @@ main() {
         assert(intro_attribute_type(intro_member_by_name(ITYPE(IntroType), category), imitate) == ITYPE(IntroCategory));
     }
 
-    // imply test
+    // imply / header test
     {
+        AttributeTest test = {0};
+        size_t len = 5;
+        size_t cap = 16;
+        SkpArrayHeader * header = malloc(sizeof(*header) + cap * sizeof(test.some_nums[0]));
+        header->len = len;
+        header->cap = cap;
+        test.some_nums = (int *)(header + 1);
+
         const IntroMember *m_some_nums = intro_member_by_name(ITYPE(AttributeTest), some_nums);
         assert(!intro_has_attribute(m_some_nums, SkpArray));
-        assert(intro_attribute_type(m_some_nums, SkpHeader) == ITYPE(SkpArrayHeader));
+        assert(intro_attribute_type(m_some_nums, header) == ITYPE(SkpArrayHeader));
+
+        IntroContainer parent = intro_cntr(&test, ITYPE(AttributeTest));
+        IntroContainer some_nums_cntr = intro_push(&parent, 9);
+        //assert(0==strcmp(intro_get_member(some_nums_cntr)->name, "some_nums"));
+
+        int64_t res;
+        assert(intro_attribute_length(some_nums_cntr, &res));
+        assert(res == 5);
+
+        test.stb_arr = NULL;
+        arrput(test.stb_arr, 4);
+        arrput(test.stb_arr, 5);
+        arrput(test.stb_arr, 6);
+
+        assert(intro_attribute_run_expr(intro_push(&parent, 10), length, &res) && res == 3);
     }
 
     return 0;

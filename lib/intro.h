@@ -219,6 +219,7 @@ typedef struct IntroAttributeContext {
         uint8_t when;
         uint8_t alias;
         uint8_t imitate;
+        uint8_t header;
         uint8_t city;
         uint8_t cstring;
         uint8_t remove;
@@ -295,7 +296,8 @@ I(attribute @global (
     length:   expr,
     when:     expr,
     alias:    value(char *),
-    imitate:  type,
+    imitate:  type @propagate,
+    header:   type @propagate,
     city:     flag @global,
     cstring:  flag @propagate,
     remove:   __remove @transient,
@@ -413,7 +415,7 @@ bool intro_attribute_member_x(IntroContext * ctx, IntroAttributeDataId data_id, 
 bool intro_attribute_float_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_type, float * o_float);
 #define intro_attribute_length(container, out) intro_attribute_length_x(INTRO_CTX, container, out)
 bool intro_attribute_length_x(IntroContext * ctx, IntroContainer cont, int64_t * o_length);
-#define intro_attribute_run_expr(C, A, OUT) intro_attribute_expr_x(INTRO_CTX, C, A, OUT)
+#define intro_attribute_run_expr(C, A, OUT) intro_attribute_expr_x(INTRO_CTX, C, IATTR_##A, OUT)
 bool intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, IntroAttributeType attr_type, int64_t * o_result);
 #define intro_attribute_type(M, A) intro_attribute_type_x(INTRO_CTX, M->attr, IATTR_##A)
 const IntroType * intro_attribute_type_x(IntroContext * ctx, IntroAttributeDataId data_id, IntroAttributeType attr_type);
@@ -454,7 +456,7 @@ const char * intro_enum_name(const IntroType * type, int value);
 int64_t intro_int_value(const void * data, const IntroType * type);
 #define intro_member_by_name(t, name) intro_member_by_name_x(t, #name)
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
-union IntroRegisterData intro_run_bytecode(uint8_t * code, const void * data);
+union IntroRegisterData intro_run_bytecode(const uint8_t * code, const void * data);
 
 #define INTRO_LIB_VERSION 311
 #if defined static_assert && defined INTRO_GEN_VERSION
@@ -978,21 +980,31 @@ intro_attribute_length_x(IntroContext * ctx, IntroContainer cntr, int64_t * o_le
 }
 
 static const void *
-intro_expr_data(const IntroContainer * pcntr) {
-    if (pcntr->parent) {
-        pcntr = pcntr->parent;
+intro_expr_data(IntroContext * ctx, const IntroContainer * pcntr) {
+    const IntroType * header = intro_attribute_type_x(ctx, intro_get_attr(*pcntr), ctx->attr.builtin.header);
+    if (header) {
+        u8 * ptr = *(u8 **)pcntr->data;
+        if (ptr) {
+            return ptr - header->size;
+        } else {
+            return NULL;
+        }
+    } else {
+        if (pcntr->parent) {
+            pcntr = pcntr->parent;
+        }
+        while (pcntr->parent && (pcntr->type->flags & INTRO_EMBEDDED_DEFINITION)) {
+            pcntr = pcntr->parent;
+        }
+        return pcntr->data;
     }
-    while (pcntr->parent && (pcntr->type->flags & INTRO_EMBEDDED_DEFINITION)) {
-        pcntr = pcntr->parent;
-    }
-    return pcntr->data;
 }
 
 bool
 intro_attribute_expr_x(IntroContext * ctx, IntroContainer cntr, IntroAttributeType attr_id, int64_t * o_result) {
     ASSERT_ATTR_CATEGORY(INTRO_AT_EXPR);
     uint32_t code_offset;
-    const void * data = intro_expr_data(&cntr);
+    const void * data = intro_expr_data(ctx, &cntr);
     bool has = get_attribute_value_offset(ctx, intro_get_attr(cntr), attr_id, &code_offset);
     if (has) {
         uint8_t * code = &ctx->values[code_offset];
@@ -1072,7 +1084,7 @@ typedef enum {
 } InstrCode;
 
 union IntroRegisterData
-intro_run_bytecode(uint8_t * code, const void * v_data) {
+intro_run_bytecode(const uint8_t * code, const void * v_data) {
     const uint8_t * data = (uint8_t *)v_data;
     union IntroRegisterData stack [1024];
     union IntroRegisterData r0, r1, r2;

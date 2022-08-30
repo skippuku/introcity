@@ -123,7 +123,7 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                     tidx->index--;
                     DeclState decl = {.state = DECL_CAST};
                     int ret = parse_declaration(ctx, tidx, &decl);
-                    if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
+                    if (ret == RET_DECL_FINISHED) {
                         info.type_ptr = decl.type;
                     } else if (ret == RET_NOT_TYPE) {
                         parse_error(ctx, decl.base_tk, "Type must be defined before attribute definition.");
@@ -131,11 +131,6 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
                     } else {
                         return -1;
                     }
-                    tk = next_token(tidx);
-                }
-                if (tk.type != TK_R_PARENTHESIS) {
-                    parse_error(ctx, tk, "Expected ')'.");
-                    return -1;
                 }
                 tk = next_token(tidx);
             }
@@ -207,8 +202,12 @@ parse_global_directive(ParseContext * ctx, TokenIndex * tidx) {
         EXPECT('(');
         DeclState decl = {.state = DECL_CAST};
         int ret = parse_declaration(ctx, tidx, &decl);
-        if (ret < 0) return -1;
-        EXPECT(')');
+        if (ret != RET_DECL_FINISHED) {
+            if (ret >= 0) {
+                parse_error(ctx, tk_last(tidx), "Invalid cast.");
+            }
+            return -1;
+        }
         EXPECT('(');
         tidx->index--;
         int32_t start_directive_index = tidx->index;
@@ -646,16 +645,28 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
             return -1; 
         }
 
-        IntroContainer base_cont = {.type = type};
-        IntroContainer * last_cont = &base_cont;
-        ContainerMapValue v;
-        while ((v = hmget(ctx->container_map, type)).type != NULL) {
-            IntroContainer * next = arena_alloc(ctx->expr_ctx->arena, sizeof(*next));
-            next->type = v.type;
-            last_cont->index = v.index;
-            last_cont->parent = next;
-            last_cont = next;
-            type = v.type;
+        IntroContainer base_cont = {0};
+        AttributeDataKey key = {.type = type, .member_index = member_index};
+        const IntroType * header = hmget(ctx->header_map, key);
+        if (header) {
+            base_cont.type = header;
+        } else {
+            if (type == NULL) {
+                parse_error(ctx, tk, "Cannot imply an expression without a header.");
+                return -1;
+            }
+            base_cont.type = type;
+
+            IntroContainer * last_cont = &base_cont, * next;
+            ContainerMapValue v;
+            while ((v = hmget(ctx->container_map, type)).type != NULL) {
+                next = arena_alloc(ctx->expr_ctx->arena, sizeof(*next));
+                next->type = v.type;
+                last_cont->index = v.index;
+                last_cont->parent = next;
+                last_cont = next;
+                type = v.type;
+            }
         }
 
         uint8_t * bytecode = build_expression_procedure2(ctx->expr_ctx, tree, &base_cont);
@@ -678,7 +689,16 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
     case INTRO_AT_TYPE: {
         DeclState decl = {.state = DECL_ARGS};
         int ret = parse_declaration(ctx, tidx, &decl);
-        if (ret == RET_DECL_FINISHED || RET_DECL_CONTINUE) {
+        if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
+            tidx->index --;
+            if (data.id == ctx->builtin.header) {
+                if (type && type->category != INTRO_POINTER) {
+                    parse_error(ctx, tk, "'header' can only be applied to a pointer.");
+                    return -1;
+                }
+                AttributeDataKey key = {.type = type, .member_index = member_index};
+                hmput(ctx->header_map, key, decl.type);
+            }
             uint32_t type_id = hmget(ctx->p_info->index_by_ptr_map, decl.type);
             if (type_id == 0) {
                 parse_error(ctx, decl.base_tk, "Undeclared type.");
@@ -832,7 +852,7 @@ attribute_data_sort_callback(const void * p_a, const void * p_b) {
 }
 
 void
-apply_attributes(ParseContext * ctx, IntroType * type, int32_t member_index, AttributeData * data, int32_t count) {
+apply_attributes(ParseContext * ctx, IntroType * type, int32_t member_index, const AttributeData * data, int32_t count) {
     AttributeDataKey key = {
         .type = type,
         .member_index = member_index,

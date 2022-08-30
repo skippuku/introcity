@@ -231,7 +231,6 @@ build_expression_tree2(ExprContext * ectx, TokenIndex * tidx) {
                 if (ret == RET_DECL_FINISHED || ret == RET_DECL_CONTINUE) {
                     node->op = OP_CAST;
                     node->type = cast.type;
-                    tidx->index += 1;
                     break;
                 } else {
                     tidx->index = last_index;
@@ -415,7 +414,11 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         size_t offset = 0;
         const IntroContainer * top_level = cont;
         while (top_level->parent) {
-            offset += top_level->parent->type->members[top_level->index].offset;
+            if (top_level->index == top_level->parent->type->count) {
+                offset += top_level->parent->type->size;
+            } else {
+                offset += top_level->parent->type->members[top_level->index].offset;
+            }
             top_level = top_level->parent;
         }
 

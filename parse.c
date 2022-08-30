@@ -112,6 +112,7 @@ struct ParseContext {
     struct {IntroType * key; IntroType **      value;} * incomplete_typedefs;
     struct {void *      key; IntroLocation     value;} * location_map;
     struct {IntroType * key; ContainerMapValue value;} * container_map;
+    struct {AttributeDataKey key; IntroType *  value;} * header_map;
 
     AttributeData * attribute_globals;
     AttributeDirective * attribute_directives;
@@ -1203,8 +1204,7 @@ find_end: ;
             bool do_find_closing = false;
             bool func_body = false;
             if ((decl->state == DECL_CAST || decl->state == DECL_ARGS) && tk.type == TK_R_PARENTHESIS) {
-                tidx->index--;
-                return RET_DECL_CONTINUE;
+                return RET_DECL_FINISHED;
             }
             if (in_expr) {
                 if (tk.type == TK_L_BRACE || tk.type == TK_L_BRACKET || tk.type == TK_L_PARENTHESIS) {

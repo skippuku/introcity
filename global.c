@@ -114,7 +114,7 @@
 static uint64_t g_timer_freq = 0;
 
 #define DEF_BUILTIN(NAME) {#NAME, offsetof(struct IntroBuiltinAttributeTypes, NAME)}
-static const struct { const char * key; int value; } g_builtin_attributes [] = {
+static const struct {const char * key; int value;} g_builtin_attributes [] = {
     DEF_BUILTIN(id),
     DEF_BUILTIN(bitfield),
     DEF_BUILTIN(fallback),
@@ -122,6 +122,7 @@ static const struct { const char * key; int value; } g_builtin_attributes [] = {
     DEF_BUILTIN(when),
     DEF_BUILTIN(alias),
     DEF_BUILTIN(imitate),
+    DEF_BUILTIN(header),
     DEF_BUILTIN(city),
     DEF_BUILTIN(cstring),
     DEF_BUILTIN(remove),

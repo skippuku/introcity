@@ -21,16 +21,11 @@ city:
         could also check against type names or maybe name hashes
 
 attribute:
-    !! somehow handle data at an offset to a pointer ex. stb_ds
-
     dynamically sized value attributes
         allow multiple aliases
     allow attributes in more places
         functions
         function arguments
-
-    @imply trait: applies additional attributes along when applied
-        example: cstring: flag @imply(string, terminated 0)
 
     'from' attribute: allow conversion from a type, introlib will have builtin conversion functions for basic types
         some way to specify custom conversion functions
