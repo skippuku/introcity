@@ -458,7 +458,7 @@ int64_t intro_int_value(const void * data, const IntroType * type);
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 union IntroRegisterData intro_run_bytecode(const uint8_t * code, const void * data);
 
-#define INTRO_LIB_VERSION 314
+#define INTRO_LIB_VERSION 316
 
 ///////////////////////////////
 //  INTROLIB IMPLEMENTATION  //
@@ -533,15 +533,17 @@ static void *
 arena_alloc(MemArena * arena, int amount) {
     if (arena->current_used + amount > arena->capacity) {
         if (amount <= arena->capacity) {
-            if (arena->buckets[++arena->current].data == NULL) {
+            arena->current++;
+            assert(arena->current < (int)LENGTH(arena->buckets));
+            if (arena->buckets[arena->current].data == NULL) {
                 arena->buckets[arena->current].data = calloc(1, arena->capacity);
             }
-            arena->current_used = 0;
         } else {
             arena->current++;
             arena->buckets[arena->current].data = realloc(arena->buckets[arena->current].data, amount);
-            memset(arena->buckets[arena->current].data, 0, amount - arena->capacity);
+            memset(arena->buckets[arena->current].data, 0, amount);
         }
+        arena->current_used = 0;
     }
     void * result = (u8 *)arena->buckets[arena->current].data + arena->current_used;
     arena->current_used += amount;

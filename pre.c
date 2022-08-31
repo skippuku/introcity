@@ -7,8 +7,6 @@
 #include <immintrin.h>
 #endif
 
-static const char * filename_stdin = "__stdin__";
-
 typedef enum {
     MACRO_NOT_SPECIAL = 0,
     MACRO_defined,
@@ -49,34 +47,19 @@ typedef struct {
     bool in_expression;
 } ExpandContext;
 
-enum TargetMode {
-    MT_NORMAL = 0,
-    MT_SPACE,
-    MT_NEWLINE,
-};
-
 typedef struct {
     Token * result_list;
     FileInfo * current_file;
     Define * defines;
     const char ** include_paths;
     MemArena * arena;
-    struct {
-        char * custom_target;
-        char * filename;
-        bool enabled;
-        bool D;
-        bool G;
-        bool P;
-        bool no_sys;
-        bool use_msys_path;
-        int8_t target_mode;
-    } m_options;
     NameSet * dependency_set;
     ExprContext * expr_ctx;
     ExpandContext expand_ctx;
     char * expansion_site;
     LocationContext loc;
+
+    const Config * cfg;
 
     NoticeState * notice_stack;
     NoticeState notice;
@@ -1390,7 +1373,7 @@ preprocess_file(PreContext * ctx) {
                 bool file_found = pre_get_include_path(ctx, file_dir, inc_file, inc_filepath);
 
                 if (!file_found) {
-                    if (ctx->m_options.G) {
+                    if (ctx->cfg->m_options.G) {
                       skip_and_add_include_dep: ;
                         char * inc_filepath_stored = copy_and_terminate(ctx->arena, inc_filename, strlen(inc_filename));
                         shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
@@ -1402,7 +1385,7 @@ preprocess_file(PreContext * ctx) {
                 }
 
                 char * inc_filepath_stored = copy_and_terminate(ctx->arena, inc_filepath, strlen(inc_filepath));
-                if (!(ctx->m_options.no_sys && ctx->is_sys_header)) {
+                if (!(ctx->cfg->m_options.no_sys && ctx->is_sys_header)) {
                     shputs(ctx->dependency_set, (NameSet){inc_filepath_stored});
                 } else {
                     if (ctx->minimal_parse) {
@@ -1520,19 +1503,6 @@ preprocess_file(PreContext * ctx) {
     return 0;
 }
 
-static char help_dialog [] =
-"intro - parser and introspection data generator\n"
-"USAGE: intro [OPTIONS] file\n"
-"\n"
-"OPTIONS:\n"
-" -o       specify output file\n"
-" -        use stdin as input\n"
-" --cfg    specify config file\n"
-" -I -D -U -E -M -MP -MM -MD -MMD -MG -MT -MF (like gcc)\n"
-" -MT_     output space separated dependency list with no target\n"
-" -MTn     output newline separated dependency list with no target\n"
-;
-
 static char intro_defs [] =
 "#ifndef __INTRO_MINIMAL__\n"
 "#define __INTRO__ 1\n"
@@ -1564,7 +1534,7 @@ static char intro_defs [] =
 ;
 
 PreInfo
-run_preprocessor(int argc, char ** argv) {
+run_preprocessor(Config * cfg) {
     // init pre context
     PreContext ctx_ = {0}, *ctx = &ctx_;
     ctx->arena = new_arena((1 << 20)); // 1MiB buckets
@@ -1575,6 +1545,9 @@ run_preprocessor(int argc, char ** argv) {
 
     ctx->notice = NOTICE_DEFAULT;
     ctx->notice_stack = NULL;
+
+    ctx->cfg = cfg;
+    ctx->preprocess_only = cfg->pre_only;
 
     PreInfo info = {0};
 
@@ -1603,306 +1576,114 @@ run_preprocessor(int argc, char ** argv) {
         shputs(ctx->defines, special);
     }
 
-    ctx->preprocess_only = false;
-    bool no_sys = false;
-    char * filepath = NULL;
-    char * cfg_file = NULL;
-
-    Token *const undef_replace_list = NULL; // reserve an address. remains unused
-    Token * default_replace_list = NULL;
-    arrput(default_replace_list, ((Token){.start = "1", .length = 1, .type = TK_NUMBER}));
-    Define * deferred_defines = NULL;
-
-    for (int i=1; i < argc; i++) {
-        #define ADJACENT() ((strlen(arg) == 2)? argv[++i] : arg+2)
-        char * arg = argv[i];
-        if (arg[0] == '-') {
-            switch(arg[1]) {
-            case '-': {
-                arg = argv[i] + 2;
-                if (0==strcmp(arg, "no-sys")) {
-                    no_sys = true;
-                } else if (0==strcmp(arg, "cfg")) {
-                    cfg_file = argv[++i];
-                } else if (0==strcmp(arg, "help")) {
-                    fputs(help_dialog, stderr);
-                    exit(0);
-                } else if (0==strcmp(arg, "gen-city")) {
-                    info.gen_mode = GEN_CITY;
-                } else if (0==strcmp(arg, "gen-vim-syntax")) {
-                    info.gen_mode = GEN_VIM_SYNTAX;
-                } else if (0==strcmp(arg, "pragma")) {
-                    char * text = argv[++i];
-                    char * text_cpy = malloc(strlen(text) + 2);
-                    strcpy(text_cpy, text);
-                    strcat(text_cpy, "\n");
-                    Token * list = create_token_list(text_cpy);
-                    TokenIndex pragma_idx = {.list = list, .index = 0};
-                    pre_handle_intro_pragma(ctx, &pragma_idx, NULL);
-                    arrfree(list);
-                    free(text_cpy);
-                } else {
-                    fprintf(stderr, "Unknown option: '%s'\n", arg);
-                    exit(1);
-                }
-            }break;
-
-            case 'h': {
-                fputs(help_dialog, stderr);
-                exit(0);
-            }break;
-
-            case 'D': {
-                Define new_def = {.is_defined = true};
-                char * opt_str = ADJACENT();
-                Token * tklist = create_token_list(opt_str);
-                if (arrlen(tklist) > 2) {
-                    if (!(arrlen(tklist) >= 4 && tklist[1].type == TK_EQUAL)) {
-                        fprintf(stderr, "Invalid -D option.\n");
-                        exit(1);
-                    }
-
-                    (void) arrpop(tklist); // remove TK_END token
-
-                    new_def.key = copy_and_terminate(ctx->arena, tklist[0].start, tklist[0].length);
-
-                    arrdeln(tklist, 0, 2); // remove NAME = tokens
-                    new_def.replace_list = tklist;
-                } else {
-                    new_def.key = ADJACENT();
-                    new_def.replace_list = default_replace_list;
-                    arrfree(tklist);
-                }
-                arrput(deferred_defines, new_def);
-            }break;
-
-            case 'U': {
-                Define undef;
-                undef.key = ADJACENT();
-                undef.replace_list = undef_replace_list;
-                arrput(deferred_defines, undef);
-            }break;
-
-            case 'I': {
-                const char * new_path = ADJACENT();
-                arrput(ctx->include_paths, new_path);
-            }break;
-
-            case 'E': {
-                ctx->preprocess_only = true;
-            }break;
-
-            case 'o': {
-                info.output_filename = argv[++i];
-            }break;
-
-            case 'V': {
-                info.show_metrics = true;
-                ctx->get_metrics = true;
-            }break;
-
-            case 0: {
-                if (isatty(fileno(stdin))) {
-                    fprintf(stderr, "Error: Cannot use terminal as file input.\n");
-                    exit(1);
-                }
-                filepath = (char *)filename_stdin;
-            }break;
-
-            case 'M': {
-                switch(arg[2]) {
-                case 0: {
-                }break;
-
-                case 'M': {
-                    ctx->m_options.no_sys = true;
-                    if (arg[3] == 'D') ctx->m_options.D = true;
-                }break;
-
-                case 'D': {
-                    ctx->m_options.D = true;
-                }break;
-
-                case 'G': {
-                    ctx->m_options.G = true;
-                }break;
-
-                case 'T': {
-                    if (arg[3]) {
-                        if (arg[3] == '_') {
-                            ctx->m_options.target_mode = MT_SPACE;
-                        } else if (arg[3] == 'n') {
-                            ctx->m_options.target_mode = MT_NEWLINE;
-                        } else {
-                            goto unknown_option;
-                        }
-                        break;
-                    } else {
-                        ctx->m_options.target_mode = MT_NORMAL;
-                        ctx->m_options.custom_target = argv[++i];
-                    }
-                }break;
-
-                case 'F' :{
-                    ctx->m_options.filename = argv[++i];
-                }break;
-
-                case 's': {
-                    if (0==strcmp(arg+3, "ys")) { // -Msys
-                        ctx->m_options.use_msys_path = true;
-                    } else {
-                        goto unknown_option;
-                    }
-                }break;
-
-                case 'P': {
-                    ctx->m_options.P = true;
-                }break;
-
-                default: goto unknown_option;
-                }
-
-                ctx->m_options.enabled = true;
-            }break;
-
-            unknown_option: {
-                fprintf(stderr, "Error: Unknown option '%s'\n", arg);
-                exit(1);
-            }break;
-            }
-        } else {
-            if (filepath) {
-                fprintf(stderr, "Error: More than 1 input file.\n");
-                exit(1);
-            } else {
-                filepath = arg;
-            }
-        }
-        #undef ADJACENT
+    if (cfg->pragma) {
+        Token * list = create_token_list((char *)cfg->pragma);
+        TokenIndex pragma_idx = {.list = list, .index = 0};
+        pre_handle_intro_pragma(ctx, &pragma_idx, NULL);
+        arrfree(list);
     }
 
-    // option error checking
-    if (ctx->m_options.enabled && ctx->m_options.target_mode == MT_NEWLINE) {
-        struct stat out_stat;
-        fstat(fileno(stdout), &out_stat);
-        if (S_ISFIFO(out_stat.st_mode) && !isatty(fileno(stdout))) {
-            fprintf(stderr, "WARNING: Newline separation '-MTn' may cause unexpected behavior. Consider using space separation '-MT_'.\n");
-        }
-    }
-    if (ctx->m_options.target_mode != MT_NORMAL && ctx->m_options.P) {
-        fprintf(stderr, "Error: Cannot use '-MT_' or -'MTn' with '-MP'.\n");
-        exit(1);
-    }
+    ctx->minimal_parse = false;
+    ctx->is_sys_header = true;
 
-    if (!no_sys) {
-        ctx->minimal_parse = false;
-        ctx->is_sys_header = true;
-
-        char path [4096];
-        if (!cfg_file) {
-            char program_dir [4096];
-            char program_path_norm [4096];
-            strcpy(program_path_norm, argv[0]);
-            path_normalize(program_path_norm);
-            path_dir(program_dir, program_path_norm, NULL);
-            if (get_config_path(path, program_dir)) {
-                cfg_file = path;
-            }
-        }
-        char * cfg_buffer = NULL;
-        if (cfg_file) {
-            cfg_buffer = intro_read_file(cfg_file, NULL);
-        }
-        if (cfg_buffer) {
-            Config cfg = load_config(cfg_buffer);
-            ctx->sys_header_first = arrlen(ctx->include_paths);
-            const char ** dest = arraddnptr(ctx->include_paths, arrlen(cfg.sys_include_paths));
-            memcpy(dest, cfg.sys_include_paths, arrlen(cfg.sys_include_paths) * sizeof(char *));
-            ctx->sys_header_last = arrlen(ctx->include_paths) - 1;
-
-            if (cfg.defines) {
-                FileInfo * config_file = calloc(1, sizeof(*config_file));
-                config_file->buffer = cfg.defines;
-                config_file->tk_list = create_token_list(cfg.defines);
-                config_file->filename = copy_and_terminate(ctx->arena, path, strlen(path));
-                arrput(ctx->loc.file_buffers, config_file);
-                ctx->current_file = config_file;
-                int ret = preprocess_file(ctx);
-                if (ret < 0) {
-                    info.ret = -1;
-                    return info;
-                }
-            }
-        } else {
-            fprintf(stderr, "Could not find intro.cfg.\n");
-            exit(1);
-        }
-
-        bool temp_minimal_parse = false;
-        if (ctx->m_options.enabled && !ctx->m_options.D) {
-            ctx->preprocess_only = true;
-            temp_minimal_parse = true;
-            Define def = {
-                .key = "__INTRO_MINIMAL__",
-                .is_defined = true,
-            };
-            shputs(ctx->defines, def);
-        }
-
-        FileInfo * intro_defs_file = calloc(1, sizeof(*intro_defs_file));
-        intro_defs_file->buffer_size = strlen(intro_defs);
-        intro_defs_file->buffer = intro_defs;
-        intro_defs_file->tk_list = create_token_list(intro_defs);
-        intro_defs_file->filename = "__INTRO_DEFS__";
-        arrput(ctx->loc.file_buffers, intro_defs_file);
-        ctx->current_file = intro_defs_file;
+    if (cfg->defines) {
+        FileInfo * config_file = calloc(1, sizeof(*config_file));
+        config_file->buffer = cfg->defines;
+        config_file->tk_list = create_token_list((char *)cfg->defines);
+        config_file->filename = copy_and_terminate(ctx->arena, cfg->config_filename, strlen(cfg->config_filename));
+        arrput(ctx->loc.file_buffers, config_file);
+        ctx->current_file = config_file;
         int ret = preprocess_file(ctx);
         if (ret < 0) {
             info.ret = -1;
             return info;
         }
-
-        ctx->minimal_parse = temp_minimal_parse;
-        ctx->is_sys_header = false;
     }
 
-    for (int i=0; i < arrlen(deferred_defines); i++) {
-        Define def = deferred_defines[i];
-        if (def.replace_list == undef_replace_list) {
-            (void)shdel(ctx->defines, def.key);
-        } else {
-            shputs(ctx->defines, def);
-        }
-    }
-    arrfree(deferred_defines);
+    ctx->sys_header_first = arrlen(ctx->include_paths);
+    const char ** dest = arraddnptr(ctx->include_paths, arrlen(cfg->sys_include_paths));
+    memcpy(dest, cfg->sys_include_paths, arrlen(cfg->sys_include_paths) * sizeof(char *));
+    ctx->sys_header_last = arrlen(ctx->include_paths) - 1;
 
-    if (!filepath) {
-        fputs("No filename given.\n", stderr);
-        exit(1);
-    }
-    if (info.output_filename == NULL) {
-        char * ext;
-        switch(info.gen_mode) {
-        default:
-        case GEN_HEADER:     ext = ".intro"; break;
-        case GEN_CITY:       ext = ".cty"; break;
-        case GEN_VIM_SYNTAX: ext = ".vim"; break;
-        }
-        strputf(&info.output_filename, "%s%s", filepath, ext);
+    dest = arraddnptr(ctx->include_paths, arrlen(cfg->include_paths));
+    memcpy(dest, cfg->include_paths, arrlen(cfg->include_paths) * sizeof(char *));
+
+    bool temp_minimal_parse = false;
+    if (cfg->m_options.enabled && !cfg->m_options.D) {
+        ctx->preprocess_only = true;
+        temp_minimal_parse = true;
+        Define def = {
+            .key = "__INTRO_MINIMAL__",
+            .is_defined = true,
+        };
+        shputs(ctx->defines, def);
     }
 
-    int error = preprocess_set_file(ctx, filepath);
-    if (error) {
-        if (error == RET_FILE_NOT_FOUND) {
-            fprintf(stderr, "File not found.\n");
-        }
+    FileInfo * intro_defs_file = calloc(1, sizeof(*intro_defs_file));
+    intro_defs_file->buffer_size = strlen(intro_defs);
+    intro_defs_file->buffer = intro_defs;
+    intro_defs_file->tk_list = create_token_list(intro_defs);
+    intro_defs_file->filename = "__INTRO_DEFS__";
+    arrput(ctx->loc.file_buffers, intro_defs_file);
+    ctx->current_file = intro_defs_file;
+    int ret = preprocess_file(ctx);
+    if (ret < 0) {
         info.ret = -1;
         return info;
     }
-    error = preprocess_file(ctx);
-    if (error) {
-        info.ret = error;
-        return info;
+
+    ctx->minimal_parse = temp_minimal_parse;
+    ctx->is_sys_header = false;
+
+    Token * default_replace_list = NULL;
+    arrput(default_replace_list, ((Token){.start = "1", .length = 1, .type = TK_NUMBER}));
+
+    for (int preop_i=0; preop_i < arrlen(cfg->pre_options); preop_i++) {
+        PreOption pre_op = cfg->pre_options[preop_i];
+        switch (pre_op.type) {
+        case PRE_OP_DEFINE: {
+            Define new_def = {.is_defined = true};
+            Token * tklist = create_token_list(pre_op.string);
+            if (arrlen(tklist) > 2) {
+                if (!(arrlen(tklist) >= 4 && tklist[1].type == TK_EQUAL)) {
+                    fprintf(stderr, "Invalid -D option.\n");
+                    exit(1);
+                }
+
+                (void) arrpop(tklist); // remove TK_END token
+
+                new_def.key = copy_and_terminate(ctx->arena, tklist[0].start, tklist[0].length);
+
+                arrdeln(tklist, 0, 2); // remove NAME = tokens
+                new_def.replace_list = tklist;
+            } else {
+                new_def.key = pre_op.string;
+                new_def.replace_list = default_replace_list;
+                arrfree(tklist);
+            }
+            shputs(ctx->defines, new_def);
+        }break;
+
+        case PRE_OP_UNDEFINE: {
+            (void) shdel(ctx->defines, pre_op.string);
+        }break;
+
+        case PRE_OP_INPUT_FILE: {
+            int ret = preprocess_set_file(ctx, pre_op.string);
+            if (ret) {
+                if (ret == RET_FILE_NOT_FOUND) {
+                    fprintf(stderr, "File not found.\n");
+                }
+                info.ret = -1;
+                return info;
+            }
+            ret = preprocess_file(ctx);
+            if (ret) {
+                info.ret = ret;
+                return info;
+            }
+        }break;
+        }
     }
 
     Token endtk = {.type = TK_END};
@@ -1911,63 +1692,46 @@ run_preprocessor(int argc, char ** argv) {
     Define lib_version_macro = shgets(ctx->defines, "INTRO_LIB_VERSION");
     if (lib_version_macro.is_defined) {
         Token lib_version_tk = lib_version_macro.replace_list[0];
-        long lib_version = strtol(lib_version_tk.start, NULL, 10);
+        long input_lib_version = strtol(lib_version_tk.start, NULL, 10);
+        long our_lib_version = INTRO_LIB_VERSION;
 
-        static const char *const _version = VERSION;
-
-        const char * pv = _version;
-        char * end;
-        long major = strtol(pv, &end, 10);
-        if (end == pv || *end != '.') {
-            fprintf(stderr, "warn: Unable to determine version.\n");
-        } else {
-            pv = end + 1;
-            long minor = strtol(pv, &end, 10);
-            long patch = 0;
-            pv = end;
-            if (*pv == '-') {
-                pv++;
-                patch = strtol(pv, &end, 10);
-            }
-            long version_num = major * 100 * 100 + minor * 100 + patch;
-
-            if (version_num / 100 != lib_version / 100) {
-                preprocess_warning(&lib_version_tk, "intro.h version does not match generator version.");
-                fprintf(stderr, "generator version: %s\n", VERSION);
-            } else if (lib_version < version_num) {
-                preprocess_warning(&lib_version_tk, "intro.h has a lower patch level than the generator.");
-                fprintf(stderr, "generator version: %s\n", VERSION);
-            }
+        if (our_lib_version / 100 != input_lib_version / 100) {
+            preprocess_warning(&lib_version_tk, "intro.h version does not match generator version.");
+            fprintf(stderr, "generator version: %s\n", VERSION);
+        } else if (our_lib_version < input_lib_version) {
+            preprocess_warning(&lib_version_tk, "intro.h has a lower patch level than the generator.");
+            fprintf(stderr, "generator version: %s\n", VERSION);
         }
     }
 
-    if (ctx->m_options.enabled) {
+    if (cfg->m_options.enabled) {
+        const char * filepath = cfg->first_input_filename;
         char * ext = strrchr(filepath, '.');
         int len_basename = (ext)? ext - filepath : strlen(filepath);
-        if (ctx->m_options.D && !ctx->m_options.filename) {
+        if (cfg->m_options.D && !cfg->m_options.filename) {
             char * dep_file = NULL;
             strputf(&dep_file, "%.*s.d", len_basename, filepath);
-            ctx->m_options.filename = dep_file;
+            cfg->m_options.filename = dep_file;
         }
 
         char * rule = NULL;
         char * dummy_rules = NULL;
-        if (ctx->m_options.target_mode == MT_NORMAL) {
-            if (ctx->m_options.custom_target) {
-                strputf(&rule, "%s: ", ctx->m_options.custom_target);
+        if (cfg->m_options.target_mode == MT_NORMAL) {
+            if (cfg->m_options.custom_target) {
+                strputf(&rule, "%s: ", cfg->m_options.custom_target);
             } else {
                 strputf(&rule, "%.*s.o: ", len_basename, filepath);
             }
         }
         const char * sep = " ";
-        if (ctx->m_options.target_mode == MT_NEWLINE) {
+        if (cfg->m_options.target_mode == MT_NEWLINE) {
             sep = "\n";
         }
         strputf(&rule, "%s", filepath);
         for (int i=0; i < shlen(ctx->dependency_set); i++) {
             char buf [1024];
             const char * path = ctx->dependency_set[i].key;
-            if (ctx->m_options.use_msys_path) {
+            if (cfg->m_options.use_msys_path) {
                 // NOTE: paths should already be using forward slashes at this point
                 strcpy(buf, ctx->dependency_set[i].key);
                 char drive_char = buf[0];
@@ -1980,7 +1744,7 @@ run_preprocessor(int argc, char ** argv) {
                 path = buf;
             }
             strputf(&rule, "%s%s", sep, path);
-            if (ctx->m_options.P) {
+            if (cfg->m_options.P) {
                 strputf(&dummy_rules, "%s:\n", path);
             }
         }
@@ -1989,18 +1753,18 @@ run_preprocessor(int argc, char ** argv) {
             strputf(&rule, "%.*s", (int)arrlen(dummy_rules), dummy_rules);
         }
 
-        if (ctx->preprocess_only && !ctx->m_options.filename) {
+        if (ctx->preprocess_only && !cfg->m_options.filename) {
             fputs(rule, stdout);
             exit(0);
         }
 
-        if (ctx->m_options.filename == NULL) {
+        if (cfg->m_options.filename == NULL) {
             fprintf(stderr, "Somehow, intro cannot figure out what to do with the dependency information.\n");
             exit(1);
         }
-        int error = intro_dump_file(ctx->m_options.filename, rule, arrlen(rule));
+        int error = intro_dump_file(cfg->m_options.filename, rule, arrlen(rule));
         if (error < 0) {
-            fprintf(stderr, "Failed to write dependencies to '%s'\n", ctx->m_options.filename);
+            fprintf(stderr, "Failed to write dependencies to '%s'\n", cfg->m_options.filename);
             exit(1);
         }
     }

@@ -1305,7 +1305,7 @@ add_to_gen_info(ParseContext * ctx, ParseInfo * info, IntroType * type) {
 }
 
 int
-parse_preprocessed_tokens(PreInfo * pre_info, ParseInfo * o_info) {
+parse_preprocessed_tokens(const Config * cfg, PreInfo * pre_info, ParseInfo * o_info) {
     ParseContext * ctx = calloc(1, sizeof(ParseContext));
     ctx->tk_list = pre_info->result_list;
     ctx->arena = new_arena((1 << 20)); // 1mb buckets

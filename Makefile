@@ -40,7 +40,7 @@ define PROFILE.debug
   MAGIC_TARGET := build
 endef
 
-SANITIZE_FLAGS := -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer
+SANITIZE_FLAGS := -fsanitize=undefined -fsanitize-undefined-trap-on-error -fstack-protector -fno-omit-frame-pointer
 define PROFILE.sanitize
   $(PROFILE.debug)
   CFLAGS += $(SANITIZE_FLAGS)

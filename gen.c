@@ -23,15 +23,15 @@ make_identifier_safe_name(const char * name) {
 }
 
 int
-generate_c_header(PreInfo * pre_info, ParseInfo * info) {
+generate_c_header(const Config * cfg, PreInfo * pre_info, ParseInfo * info) {
     char * s = NULL;
 
     char * header_def = NULL;
-    arrsetcap(header_def, strlen(pre_info->output_filename) + 2);
+    arrsetcap(header_def, strlen(cfg->output_filename) + 2);
     arrsetlen(header_def, 1);
     header_def[0] = '_';
-    for (int i=0; i < strlen(pre_info->output_filename); i++) {
-        char c = pre_info->output_filename[i];
+    for (int i=0; i < strlen(cfg->output_filename); i++) {
+        char c = cfg->output_filename[i];
         if (is_iden(c)) {
             arrput(header_def, c);
         } else {
@@ -337,7 +337,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
 
     hmfree(complex_type_map);
 
-    int error = intro_dump_file(pre_info->output_filename, s, strlen(s));
+    int error = intro_dump_file(cfg->output_filename, s, strlen(s));
     arrfree(s);
 
     if (error) return RET_FAILED_FILE_WRITE;
@@ -345,7 +345,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
 }
 
 int
-generate_context_city(PreInfo * pre_info, ParseInfo * info) {
+generate_context_city(const Config * cfg, PreInfo * pre_info, ParseInfo * info) {
 #if INCLUDE_INTRO_DATA
     IntroContext ser = {0};
 
@@ -370,7 +370,7 @@ generate_context_city(PreInfo * pre_info, ParseInfo * info) {
     ser.macros = pre_info->macros;
     ser.count_macros = arrlen(pre_info->macros);
 
-    int ret = intro_create_city_file(pre_info->output_filename, &ser, ITYPE(IntroContext));
+    int ret = intro_create_city_file(cfg->output_filename, &ser, ITYPE(IntroContext));
 
     free(ser.types);
 
@@ -381,7 +381,7 @@ generate_context_city(PreInfo * pre_info, ParseInfo * info) {
 }
 
 int
-generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
+generate_vim_syntax(const Config * cfg, PreInfo * pre_info, ParseInfo * info) {
     char * buf = NULL;
     char ** s = &buf;
 
@@ -420,7 +420,23 @@ generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
         strputf(s, "syn keyword Macro %s\n", macro.name);
     }
 
-    intro_dump_file(pre_info->output_filename, buf, arrlen(buf));
+    intro_dump_file(cfg->output_filename, buf, arrlen(buf));
 
     return 0;
+}
+
+int
+generate_files(const Config * cfg, PreInfo * pre_info, ParseInfo * parse_info) {
+    int ret;
+    if (cfg->gen_city) {
+        ret = generate_context_city(cfg, pre_info, parse_info);
+    } else if (cfg->gen_vim_syntax) {
+        ret = generate_vim_syntax(cfg, pre_info, parse_info);
+    } else {
+        ret = generate_c_header(cfg, pre_info, parse_info);
+    }
+
+    g_metrics.gen_time += nanointerval();
+
+    return ret;
 }

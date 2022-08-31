@@ -68,11 +68,8 @@ get_config_path(char * o_path, const char * exe_dir) {
     return ok;
 }
 
-Config
-load_config(const char * buf) {
-    Config cfg = {0};
-    cfg.arena = new_arena(1024);
-    
+void
+load_config_file_data(Config * cfg, const char * buf) {
     const char * s = buf;
     while (*s != 0) {
         while (is_space(*s)) s++;
@@ -84,6 +81,7 @@ load_config(const char * buf) {
                 fprintf(stderr, "Invalid config file.\n");
                 exit(1);
             }
+            assert(close - s < sizeof(section_name));
             memcpy(section_name, s, close - s);
             section_name[close - s] = 0;
 
@@ -99,8 +97,8 @@ load_config(const char * buf) {
                     strncpy(buf, s, sizeof(buf));
                     buf[end - s] = 0;
                     path_normalize(buf);
-                    char * path = copy_and_terminate(cfg.arena, buf, strlen(buf));
-                    arrput(cfg.sys_include_paths, path);
+                    char * path = copy_and_terminate(cfg->arena, buf, strlen(buf));
+                    arrput(cfg->sys_include_paths, path);
                     s = end;
                     while (is_space(*++s));
                 }
@@ -108,10 +106,11 @@ load_config(const char * buf) {
                 const char * start = s;
                 while (s && *s && 0 != memcmp(s, "\n[", 2)) s = strchr(s, '\n') + 1;
                 const char * end = s;
-                char * result = malloc(end - start + 1);
-                memcpy(result, start, end - start);
-                result[end - start] = 0;
-                cfg.defines = result;
+                size_t buf_size = end - start;
+                char * result = arena_alloc(cfg->arena, buf_size + 1);
+                memcpy(result, start, buf_size);
+                result[buf_size] = 0;
+                cfg->defines = result;
             } else if (0==strcmp(section_name, "types")) {
                 while (1) {
                     if (0==memcmp(s, "[#", 2)) break;
@@ -126,21 +125,21 @@ load_config(const char * buf) {
                     s = v_end;
                     while (is_space(*++s));
                     if (0==strncmp(start, "void *", len)) {
-                        cfg.type_info.size_ptr = value;
+                        cfg->type_info.size_ptr = value;
                     } else if (0==strncmp(start, "short", len)) {
-                        cfg.type_info.size_short = value;
+                        cfg->type_info.size_short = value;
                     } else if (0==strncmp(start, "int", len)) {
-                        cfg.type_info.size_int = value;
+                        cfg->type_info.size_int = value;
                     } else if (0==strncmp(start, "long", len)) {
-                        cfg.type_info.size_long = value;
+                        cfg->type_info.size_long = value;
                     } else if (0==strncmp(start, "long long", len)) {
-                        cfg.type_info.size_long_long = value;
+                        cfg->type_info.size_long_long = value;
                     } else if (0==strncmp(start, "long double", len)) {
-                        cfg.type_info.size_long_double = value;
+                        cfg->type_info.size_long_double = value;
                     } else if (0==strncmp(start, "_Bool", len)) {
-                        cfg.type_info.size_bool = value;
+                        cfg->type_info.size_bool = value;
                     } else if (0==strncmp(start, "char_is_signed", len)) {
-                        cfg.type_info.char_is_signed = value;
+                        cfg->type_info.char_is_signed = value;
                     } else {
                         fprintf(stderr, "Invalid config file.\n");
                         exit(1);
@@ -155,8 +154,6 @@ load_config(const char * buf) {
             exit(1);
         }
     }
-
-    return cfg;
 }
 
 void
@@ -266,4 +263,253 @@ generate_config(int argc, char ** argv) {
     free_arena(arena);
 
     fprintf(stderr, "Generated intro config at '%s'.\n", output_file);
+}
+
+static const char help_dialog [] =
+"intro - parser and introspection data generator\n"
+"USAGE: intro [OPTIONS] file\n"
+"\n"
+"OPTIONS:\n"
+" -o       specify output file\n"
+" -        use stdin as input\n"
+" --cfg    specify config file\n"
+" -I -D -U -E -M -MP -MM -MD -MMD -MG -MT -MF (like gcc)\n"
+" -MT_     output space separated dependency list with no target\n"
+" -MTn     output newline separated dependency list with no target\n"
+;
+
+static const char *const filename_stdin = "__stdin__";
+
+void interactive_calculator();
+
+void
+parse_program_arguments(Config * cfg, int argc, char * argv []) {
+    if (argc > 1 && 0==strcmp(argv[1], "--calculator")) {
+        interactive_calculator();
+        exit(0);
+    }
+    if (argc > 1 && 0==strcmp(argv[1], "--gen-config")) {
+        generate_config(argc - 2, &argv[2]);
+        exit(0);
+    }
+
+    cfg->program_name = argv[0];
+
+    for (int i=1; i < argc; i++) {
+        #define ADJACENT() ((strlen(arg) == 2)? argv[++i] : arg+2)
+        char * arg = argv[i];
+        if (arg[0] == '-') {
+            switch(arg[1]) {
+            case '-': {
+                arg = argv[i] + 2;
+                if (0==strcmp(arg, "cfg")) {
+                    cfg->config_filename = argv[++i];
+                } else if (0==strcmp(arg, "help")) {
+                    fputs(help_dialog, stderr);
+                    exit(0);
+                } else if (0==strcmp(arg, "gen-city")) {
+                    cfg->gen_city = true;
+                } else if (0==strcmp(arg, "gen-vim-syntax")) {
+                    cfg->gen_vim_syntax = true;
+                } else if (0==strcmp(arg, "gen-typedefs")) {
+                    cfg->gen_typedefs = true;
+                } else if (0==strcmp(arg, "pragma")) {
+                    char * text = argv[++i];
+                    char * text_cpy = arena_alloc(cfg->arena, strlen(text) + 2);
+                    strcpy(text_cpy, text);
+                    strcat(text_cpy, "\n");
+                    cfg->pragma = text_cpy;
+                } else {
+                    fprintf(stderr, "Unknown option: '%s'\n", arg);
+                    exit(1);
+                }
+            }break;
+
+            case 'h': {
+                fputs(help_dialog, stderr);
+                exit(0);
+            }break;
+
+            case 'D': {
+                char * opt_str = ADJACENT();
+                PreOption pre_op = {.type = PRE_OP_DEFINE, .string = opt_str};
+                arrput(cfg->pre_options, pre_op);
+            }break;
+
+            case 'U': {
+                char * opt_str = ADJACENT();
+                PreOption pre_op = {.type = PRE_OP_UNDEFINE, .string = opt_str};
+                arrput(cfg->pre_options, pre_op);
+            }break;
+
+            case 'I': {
+                char * new_path = ADJACENT();
+                arrput(cfg->include_paths, new_path);
+            }break;
+
+            case 'E': {
+                cfg->pre_only = true;
+            }break;
+
+            case 'o': {
+                cfg->output_filename = argv[++i];
+            }break;
+
+            case 'V': {
+                cfg->show_metrics = true;
+            }break;
+
+            case 0: {
+                if (isatty(fileno(stdin))) {
+                    fprintf(stderr, "Error: Cannot use terminal as file input.\n");
+                    exit(1);
+                }
+                PreOption pre_op = {.type = PRE_OP_INPUT_FILE, .string = (char *)filename_stdin};
+                arrput(cfg->pre_options, pre_op);
+            }break;
+
+            case 'M': {
+                switch(arg[2]) {
+                case 0: {
+                }break;
+
+                case 'M': {
+                    cfg->m_options.no_sys = true;
+                    if (arg[3] == 'D') cfg->m_options.D = true;
+                }break;
+
+                case 'D': {
+                    cfg->m_options.D = true;
+                }break;
+
+                case 'G': {
+                    cfg->m_options.G = true;
+                }break;
+
+                case 'T': {
+                    if (arg[3]) {
+                        if (arg[3] == '_') {
+                            cfg->m_options.target_mode = MT_SPACE;
+                        } else if (arg[3] == 'n') {
+                            cfg->m_options.target_mode = MT_NEWLINE;
+                        } else {
+                            goto unknown_option;
+                        }
+                        break;
+                    } else {
+                        cfg->m_options.target_mode = MT_NORMAL;
+                        cfg->m_options.custom_target = argv[++i];
+                    }
+                }break;
+
+                case 'F' :{
+                    cfg->m_options.filename = argv[++i];
+                }break;
+
+                case 's': {
+                    if (0==strcmp(arg+3, "ys")) { // -Msys
+                        cfg->m_options.use_msys_path = true;
+                    } else {
+                        goto unknown_option;
+                    }
+                }break;
+
+                case 'P': {
+                    cfg->m_options.P = true;
+                }break;
+
+                default: goto unknown_option;
+                }
+
+                cfg->m_options.enabled = true;
+            }break;
+
+            unknown_option: {
+                fprintf(stderr, "Error: Unknown option '%s'\n", arg);
+                exit(1);
+            }break;
+            }
+        } else {
+            PreOption pre_op = {.type = PRE_OP_INPUT_FILE, .string = arg};
+            arrput(cfg->pre_options, pre_op);
+        }
+        #undef ADJACENT
+    }
+
+    if (cfg->m_options.enabled && cfg->m_options.target_mode == MT_NEWLINE) {
+        struct stat out_stat;
+        fstat(fileno(stdout), &out_stat);
+        if (S_ISFIFO(out_stat.st_mode) && !isatty(fileno(stdout))) {
+            fprintf(stderr, "WARNING: Newline separation '-MTn' may cause unexpected behavior. Consider using space separation '-MT_'.\n");
+        }
+    }
+    if (cfg->m_options.target_mode != MT_NORMAL && cfg->m_options.P) {
+        fprintf(stderr, "Error: Cannot use '-MT_' or -'MTn' with '-MP'.\n");
+        exit(1);
+    }
+
+    for (int i=0; i < arrlen(cfg->pre_options); i++) {
+        PreOption pre_op = cfg->pre_options[i];
+        if (pre_op.type == PRE_OP_INPUT_FILE) {
+            cfg->first_input_filename = pre_op.string;
+            break;
+        }
+    }
+
+    if (!cfg->first_input_filename) {
+        fprintf(stderr, "No input file.\n");
+        exit(1);
+    }
+}
+
+Config
+get_config(int argc, char * argv []) {
+    Config cfg = {0};
+    cfg.arena = new_arena(1024);
+
+    parse_program_arguments(&cfg, argc, argv);
+
+    char path [4096];
+    if (!cfg.config_filename) {
+        char program_dir [4096];
+        char program_path_norm [4096];
+        strcpy(program_path_norm, argv[0]);
+        path_normalize(program_path_norm);
+        path_dir(program_dir, program_path_norm, NULL);
+        if (get_config_path(path, program_dir)) {
+            cfg.config_filename = path;
+        }
+    }
+
+    const char * file_data = NULL;
+    if (cfg.config_filename) {
+        file_data = intro_read_file(cfg.config_filename, NULL);
+    }
+
+    if (file_data) {
+        load_config_file_data(&cfg, file_data);
+    } else {
+        fprintf(stderr, "Could not find intro.cfg.\n");
+        exit(1);
+    }
+
+    (void) malloc(8);
+
+    if (cfg.output_filename == NULL) {
+        char * ext;
+        if (cfg.gen_city) {
+            ext = ".cty";
+        } else if (cfg.gen_vim_syntax) {
+            ext = ".vim";
+        } else {
+            ext = ".intro";
+        }
+
+        char * buf = arena_alloc(cfg.arena, strlen(cfg.first_input_filename) + strlen(ext) + 4);
+        strcpy(buf, cfg.first_input_filename);
+        strcat(buf, ext);
+        cfg.output_filename = buf;
+    }
+
+    return cfg;
 }

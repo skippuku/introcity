@@ -113,6 +113,64 @@
 
 static uint64_t g_timer_freq = 0;
 
+typedef struct {
+    uint8_t size_ptr;
+    uint8_t size_short;
+    uint8_t size_int;
+    uint8_t size_long;
+    uint8_t size_long_long;
+    uint8_t size_long_double;
+    uint8_t size_bool;
+    uint8_t char_is_signed;
+} CTypeInfo;
+
+typedef struct {
+    char * string;
+    enum {
+        PRE_OP_INPUT_FILE,
+        PRE_OP_DEFINE,
+        PRE_OP_UNDEFINE,
+    } type;
+} PreOption;
+
+typedef struct {
+    char ** sys_include_paths;
+    char * defines;
+    MemArena * arena;
+    CTypeInfo type_info;
+
+    const char * program_name;
+    const char * config_filename;
+    const char * first_input_filename;
+
+    char * output_filename;
+
+    PreOption * pre_options;
+    const char ** include_paths;
+    const char * pragma;
+    struct {
+        char * custom_target;
+        char * filename;
+        enum {
+            MT_NORMAL = 0,
+            MT_SPACE,
+            MT_NEWLINE,
+        } target_mode;
+        bool enabled : 1;
+        bool D : 1;
+        bool G : 1;
+        bool P : 1;
+        bool no_sys : 1;
+        bool use_msys_path : 1;
+    } m_options;
+
+    bool gen_city : 1;
+    bool gen_vim_syntax : 1;
+    bool gen_typedefs : 1;
+    bool show_metrics : 1;
+    bool pre_only : 1;
+} Config;
+
 #define DEF_BUILTIN(NAME) {#NAME, offsetof(struct IntroBuiltinAttributes, NAME)}
 static const struct {const char * key; int value;} g_builtin_attributes [] = {
     DEF_BUILTIN(id),
@@ -198,20 +256,11 @@ reset_location_context(LocationContext * lctx) {
     arrsetlen(lctx->stack, 0);
 }
 
-enum GenMode {
-    GEN_HEADER = 0,
-    GEN_CITY,
-    GEN_VIM_SYNTAX,
-};
-
 typedef struct {
     Token * result_list;
-    char * output_filename;
     IntroMacro * macros;
     LocationContext loc;
     int ret;
-    enum GenMode gen_mode;
-    bool show_metrics;
 } PreInfo;
 
 typedef struct {
@@ -299,24 +348,6 @@ typedef struct {
     bool func_specifies_args;
     bool reuse_base;
 } DeclState;
-
-typedef struct {
-    uint8_t size_ptr;
-    uint8_t size_short;
-    uint8_t size_int;
-    uint8_t size_long;
-    uint8_t size_long_long;
-    uint8_t size_long_double;
-    uint8_t size_bool;
-    uint8_t char_is_signed;
-} CTypeInfo;
-
-typedef struct {
-    char ** sys_include_paths;
-    char * defines;
-    MemArena * arena;
-    CTypeInfo type_info;
-} Config;
 
 static struct Metrics {
     uint64_t start;
