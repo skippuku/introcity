@@ -227,10 +227,10 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     }
 
     // attributes
-    strputf(&s, "const IntroAttributeTypeInfo __intro_attr_t [%u] = {\n", (unsigned int)info->attr.count_available);
+    strputf(&s, "const IntroAttributeInfo __intro_attr_t [%u] = {\n", (unsigned int)info->attr.count_available);
     for (int attr_index = 0; attr_index < info->attr.count_available; attr_index++) {
-        IntroAttributeTypeInfo attr = info->attr.available[attr_index];
-        strputf(&s, "{\"%s\", %u, %u},\n", attr.name, attr.category, attr.type_id);
+        IntroAttributeInfo attr = info->attr.available[attr_index];
+        strputf(&s, "{\"%s\", %u, %u},\n", attr.name, attr.category, attr.id);
     }
     strputf(&s, "};\n\n");
 
@@ -320,7 +320,7 @@ generate_c_header(PreInfo * pre_info, ParseInfo * info) {
     strputf(&s, "%u,", (uint32_t)arrlen(pre_info->macros));
     strputf(&s, "\n");
 
-    strputf(&s, "{(IntroAttributeTypeInfo *)__intro_attr_t, ");
+    strputf(&s, "{(IntroAttributeInfo *)__intro_attr_t, ");
     strputf(&s, "(IntroAttributeData *)__intro_attr_data, ");
     strputf(&s, "%u, ", info->attr.count_available);
     strputf(&s, "%u,{", info->attr.first_flag);
@@ -410,7 +410,7 @@ generate_vim_syntax(PreInfo * pre_info, ParseInfo * info) {
 
     strputf(s, "\nsyn keyword IntroAttribute contained");
     for (int attr_i=0; attr_i < info->attr.count_available; attr_i++) {
-        IntroAttributeTypeInfo attr = info->attr.available[attr_i];
+        IntroAttributeInfo attr = info->attr.available[attr_i];
         strputf(s, " %s", attr.name);
     }
 

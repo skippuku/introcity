@@ -23,7 +23,7 @@ typedef struct {
     uint32_t id;
     uint32_t final_id;
     IntroType * type_ptr;
-    IntroAttributeTypeCategory category;
+    IntroAttributeCategory category;
     uint32_t imply_directive_index;
     bool builtin;
     bool global;
@@ -104,7 +104,7 @@ struct ParseContext {
     struct {char * key; AttributeParseInfo value;} * attribute_map;
     struct {char * key; int value;}                * attribute_token_map;
     struct {char * key; int value;}                * builtin_map;
-    struct {IntroAttributeType key; AttributeParseInfo * value;} * parse_info_by_id;
+    struct {IntroAttribute key; AttributeParseInfo * value;} * parse_info_by_id;
     NameSet * attribute_namespace_set;
     const char * current_namespace;
 
@@ -117,7 +117,7 @@ struct ParseContext {
     AttributeData * attribute_globals;
     AttributeDirective * attribute_directives;
     AttributeDataMap * attribute_data_map;
-    struct IntroBuiltinAttributeTypes builtin;
+    struct IntroBuiltinAttributes builtin;
     uint32_t attribute_id_counter;
     uint32_t flag_temp_id_counter;
     ParseInfo * p_info;

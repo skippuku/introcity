@@ -495,16 +495,16 @@ store_deferred_ptrs(ParseContext * ctx) {
 
 int
 handle_value_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int member_index, AttributeData * data, Token * p_tk) {
-    IntroAttributeTypeInfo attr_info = ctx->p_info->attr.available[data->id];
+    IntroAttributeInfo attr_info = ctx->p_info->attr.available[data->id];
     IntroType * v_type;
-    if (attr_info.type_id == 0) {
+    if (attr_info.id == 0) {
         if (member_index >= 0) {
             v_type = type->members[member_index].type;
         } else {
             v_type = type;
         }
     } else {
-        v_type = ctx->p_info->types[attr_info.type_id];
+        v_type = ctx->p_info->types[attr_info.id];
     }
     assert(arrlen(ctx->ptr_stores) == 0);
     uint32_t length_value = 0;
@@ -566,7 +566,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         return -1;
     }
     data.id = attr_info.final_id;
-    IntroAttributeTypeCategory attribute_category = attr_info.category;
+    IntroAttributeCategory attribute_category = attr_info.category;
 
     char * end;
     switch(attribute_category) {
@@ -699,12 +699,12 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
                 AttributeDataKey key = {.type = type, .member_index = member_index};
                 hmput(ctx->header_map, key, decl.type);
             }
-            uint32_t type_id = hmget(ctx->p_info->index_by_ptr_map, decl.type);
-            if (type_id == 0) {
+            uint32_t id = hmget(ctx->p_info->index_by_ptr_map, decl.type);
+            if (id == 0) {
                 parse_error(ctx, decl.base_tk, "Undeclared type.");
                 return -1;
             }
-            data.v.i = type_id;
+            data.v.i = id;
         } else if (ret >= 0) {
             parse_error(ctx, tk_last(tidx), "Unknown error.");
             return -1;
@@ -818,15 +818,15 @@ parse_attribute_directive(ParseContext * ctx, AttributeDirective * directive) {
 
 static void
 add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info, char * name) {
-    IntroAttributeTypeInfo attribute = {
+    IntroAttributeInfo attribute = {
         .name = name,
         .category = info->category,
     };
     if (info->type_ptr) {
-        attribute.type_id = hmget(o_info->index_by_ptr_map, info->type_ptr);
-        assert(attribute.type_id != 0);
+        attribute.id = hmget(o_info->index_by_ptr_map, info->type_ptr);
+        assert(attribute.id != 0);
     } else {
-        attribute.type_id = 0;
+        attribute.id = 0;
     }
     int final_id = arrlen(o_info->attr.available);
     arrput(o_info->attr.available, attribute);
