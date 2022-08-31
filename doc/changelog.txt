@@ -1,5 +1,22 @@
 CHANGELOG
 
+0.4 (Beta)
+	NEW ATTRIBUTE FEATURES
+		new attribute category: 'type'
+
+		new built-in attributes: 'imitate', 'header'
+
+		new attribute traits: '@transient', '@imply'
+
+		removed attribute: 'type'
+
+	INTROLIB
+		better support for wider range of compilers by adhering strictly to
+		the C99 standard.
+
+		intro.h now has a version that intro will check and compare to its own
+		version to help identify errors that stem from version mismatching
+
 0.3 (Beta)
     SINGLE FILE INTROLIB
         intro.h, introlib.c, and intro_imgui.cpp have been combined into just

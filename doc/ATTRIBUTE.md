@@ -168,6 +168,17 @@ While this attribute is of type *char \**, a single identifier without quotation
     float speed I(alias velocity);
 ```
 
+### imitate @propagate
+**type:** [type](#type)
+Defines a type that a variable will be interpreted as in specific situations. For example, it can be used to to display an integer as a specific enum type.
+
+### header @propagate
+**type:** [type](#type)
+Defines a type that is used as a pointer header such as in certain dynamic array implementations. When this attribute is applied, expression attributes will read the header instead of the parent type.
+```C
+    int * dynamic_array I(header stb_array_header, length length); // length will be read from the array header
+```
+
 ### city @global
 **type:** [flag](#flag)
 Determines that a value that is a pointer will be serialized by the city implementation.
@@ -183,17 +194,6 @@ struct MyString {
     char * str I(length len, ~cstring);
     int len;
 };
-```
-
-### type
-**type:** [flag](#flag)   
-Marks the member to be set to the type of the structure it is within during `intro_set_defaults` or `intro_load_city`.    
-Can only be applied to a member of type `IntroType *`.
-```C
-typedef struct {
-    int a, b, c;
-    IntroType * type I(type); // will be set to ITYPE(Entity)
-} Entity;
 ```
 
 ## Namespace: gui_
@@ -258,6 +258,9 @@ Attribute is defined as a number of type `float`.
 ### member
 Attribute is defined as a sibling member.
 
+### type
+Attribute is defined as a C type.
+
 ### value
 Attribute is defined as a value of a specific type. The type is determined with parentheses:
 ```C
@@ -290,10 +293,24 @@ struct Variant {
 ### flag
 Attribute is defined with no data. Flags can have the `@global` trait which means that they are applied to every type and member by default.
 
-# The @propagate trait
+# Traits
 
+## @propagate
 The `@propagate` trait can be applied to an attribute type of any category. Attributes of a propagated type will be inherited by typedefs and members of a C type.
 
-[intro_set_defaults]: ./LIB.md#intro_set_defaults
+## @transient
+Transient attributes only exist during the parse pass. They cannot be checked for at runtime. They do not store information.
+
+## @imply
+Used to define an attribute directive that will be applied along with the attribute. Often combined with @transient as a way to conveniently apply several attributes.
+```C
+I(attribute my_ (
+    favorite: flag @imply(gui_color {255,255,0,255}),
+    dyn_array: flag @transient @imply(header MyArrayHeader, length .count),
+    percent: flag @transient @imply(gui: min 0, max 0, format "%2.f"),
+))
+```
+
+[intro_fallback]:     ./LIB.md#intro_fallback
 [intro_load_city]:    ./LIB.md#intro_load_city
 [intro_create_city]:  ./LIB.md#intro_create_city

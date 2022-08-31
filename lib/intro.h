@@ -458,7 +458,7 @@ int64_t intro_int_value(const void * data, const IntroType * type);
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 union IntroRegisterData intro_run_bytecode(const uint8_t * code, const void * data);
 
-#define INTRO_LIB_VERSION 313
+#define INTRO_LIB_VERSION 314
 
 ///////////////////////////////
 //  INTROLIB IMPLEMENTATION  //
