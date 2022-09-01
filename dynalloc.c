@@ -3,27 +3,35 @@
 #include <stdio.h>
 #include <assert.h>
 
-#define DYN_ALLOCATOR_BANKS_PER_POOL 64
-#define DYN_ALLOCATOR_SMALLEST_BANK_SHIFT 6
+#define DYN_ALLOCATOR_BANKS_PER_POOL 32
+#define DYN_ALLOCATOR_SMALLEST_BANK_SHIFT 7
 
 typedef struct {
-    uint8_t reserved_front [4];
     uint32_t capacity;
     uint32_t used;
     uint16_t pool_index;
-    uint8_t pool_group_index;
-    uint8_t reserved_back [1];
+    uint8_t  pool_group_index;
+    uint8_t  slot_index;
+    uint8_t  _reserved [4];
 } DynAllocationHeader;
 
 _Static_assert(sizeof(DynAllocationHeader) == 16, "DynAllocationHeader must be 16 bytes.");
 
 typedef struct {
+    size_t    count_vacant;
+    uint8_t   vacant [DYN_ALLOCATOR_BANKS_PER_POOL];
     uint8_t * data;
-    uint32_t count_vacancies;
 } DynAllocatorPool;
 
 typedef struct {
-    DynAllocatorPool pool_groups [13][1024];
+    uint32_t next_unallocated;
+    uint32_t count_available;
+    uint16_t available [32];
+    DynAllocatorPool pools [4096];
+} DynAllocatorPoolGroup;
+
+typedef struct {
+    DynAllocatorPoolGroup pool_groups [13];
 } DynAllocator;
 
 DynAllocator *
@@ -36,13 +44,9 @@ new_dyn_allocator() {
 void
 free_dyn_allocator(DynAllocator * alloc) {
     for (int group_i=0; group_i < LENGTH(alloc->pool_groups); group_i++) {
-        for (int pool_i=0; pool_i < LENGTH(alloc->pool_groups[0]); group_i++) {
-            DynAllocatorPool * pool = &alloc->pool_groups[group_i][pool_i];
-            if (pool->data) {
-                free(pool->data);
-            } else {
-                break;
-            }
+        DynAllocatorPoolGroup * group = &alloc->pool_groups[group_i];
+        for (int pool_i=0; pool_i < group->next_unallocated; pool_i++) {
+            free(group->pools[pool_i].data);
         }
     }
     free(alloc);
@@ -52,9 +56,14 @@ void
 dyn_allocator_free(DynAllocator * alloc, void * ptr) {
     if (!ptr) return;
     DynAllocationHeader * header = (DynAllocationHeader *)ptr - 1;
-    DynAllocatorPool * pool = &alloc->pool_groups[header->pool_group_index][header->pool_index];
-    pool->count_vacancies += 1;
-    memset(header, 0, sizeof(*header));
+    assert(header->used > 0);
+    DynAllocatorPoolGroup * group = &alloc->pool_groups[header->pool_group_index];
+    DynAllocatorPool * pool = &group->pools[header->pool_index];
+    pool->vacant[pool->count_vacant++] = header->slot_index;
+    if (pool->count_vacant == 1 && group->count_available < LENGTH(group->available)) {
+        group->available[group->count_available++] = header->pool_index;
+    }
+    header->used = 0;
 }
 
 void *
@@ -78,53 +87,56 @@ dyn_allocator_realloc(DynAllocator * alloc, void * ptr, size_t amount) {
     size_t bank_size = 1 << ((pool_group_index << 1) + DYN_ALLOCATOR_SMALLEST_BANK_SHIFT);
 
     assert(pool_group_index < LENGTH(alloc->pool_groups));
+    DynAllocatorPoolGroup * group = &alloc->pool_groups[pool_group_index];
 
-    for (int pool_i=0; pool_i < LENGTH(alloc->pool_groups[0]); pool_i++) {
-        DynAllocatorPool * pool = &alloc->pool_groups[pool_group_index][pool_i];
-        DynAllocationHeader * slot_header;
-        if (pool->data) {
-            if (pool->count_vacancies > 0) {
-                for (int slot_i=0; slot_i < DYN_ALLOCATOR_BANKS_PER_POOL; slot_i++) {
-                    slot_header = (DynAllocationHeader *)(pool->data + bank_size * slot_i);
-                    if (slot_header->used == 0) {
-                        break;
-                    }
-                }
-            } else {
-                continue;
-            }
-        } else {
-            pool->data = malloc(DYN_ALLOCATOR_BANKS_PER_POOL * bank_size);
-            if (!pool->data) {
-                fprintf(stderr, "malloc failed.");
-                exit(9);
-            }
-            for (int slot_i=0; slot_i < DYN_ALLOCATOR_BANKS_PER_POOL; slot_i++) {
-                DynAllocationHeader * new_slot = (DynAllocationHeader *)(pool->data + bank_size * slot_i);
-                memset(new_slot, 0, sizeof(*new_slot));
-            }
-            pool->count_vacancies = DYN_ALLOCATOR_BANKS_PER_POOL;
-            slot_header = (DynAllocationHeader *)pool->data;
+    DynAllocatorPool * pool;
+    uint16_t pool_i;
+    uint8_t slot_i = 0;
+
+    if (group->count_available > 0) {
+        pool_i = group->available[group->count_available - 1];
+        pool = &group->pools[pool_i];
+
+        assert(pool->count_vacant > 0);
+        slot_i = pool->vacant[--pool->count_vacant];
+        if (pool->count_vacant == 0) {
+            group->count_available -= 1;
         }
+    } else {
+        pool_i = group->next_unallocated++;
+        assert(pool_i < LENGTH(group->pools));
+        pool = &group->pools[pool_i];
 
-        slot_header->capacity = bank_size - sizeof(DynAllocationHeader);
-        slot_header->used = amount;
-        slot_header->pool_index = pool_i;
-        slot_header->pool_group_index = pool_group_index;
+        pool->data = malloc(DYN_ALLOCATOR_BANKS_PER_POOL * bank_size);
+        assert(pool->data);
 
-        pool->count_vacancies -= 1;
-
-        void * dst = (void *)(slot_header + 1);
-        
-        if (prev_header) {
-            void * src = (void *)(prev_header + 1);
-            memcpy(dst, src, prev_header->used);
-            dyn_allocator_free(alloc, src);
+        for (uint8_t new_i=0; new_i < DYN_ALLOCATOR_BANKS_PER_POOL; new_i++) {
+            DynAllocationHeader * new_header = (DynAllocationHeader *)(pool->data + bank_size * new_i);
+            new_header->capacity = bank_size - sizeof(DynAllocationHeader);
+            new_header->used = 0;
+            new_header->pool_index = pool_i;
+            new_header->pool_group_index = pool_group_index;
+            new_header->slot_index = new_i;
         }
+        for (int i=0; i < DYN_ALLOCATOR_BANKS_PER_POOL; i++) {
+            pool->vacant[i] = DYN_ALLOCATOR_BANKS_PER_POOL - i - 1;
+        }
+        slot_i = 0;
+        pool->count_vacant = DYN_ALLOCATOR_BANKS_PER_POOL - 1;
 
-        return dst;
+        group->available[group->count_available++] = pool_i;
     }
 
-    fprintf(stderr, "Failed to find allocation slot.\n");
-    exit(8);
+    DynAllocationHeader * slot_header = (DynAllocationHeader *)(pool->data + bank_size * slot_i);
+    slot_header->used = amount;
+
+    void * dst = (void *)(slot_header + 1);
+    
+    if (prev_header) {
+        void * src = (void *)(prev_header + 1);
+        memcpy(dst, src, prev_header->used);
+        dyn_allocator_free(alloc, src);
+    }
+
+    return dst;
 }
