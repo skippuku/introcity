@@ -1350,7 +1350,7 @@ parse_preprocessed_tokens(const Config * cfg, PreInfo * pre_info, ParseInfo * o_
     };
     for (int i=0; i < LENGTH(keywords); i++) {
         shputs(ctx->keyword_set, (NameSet){keywords[i].key});
-        db_assert(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
+        _assume(shgeti(ctx->keyword_set, keywords[i].key) == keywords[i].value);
     }
 
     attribute_parse_init(ctx);

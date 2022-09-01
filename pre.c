@@ -121,7 +121,7 @@ count_newlines_in_range(char * start, char * end, char ** o_last_line) {
     char * s = start;
     int result = 1;
     int count_to_aligned = (16 - ((uintptr_t)s & 15)) & 15;
-    assert(end > s);
+    _assume(end > s);
     result += count_newlines_unaligned(s, MIN(count_to_aligned, end - s));
     s += count_to_aligned;
     if (s < end) {
@@ -136,7 +136,7 @@ count_newlines_in_range(char * start, char * end, char ** o_last_line) {
             result += isum;
             s += 16;
         }
-        db_assert(end - s >= 0);
+        _assume(end - s >= 0);
         result += count_newlines_unaligned(s, end - s);
     }
     while (end > start && *--end != '\n');
@@ -341,7 +341,7 @@ ignore_section(PasteState * state, int32_t begin_ignored, int32_t end_ignored) {
     PreContext * ctx = state->ctx;
     if (state->begin_chunk != -1) {
         ptrdiff_t signed_file_offset = state->chunk_file->tk_list[state->begin_chunk].start - state->chunk_file->buffer;
-        db_assert(signed_file_offset >= 0);
+        _assume(signed_file_offset >= 0);
         FileLoc loc = {
             .offset      = arrlen(ctx->result_list),
             .file_offset = (size_t)signed_file_offset,

@@ -506,7 +506,7 @@ handle_value_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, 
     } else {
         v_type = ctx->p_info->types[attr_info.id];
     }
-    assert(arrlen(ctx->ptr_stores) == 0);
+    _assume(arrlen(ctx->ptr_stores) == 0);
     uint32_t length_value = 0;
     ptrdiff_t value_offset = parse_value(ctx, v_type, tidx, &length_value);
     if (value_offset < 0) {
@@ -713,7 +713,7 @@ parse_attribute(ParseContext * ctx, TokenIndex * tidx, IntroType * type, int mem
         }
     }break;
 
-    case INTRO_AT_COUNT: assert(0);
+    case INTRO_AT_COUNT: _assume(0);
     }
 
     if (o_result) *o_result = data;
@@ -824,7 +824,7 @@ add_attribute(ParseContext * ctx, ParseInfo * o_info, AttributeParseInfo * info,
     };
     if (info->type_ptr) {
         attribute.id = hmget(o_info->index_by_ptr_map, info->type_ptr);
-        assert(attribute.id != 0);
+        _assume(attribute.id != 0);
     } else {
         attribute.id = 0;
     }
@@ -861,11 +861,11 @@ apply_attributes(ParseContext * ctx, IntroType * type, int32_t member_index, con
     if (!pcontent) {
         hmput(ctx->attribute_data_map, key, NULL);
         pcontent = hmgetp_null(ctx->attribute_data_map, key);
-        assert(pcontent != NULL);
+        _assume(pcontent != NULL);
     }
     for (int i=0; i < count; i++) {
         AttributeParseInfo * info = hmget(ctx->parse_info_by_id, data[i].id);
-        assert(info != NULL);
+        _assume(info != NULL);
 
         if (member_index == MIDX_TYPE_PROPAGATED && !info->propagate) {
             continue;
@@ -950,7 +950,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
             } else if (directive.type->category == INTRO_ENUM) {
                 key.type = directive.type; // NOTE: maybe this should be set to null instead
             } else {
-                assert(0 /* Vibe check failed. */);
+                _assume(0 /* Vibe check failed. */);
             }
         } else {
             if (directive.type->parent) {
@@ -1062,7 +1062,7 @@ handle_attributes(ParseContext * ctx, ParseInfo * o_info) {
             } else if (type->category == INTRO_ENUM) {
                 type->values[member_index].attr = (IntroAttributeDataId){data_index};
             } else {
-                assert(0 /* Vibe check failed */);
+                _assume(0 /* Vibe check failed */);
             }
         }break;
         }

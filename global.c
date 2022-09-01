@@ -72,7 +72,6 @@ static DynAllocator * g_dynalloc = NULL;
 #endif
 
 #define db_here() fprintf(stderr, "here: %s:%i\n", __FILE__, __LINE__)
-#define db_assert(x) assert(x)
 
 #ifdef DEBUG
   #if (defined __GNUC__ || defined __clang__) && (defined __x86_64__ || defined __i386__)

@@ -470,12 +470,11 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
                 }
                 node = node->right;
 
-                assert(0); // TODO
+                assert_msg(0, "Unimplemented."); // TODO
             }break;
 
             default:
-                db_break();
-                assert(0);
+                _assume(0);
             }
 
             if (node->right) {
@@ -496,7 +495,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
         case 2: inst = I_LD16; break;
         case 4: inst = I_LD32; break;
         case 8: inst = I_LD64; break;
-        default: assert(0), inst = 0;
+        default: _assume(0), inst = 0;
         }
 
         put_imm_int(&proc, offset);
@@ -591,7 +590,7 @@ build_expression_procedure_internal(ExprContext * ectx, ExprNode * node, const I
     case OP_PTR_MACCESS:
     case OP_CONTAINER:
     case OP_OTHER:
-        assert(0);
+        _assume(0);
 
     case OP_DEREF: {
         // TODO
