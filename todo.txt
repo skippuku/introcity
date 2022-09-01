@@ -111,4 +111,3 @@ misc:
     idea: use parser to generate system headers with types only, no functions
         if we are to have our own system headers, we may as well also parse them into a binary format as well
     memory cleanup
-    parse program options and pass only relevant ones to sub-processes

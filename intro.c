@@ -1,5 +1,6 @@
 #define INTRO_IMPL
 #include "lib/intro.h"
+#include "dynalloc.c"
 #include "global.c"
 #include "config.c"
 #include "expr.c"
@@ -58,6 +59,8 @@ int
 main(int argc, char * argv []) {
     init_platform();
 
+    g_dynalloc = new_dyn_allocator();
+
     Config cfg = get_config(argc, argv);
 
     g_metrics.start = nanotime();
@@ -84,6 +87,8 @@ main(int argc, char * argv []) {
     if (cfg.show_metrics) {
         show_metrics();
     }
+
+    free_dyn_allocator(g_dynalloc);
 
     return 0;
 }

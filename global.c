@@ -1,6 +1,9 @@
 #ifndef GLOBAL_C
 #define GLOBAL_C
 
+static uint64_t g_timer_freq = 0;
+static DynAllocator * g_dynalloc = NULL;
+
 #ifdef _WIN32
   #define WIN32_LEAN_AND_MEAN
   #include <windef.h>
@@ -24,6 +27,8 @@
 
 #include "lib/intro.h"
 
+#define STBDS_REALLOC(CTX, PTR, SIZE) dyn_allocator_realloc(g_dynalloc, PTR, SIZE)
+#define STBDS_FREE(CTX, PTR) dyn_allocator_free(g_dynalloc, PTR)
 #define STB_DS_IMPLEMENTATION
 #include "ext/stb_ds.h"
 
@@ -110,8 +115,6 @@
         parse_error(ctx, tk, "Expected identifier."); \
         return -1; \
     }
-
-static uint64_t g_timer_freq = 0;
 
 typedef struct {
     uint8_t size_ptr;
