@@ -88,7 +88,9 @@ main(int argc, char * argv []) {
         show_metrics();
     }
 
+#ifdef DEBUG
     free_dyn_allocator(g_dynalloc);
+#endif
 
     return 0;
 }

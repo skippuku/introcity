@@ -493,8 +493,6 @@ get_config(int argc, char * argv []) {
         exit(1);
     }
 
-    (void) malloc(8);
-
     if (cfg.output_filename == NULL) {
         char * ext;
         if (cfg.gen_city) {

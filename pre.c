@@ -1529,6 +1529,7 @@ static char intro_defs [] =
 "#define_forced __volatile__(x) \n"
 "#endif\n"
 
+"#define_forced _Static_assert _Static_assert\n"
 "#define_forced bool bool\n"
 "typedef bool _Bool;\n"
 ;
@@ -1600,13 +1601,17 @@ run_preprocessor(Config * cfg) {
         }
     }
 
-    ctx->sys_header_first = arrlen(ctx->include_paths);
-    const char ** dest = arraddnptr(ctx->include_paths, arrlen(cfg->sys_include_paths));
-    memcpy(dest, cfg->sys_include_paths, arrlen(cfg->sys_include_paths) * sizeof(char *));
-    ctx->sys_header_last = arrlen(ctx->include_paths) - 1;
+    if (arrlen(cfg->sys_include_paths) > 0) {
+        ctx->sys_header_first = arrlen(ctx->include_paths);
+        const char ** dest = arraddnptr(ctx->include_paths, arrlen(cfg->sys_include_paths));
+        memcpy(dest, cfg->sys_include_paths, arrlen(cfg->sys_include_paths) * sizeof(char *));
+        ctx->sys_header_last = arrlen(ctx->include_paths) - 1;
+    }
 
-    dest = arraddnptr(ctx->include_paths, arrlen(cfg->include_paths));
-    memcpy(dest, cfg->include_paths, arrlen(cfg->include_paths) * sizeof(char *));
+    if (arrlen(cfg->include_paths) > 0) {
+        const char ** dest = arraddnptr(ctx->include_paths, arrlen(cfg->include_paths));
+        memcpy(dest, cfg->include_paths, arrlen(cfg->include_paths) * sizeof(char *));
+    }
 
     bool temp_minimal_parse = false;
     if (cfg->m_options.enabled && !cfg->m_options.D) {

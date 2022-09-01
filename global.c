@@ -27,8 +27,8 @@ static DynAllocator * g_dynalloc = NULL;
 
 #include "lib/intro.h"
 
-#define STBDS_REALLOC(CTX, PTR, SIZE) dyn_allocator_realloc(g_dynalloc, PTR, SIZE)
-#define STBDS_FREE(CTX, PTR) dyn_allocator_free(g_dynalloc, PTR)
+//#define STBDS_REALLOC(CTX, PTR, SIZE) dyn_allocator_realloc(g_dynalloc, PTR, SIZE)
+//#define STBDS_FREE(CTX, PTR) dyn_allocator_free(g_dynalloc, PTR)
 #define STB_DS_IMPLEMENTATION
 #include "ext/stb_ds.h"
 

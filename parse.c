@@ -549,7 +549,7 @@ parse_enum(ParseContext * ctx, TokenIndex * tidx) {
             return -1;
         }
 
-        if (v.value != 0 && (1 << INTRO_BSR64((uint64_t)v.value) != (uint64_t)v.value)) {
+        if (v.value != 0 && (((uint64_t)1 << INTRO_BSR64((uint64_t)v.value)) != (uint64_t)v.value)) {
             is_flags = false;
         }
         //if (mask & v.value) is_flags = false;
