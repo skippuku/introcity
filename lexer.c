@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum {
+typedef enum __attribute__((packed)) {
     TK_UNKNOWN,
     TK_L_PARENTHESIS,
     TK_R_PARENTHESIS,
@@ -65,9 +65,9 @@ typedef enum {
 
 typedef struct Token {
     char * start;
-    TokenCode type;
     int32_t index;
     int16_t length;
+    TokenCode type;
     bool preceding_space;
 } Token;
 
@@ -351,7 +351,7 @@ create_token_list(char * buffer) {
     char * s = buffer;
 
     Token * list = NULL;
-    arrsetcap(list, 64);
+    arrsetcap(list, 16);
 
     while (1) {
         Token tk = pre_next_token(&s);

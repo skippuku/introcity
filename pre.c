@@ -90,10 +90,10 @@ typedef struct {
 #define BOLD_WHITE "\e[1;37m"
 static void
 strput_code_segment(char ** p_s, char * segment_start, char * segment_end, char * highlight_start, char * highlight_end, const char * highlight_color) {
-    strputf(p_s, "%.*s", (int)(highlight_start - segment_start), segment_start);
+    strputf(p_s, "\n%.*s", (int)(highlight_start - segment_start), segment_start);
     strputf(p_s, "%s%.*s" WHITE, highlight_color, (int)(highlight_end - highlight_start), highlight_start);
     strputf(p_s, "%.*s\n", (int)(segment_end - highlight_end), highlight_end);
-    for (int i=0; i < highlight_start - segment_start - 1; i++) {
+    for (int i=0; i < highlight_start - segment_start; i++) {
         if (segment_start[i] == '\t') {
             arrput(*p_s, '\t');
         } else {
@@ -123,7 +123,6 @@ count_newlines_in_range(char * start, char * end, char ** o_last_line) {
     int count_to_aligned = (16 - ((uintptr_t)s & 15)) & 15;
     _assume(end > s);
     result += count_newlines_unaligned(s, MIN(count_to_aligned, end - s));
-    s += count_to_aligned;
     if (s < end) {
         while (s+16 < end) {
             const __m128i newlines = _mm_set1_epi8('\n');
@@ -139,12 +138,13 @@ count_newlines_in_range(char * start, char * end, char ** o_last_line) {
         _assume(end - s >= 0);
         result += count_newlines_unaligned(s, end - s);
     }
-    while (end > start && *--end != '\n');
+#else
+    int result = 1 + count_newlines_unaligned(start, end - start);
+#endif
+    while (end >= start && *--end != '\n');
+    end++;
     *o_last_line = end;
     return result;
-#else
-    return 1 + count_newlines_unaligned(start, end - start);
-#endif
 }
 
 FileInfo *
@@ -237,7 +237,6 @@ parse_msg_internal(LocationContext * lctx, int32_t tk_index, char * message, int
     char * hl_start = tk.start;
     char * hl_end = hl_start + tk.length;
     message_internal(start_of_line, filename, line_num, hl_start, hl_end, message, message_type);
-    fprintf(stderr, "errenous token: %.*s\n", tk.length, tk.start);
     for (int i=arrlen(lctx->stack) - 1; i >= 0; i--) {
         FileLoc l = lctx->list[lctx->stack[i]];
         if (l.mode == LOC_FILE) {
@@ -1460,7 +1459,7 @@ preprocess_file(PreContext * ctx) {
 
                         FileLoc loc_push_macro = {
                             .offset = arrlen(ctx->result_list),
-                            .file_offset = tidx->index,
+                            .file_offset = tk.start - file->buffer,
                             .file = file,
                             .macro_name = ctx->expand_ctx.last_macro_name,
                             .mode = LOC_MACRO,
@@ -1469,28 +1468,11 @@ preprocess_file(PreContext * ctx) {
                         arrput(ctx->loc.list, loc_push_macro);
 
                         if (arrlen(list) > 0) {
-                            FileInfo * last_origin = ctx->current_file;
-                            ptrdiff_t last_file_offset = -1;
                             Token mtk;
                             for (int i=0; i < arrlen(list); i++) {
                                 mtk = list[i];
                                 if (mtk.type == TK_PLACEHOLDER) continue;
-                                FileInfo * origin = find_origin(&ctx->loc, ctx->loc.file, mtk.start); // TODO: This is slow
-                                if (origin) {
-                                    ptrdiff_t file_offset = mtk.start - origin->buffer;
-                                    if (file_offset != last_file_offset || origin != last_origin) {
-                                        FileLoc loc = {
-                                            .offset = arrlen(ctx->result_list),
-                                            .file_offset = file_offset,
-                                            .notice = ctx->notice,
-                                        };
-                                        if (origin) loc.file = origin;
-                                        arrput(ctx->loc.list, loc);
-                                        last_origin = origin;
-                                        last_file_offset = file_offset;
-                                    }
-                                }
-                                if (mtk.type == TK_DISABLED) mtk.type = TK_IDENTIFIER;
+                                else if (mtk.type == TK_DISABLED) mtk.type = TK_IDENTIFIER;
                                 arrput(ctx->result_list, mtk);
                             }
                         }
@@ -1793,7 +1775,7 @@ run_preprocessor(Config * cfg) {
 
     if (ctx->preprocess_only) {
         char * pretext = NULL;
-        arrsetcap(pretext, 1 << 18);
+        arrsetcap(pretext, 1 << 12);
         for (int i=0; i < arrlen(ctx->result_list); i++) {
             Token tk = ctx->result_list[i];
             if (tk.preceding_space) arrput(pretext, ' ');

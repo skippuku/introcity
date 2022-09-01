@@ -32,9 +32,9 @@ special_macros() {
 
 typedef struct {float x,y;} RealType;
 
-typedef BUILD_DYNAMIC_ARRAY(int) *int_arr_t;
+typedef BUILD_DYNAMIC_ARRAY(RealType) *int_arr_t;
 
-//#include "pre_inc.h"
+#include "pre_inc.h"
 
 //typedef BUILD_DYNAMIC_ARRAY(NotAType) *test_err_arr_t; // intentional error
 
@@ -61,7 +61,7 @@ std_examples() {
     debug(1, 2);
     fputs(str(strncmp("abc\0d", "abc", '\4') // this goes away
     == 0) str(: @\n), s);
-    #include xstr(INCFILE(2).h)
+    //#include xstr(INCFILE(2).h)
     glue(HIGH, LOW);
     xglue(HIGH, LOW)
 

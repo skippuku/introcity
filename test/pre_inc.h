@@ -1,4 +1,5 @@
-#define FLOAT floof
+#define SOMETHING floof
+#define FLOAT SOMETHING
 
 typedef struct /* comment */ {
     int thing;
