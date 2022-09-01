@@ -21,6 +21,7 @@ typedef enum {
     MACRO_TIMESTAMP,
     MACRO_has_include,
     MACRO_has_include_next,
+    MACRO_COUNT
 } SpecialMacro;
 
 typedef struct {
@@ -73,7 +74,6 @@ typedef struct {
     bool is_sys_header;
     bool minimal_parse;
     bool preprocess_only;
-    bool get_metrics;
 } PreContext;
 
 typedef struct {
@@ -571,7 +571,7 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
         char * buf = NULL;
         int token_type = TK_STRING;
         switch(macro->special) {
-        case MACRO_NOT_SPECIAL: break; // never reached
+        case MACRO_NOT_SPECIAL: _assume(0);
 
         case MACRO_defined: {
             if (!ctx->expand_ctx.in_expression) {
@@ -678,6 +678,11 @@ macro_scan(PreContext * ctx, int macro_tk_index) {
             strftime(static_buf, sizeof(static_buf), "%a %b %d %H:%M:%S %Y", date);
 
             strputf(&buf, "\"%s\"", static_buf);
+        }break;
+
+        case MACRO_COUNT: {
+            preprocess_warning(macro_tk, "sus");
+            return false;
         }break;
 
         case MACRO_has_include_next:
@@ -1091,10 +1096,12 @@ preprocess_set_file(PreContext * ctx, char * filename) {
             file_size = arrlen(file_buffer);
             time(&mtime);
         } else {
+            g_metrics.pre_time += nanointerval();
             file_buffer = intro_read_file(filename, &file_size);
             struct stat file_stat;
             stat(filename, &file_stat);
             mtime = file_stat.st_mtime;
+            g_metrics.file_access_time += nanointerval();
         }
         if (!file_buffer) {
             return RET_FILE_NOT_FOUND;
@@ -1108,13 +1115,14 @@ preprocess_set_file(PreContext * ctx, char * filename) {
         new_buf->tk_list = create_token_list(file_buffer);
         g_metrics.lex_time += nanointerval();
 
-        if (ctx->get_metrics) {
+        if (ctx->cfg->show_metrics) {
             for (int i=0; i < arrlen(new_buf->tk_list); i++) {
                 if (new_buf->tk_list[i].type == TK_NEWLINE) {
                     g_metrics.count_pre_lines++;
                 }
             }
             g_metrics.count_pre_tokens += arrlen(new_buf->tk_list);
+            g_metrics.count_pre_file_bytes += file_size;
         }
 
         new_buf->buffer_size = file_size;
@@ -1443,9 +1451,11 @@ preprocess_file(PreContext * ctx) {
                     ctx->expand_ctx.list[0] = tk;
                     int32_t start_index = tidx->index - 1;
 
+                    bool has_space = tk.preceding_space;
                     if (macro_scan(ctx, 0)) {
 
-                        const Token * list = ctx->expand_ctx.list;
+                        Token * list = ctx->expand_ctx.list;
+                        list[0].preceding_space = has_space;
                         ignore_section(paste, start_index, tidx->index);
 
                         FileLoc loc_push_macro = {
@@ -1465,7 +1475,7 @@ preprocess_file(PreContext * ctx) {
                             for (int i=0; i < arrlen(list); i++) {
                                 mtk = list[i];
                                 if (mtk.type == TK_PLACEHOLDER) continue;
-                                FileInfo * origin = find_origin(&ctx->loc, ctx->loc.file, mtk.start);
+                                FileInfo * origin = find_origin(&ctx->loc, ctx->loc.file, mtk.start); // TODO: This is slow
                                 if (origin) {
                                     ptrdiff_t file_offset = mtk.start - origin->buffer;
                                     if (file_offset != last_file_offset || origin != last_origin) {
@@ -1494,6 +1504,8 @@ preprocess_file(PreContext * ctx) {
 
                         arrsetlen(ctx->expand_ctx.list, 1);
                         arrsetlen(ctx->expand_ctx.macro_index_stack, 0);
+
+                        g_metrics.count_macro_expansions += 1;
                     }
                 }
             }
@@ -1512,6 +1524,7 @@ static char intro_defs [] =
 "#define_forced __forceinline inline\n"
 "#define_forced __THROW \n"
 "#endif\n"
+
 "#define __inline inline\n"
 "#define __restrict restrict\n"
 "#define _Complex \n" // TODO: ... uhg
@@ -1519,7 +1532,6 @@ static char intro_defs [] =
 // MINGW
 "#define _VA_LIST_DEFINED 1\n"
 
-// GNU
 "#if defined __GNUC__\n"
 "#define_forced __restrict__ restrict\n"
 "#define_forced __inline__ inline\n"
@@ -1567,6 +1579,7 @@ run_preprocessor(Config * cfg) {
         {"__TIMESTAMP__", MACRO_TIMESTAMP},
         {"__has_include", MACRO_has_include},
         {"__has_include_next", MACRO_has_include_next},
+        {"imposter", MACRO_COUNT},
     };
     for (int i=0; i < LENGTH(special_macros); i++) {
         Define special = {0};
@@ -1773,17 +1786,27 @@ run_preprocessor(Config * cfg) {
             exit(1);
         }
     }
+
+    g_metrics.count_parse_tokens = arrlen(ctx->result_list);
+    g_metrics.pre_time += nanointerval();
+    g_metrics.count_pre_files = arrlen(ctx->loc.file_buffers);
+
     if (ctx->preprocess_only) {
         char * pretext = NULL;
-        arrsetcap(pretext, 1024);
+        arrsetcap(pretext, 1 << 18);
         for (int i=0; i < arrlen(ctx->result_list); i++) {
             Token tk = ctx->result_list[i];
             if (tk.preceding_space) arrput(pretext, ' ');
             char * out = arraddnptr(pretext, tk.length);
             memcpy(out, tk.start, tk.length);
         }
-        arrput(pretext, 0);
         fwrite(pretext, 1, arrlen(pretext), stdout);
+
+        g_metrics.gen_time += nanointerval();
+        if (cfg->show_metrics) {
+            show_metrics();
+        }
+
         exit(0);
     }
 
@@ -1813,8 +1836,6 @@ run_preprocessor(Config * cfg) {
     info.loc.index = 0;
     info.loc.count = arrlen(ctx->loc.list);
     info.result_list = ctx->result_list;
-    g_metrics.count_parse_tokens = arrlen(ctx->result_list);
     g_metrics.pre_time += nanointerval();
-    g_metrics.count_pre_files = arrlen(ctx->loc.file_buffers);
     return info;
 }

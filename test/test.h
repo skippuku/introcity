@@ -166,6 +166,7 @@ typedef struct {
         char a I(= 3), b I(= 4);
         short u I(= 5);
     } anon_struct_array [4];
+    //int imposter;
 } Dumb;
 
 typedef enum {

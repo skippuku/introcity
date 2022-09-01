@@ -351,27 +351,6 @@ typedef struct {
     bool reuse_base;
 } DeclState;
 
-static struct Metrics {
-    uint64_t start;
-    uint64_t last;
-
-    uint64_t pre_time;
-    uint64_t lex_time;
-
-    uint64_t parse_time;
-    uint64_t attribute_time;
-
-    uint64_t gen_time;
-
-    uint64_t count_pre_files;
-    uint64_t count_pre_lines;
-    uint64_t count_pre_tokens;
-
-    uint64_t count_parse_tokens;
-    uint64_t count_parse_types;
-    uint64_t count_gen_types;
-} g_metrics = {0};
-
 IntroType * parse_get_known(ParseContext * ctx, int index);
 static int parse_declaration(ParseContext * ctx, TokenIndex * tidx, DeclState * decl);
 
@@ -515,6 +494,30 @@ path_extension(char * dest, const char * path) {
     return strcpy(dest, period);
 }
 
+static struct Metrics {
+    uint64_t start;
+    uint64_t last;
+
+    uint64_t file_access_time;
+    uint64_t pre_time;
+    uint64_t lex_time;
+
+    uint64_t parse_time;
+    uint64_t attribute_time;
+
+    uint64_t gen_time;
+
+    uint64_t count_pre_files;
+    uint64_t count_pre_lines;
+    uint64_t count_pre_tokens;
+    uint64_t count_pre_file_bytes;
+    uint64_t count_macro_expansions;
+
+    uint64_t count_parse_tokens;
+    uint64_t count_parse_types;
+    uint64_t count_gen_types;
+} g_metrics = {0};
+
 static uint64_t
 nanotime() {
 #if _WIN32
@@ -537,6 +540,39 @@ nanointerval() {
     uint64_t result = now - g_metrics.last;
     g_metrics.last = now;
     return result;
+}
+
+static void
+show_metrics() {
+    char * buf = NULL;
+    strputf(&buf, "intro version %s", VERSION);
+#ifdef DEBUG
+    strputf(&buf, " (debug)");
+#endif
+    strputf(&buf, "\n");
+
+#define AS_MSECS(t) ((t) / (double)g_timer_freq * 1000)
+    uint64_t now = nanotime();
+    strputf(&buf, "Total time: %.2fms\n", AS_MSECS(now - g_metrics.start));
+    strputf(&buf, "|-Pre: %.2fms\n", AS_MSECS(g_metrics.pre_time + g_metrics.lex_time + g_metrics.file_access_time));
+    strputf(&buf, "| |-File Access:  %.2fms\n", AS_MSECS(g_metrics.file_access_time));
+    strputf(&buf, "| |-Tokenization: %.2fms\n", AS_MSECS(g_metrics.lex_time));
+    strputf(&buf, "| |-Other:        %.2fms\n", AS_MSECS(g_metrics.pre_time));
+    strputf(&buf, "|   %'11lu files\n", (unsigned long)g_metrics.count_pre_files);
+    strputf(&buf, "|   %'11lu lines\n", (unsigned long)g_metrics.count_pre_lines);
+    strputf(&buf, "|   %'11lu tokens\n", (unsigned long)g_metrics.count_pre_tokens);
+    strputf(&buf, "|   %'11lu bytes\n", (unsigned long)g_metrics.count_pre_file_bytes);
+    strputf(&buf, "|   %'11lu macro expansions\n", (unsigned long)g_metrics.count_macro_expansions);
+    strputf(&buf, "|-Parse: %.2fms\n", AS_MSECS(g_metrics.parse_time + g_metrics.attribute_time));
+    strputf(&buf, "| |-Types:      %.2fms\n", AS_MSECS(g_metrics.parse_time));
+    strputf(&buf, "| |-Attributes: %.2fms\n", AS_MSECS(g_metrics.attribute_time));
+    strputf(&buf, "|   %'11lu tokens\n", (unsigned long)g_metrics.count_parse_tokens);
+    strputf(&buf, "|   %'11lu types\n", (unsigned long)g_metrics.count_parse_types);
+    strputf(&buf, "|-Gen: %.2fms\n", AS_MSECS(g_metrics.gen_time));
+    strputf(&buf, "|   %'11lu types\n", (unsigned long)g_metrics.count_gen_types);
+    fputs(buf, stderr);
+    arrfree(buf);
+#undef AS_MSECS
 }
 
 static void parse_error(ParseContext * ctx, Token tk, char * message);

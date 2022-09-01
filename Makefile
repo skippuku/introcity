@@ -1,6 +1,8 @@
 IMGUI_PATH := ../modules/imgui/
 COMPILE.S = gcc -c $(DEPGENFLAGS) $(CFLAGS)
 
+CFLAGS := -Wall -Werror
+
 ifeq (,$(OS))
   UNAME := $(shell uname -s)
   ifeq (Linux,$(UNAME))
@@ -17,7 +19,7 @@ ifneq (0,$(shell id -u))
 else
   GIT_VERSION := unknown
 endif
-CFLAGS += -Wall -DVERSION='"$(GIT_VERSION)"'
+CFLAGS += -DVERSION='"$(GIT_VERSION)"'
 
 SRC := intro.c
 MAGIC_DEFAULT_PROFILE := debug
