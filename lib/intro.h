@@ -188,7 +188,7 @@ typedef enum IntroAttributeCategory {
     INTRO_AT_FLOAT,
     INTRO_AT_VALUE,
     INTRO_AT_MEMBER,
-    INTRO_AT_TYPE, // unimplemented
+    INTRO_AT_TYPE,
     INTRO_AT_EXPR,
     INTRO_AT_REMOVE,
     INTRO_AT_COUNT
@@ -196,7 +196,7 @@ typedef enum IntroAttributeCategory {
 
 typedef struct IntroAttributeInfo {
     const char * name;
-    IntroAttributeCategory category;
+    uint32_t category;
     IntroAttribute id;
 } IntroAttributeInfo;
 
@@ -458,7 +458,7 @@ int64_t intro_int_value(const void * data, const IntroType * type);
 const IntroMember * intro_member_by_name_x(const IntroType * type, const char * name);
 union IntroRegisterData intro_run_bytecode(const uint8_t * code, const void * data);
 
-#define INTRO_LIB_VERSION 316
+#define INTRO_LIB_VERSION 402
 
 ///////////////////////////////
 //  INTROLIB IMPLEMENTATION  //
