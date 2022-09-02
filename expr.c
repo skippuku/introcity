@@ -767,7 +767,11 @@ interactive_calculator() {
     expr_ctx.arena = new_arena(512);
     while (1) {
         printf("expr> ");
-        fgets(expr_buf, sizeof(expr_buf), stdin);
+        if (!fgets(expr_buf, sizeof(expr_buf), stdin)) {
+            printf("input error.\n");
+            continue;
+        }
+
         char * endl = strchr(expr_buf, '\n');
         if (endl) *endl = '\0';
 
